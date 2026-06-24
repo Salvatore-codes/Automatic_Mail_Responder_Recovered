@@ -1,0 +1,64 @@
+sku_id,sku_name,description,price,category,stock
+ELBOW-BRASS-050,Brass Threaded Elbow Fitting 1/2 Inch,High quality 1/2 inch brass elbow joint for water/gas pipe connections,12.5,Plumbing,150
+PTFE-TAPE-12,PTFE Teflon Seal Tape 12mm,Teflon thread seal tape 12mm x 10m for plumbing connections,1.2,Plumbing,0
+BOLT-HEX-M8-50,Hex Head Bolt M8 x 50mm,Zinc plated steel hex head bolts M8 size 50mm length,0.45,Fasteners,1000
+NUT-HEX-M8,Hex Nut M8 Zinc Plated,Standard M8 hexagonal steel nut zinc plated,0.1,Fasteners,800
+WASHER-FLAT-M8,Flat Washer M8 Zinc Plated,Standard flat steel washer for M8 bolts,0.05,Fasteners,1200
+HAMMER-CLAW-16,Claw Hammer 16oz Fiberglass,16 oz professional claw hammer with fiberglass handle,15.99,Tools,12
+WD40-SPRAY-300,WD-40 Multi-Use Lubricant 300ml,WD-40 anti-rust and lubricating spray 300ml,6.5,Chemicals,40
+PVC-PIPE-075-10,PVC Schedule 40 Pipe 3/4 Inch 10ft,Rigid PVC pipe 3/4 inch diameter 10 feet length for drainage,8.25,Plumbing,50
+VALVE-BALL-BR-075,Brass Ball Valve 3/4 Inch Female,Heavy duty full port brass ball valve 3/4 inch thread,14.8,Plumbing,30
+SWITCH-WALL-1G,1-Gang Wall Switch 10A White,Single gang 10 Amp wall light switch plates white classic design,3.2,Electrical,75
+WIRE-COPPER-14-50,Copper Wire 14 AWG Solid 50ft,Solid core insulated copper electrical wire 14 gauge 50 feet,22.5,Electrical,8
+SCREW-WOOD-4-20,Wood Screw Flat Head #4 x 3/4 Inch,Phillips flat head wood screws steel pack of 100,4.5,Fasteners,300
+SCREW-WOOD-8-40,Wood Screw Flat Head #8 x 1.5 Inch,Phillips flat head wood screws steel pack of 50,5.8,Fasteners,0
+TAPE-ELEC-BLK,Electrical Tape Black 20m,Professional grade PVC electrical insulation tape black color,1.5,Electrical,100
+PLIER-COMB-8,Combination Pliers 8 Inch,Heavy duty insulated combination wire cutter and pliers 8 inch,12.5,Tools,15
+WRENCH-ADJ-10,Adjustable Wrench 10 Inch,Carbon steel adjustable crescent wrench 10 inch length,14.99,Tools,8
+LED-BULB-9W,LED Light Bulb 9W Cool White,Energy saving E27 base 9 watt LED light bulb pack of 4,8.99,Electrical,40
+TAPE-MEASURE-8M,Tape Measure 8m/26ft Steel,Heavy duty auto-lock steel measuring tape with metric/imperial scales,9.5,Tools,20
+GLUE-WOOD-500,PVA Wood Glue 500ml,High strength weather resistant D3 wood adhesive glue 500ml,7.25,Chemicals,25
+PAINT-WALL-WHT-5L,Emulsion Wall Paint White 5L,Interior emulsion wall paint matt finish brilliant white 5 Liters,29.99,Paint,30
+BRUSH-PAINT-2,Paint Brush 2 Inch Basic,Synthetic bristle paint brush 2 inch for general painting,2.5,Paint,150
+SANDPAPER-120,Sandpaper Sheets 120 Grit Medium,Medium grit dry silicon carbide sandpaper sheets pack of 10,3.5,Paint,200
+HACKSAW-STEEL-12,Steel Hacksaw Frame 12 Inch,Heavy duty steel frame hacksaw with 12 inch carbon steel blade,11.2,Tools,5
+GLOVE-WORK-L,Leather Work Gloves Size L,Heavy duty cowhide leather safety work gloves for construction,6.99,Tools,22
+DRILL-BIT-SET-15,Masonry & Metal Drill Bit Set 15pc,Multi-purpose twist drill bit set 1.5mm to 10mm 15 pieces,18.5,Tools,10
+SILICONE-CLR-300,Silicone Sealant Clear 300ml,Waterproof clear acetoxy silicone sealant cartridge 300ml,5.4,Chemicals,60
+BOLT-HEX-M10-80,Hex Head Bolt M10 x 80mm,Zinc plated steel hex head bolts M10 size 80mm length,0.85,Fasteners,500
+NUT-HEX-M10,Hex Nut M10 Zinc Plated,Standard M10 hexagonal steel nut zinc plated,0.18,Fasteners,400
+WASHER-SPRING-M10,Spring Split Washer M10 Zinc,Split lock steel spring washers for M10 bolts pack of 100,2.5,Fasteners,250
+SOLDER-WIRE-100G,Lead-Free Solder Wire 100g,Rosin core lead-free soldering wire 1.0mm diameter,8.9,Electrical,35
+IRON-SOLD-40W,Soldering Iron 40W Basic,Basic pencil-style electrical soldering iron 40W with stand,13.5,Electrical,15
+PLUG-WALL-3P,3-Pin Electrical Plug 13A Black,Heavy duty 13A mains plug fused black color,2,Electrical,50
+COUPLER-PVC-075,PVC Coupler Pipe Fitting 3/4 Inch,Schedule 40 PVC slip coupler socket fitting 3/4 inch,0.8,Plumbing,120
+TEE-PVC-075,PVC Tee Pipe Fitting 3/4 Inch,Schedule 40 PVC slip tee socket fitting 3/4 inch,1.2,Plumbing,90
+NIPPLE-BRASS-050,Brass Close Nipple 1/2 Inch,Threaded brass close nipple pipe fitting 1/2 inch NPT,3.8,Plumbing,45
+SEAL-THREAD-ANA,Anaerobic Thread Sealant 50ml,Medium strength liquid thread locker and sealant for metal joints,14.5,Chemicals,15
+GLUE-SUPER-3G,Super Glue Liquid 3g Pack of 3,Instant cyanoacrylate super glue liquid tubes 3g,2.99,Chemicals,80
+SCREWDRIVER-PH2,Screwdriver Phillips PH2 x 100mm,Magnetic tip Phillips head screwdriver size PH2 length 100mm,4.8,Tools,30
+SCREWDRIVER-SL6,Screwdriver Slotted 6mm x 100mm,Magnetic tip flathead/slotted screwdriver 6mm width 100mm,4.8,Tools,30
+BOX-TOOL-19,Plastic Tool Box 19 Inch,Heavy duty tool storage organizer box with removable tray 19 inch,19.99,Tools,6
+PAINT-METAL-BLK-1L,Gloss Metal Paint Black 1L,Anti-rust protective gloss paint for metal surfaces black 1 Liter,16.5,Paint,10
+ROLLER-PAINT-9,Paint Roller Set 9 Inch,Includes paint tray 9 inch roller frame and 2 medium pile sleeves,8.5,Paint,20
+SOLVENT-THIN-1L,Mineral Spirits Paint Thinner 1L,Paint solvent and cleaning spirits for oil-based paints 1 Liter,5.5,Paint,25
+NAIL-WIRE-2,Wire Nails Flat Head 2 Inch,Common steel wire nails flat head 2 inch length 500g box,3.9,Fasteners,100
+NAIL-FIN-15,Finishing Nails Steel 1.5 Inch,Zinc plated steel wire brad finishing nails 1.5 inch 250g box,3.2,Fasteners,80
+SOCKET-WALL-2G,Double Wall Socket 13A Switched,Dual gang switched 13 Amp power outlet plate white,5.5,Electrical,15
+CONDUIT-PVC-20MM,PVC Conduit Pipe 20mm x 2m,Rigid white PVC electrical conduit pipe 20mm diameter 2m length,2.8,Electrical,200
+BOX-CONDUIT-1G,PVC Conduit Box 1-Gang White,Single gang surface mount electrical switch/socket back box 35mm,1.8,Electrical,150
+ELBOW-PVC-075,PVC Elbow Fitting 3/4 Inch,Schedule 40 PVC 90 degree slip elbow pipe fitting 3/4 inch,1,Plumbing,110
+ELBOW-PVC-075,PVC Elbow Fitting 3/4 Inch,Schedule 40 PVC 90 degree slip elbow pipe fitting 3/4 inch,1,Plumbing,110
+VALVE-GATE-BR-050,Brass Gate Valve 1/2 Inch,Solid brass gate valve female threads wheel handle 1/2 inch,11.5,Plumbing,15
+PLIER-NOSE-6,Long Nose Pliers 6 Inch,Precision long needle nose pliers with cutter handles 6 inch,9.99,Tools,25
+HEX-KEY-SET-9,Hex Key Allen Wrench Set 9pc,Metric L-wrench hex key set long arm 1.5mm to 10mm 9 pieces,7.8,Tools,14
+LEVEL-SPIRIT-24,Spirit Level Aluminum 24 Inch,Precision classic aluminum box section spirit level 60cm/24inch,13.5,Tools,5
+ROPE-NYLON-10M,Nylon Braided Rope 8mm x 10m,Strong braided nylon utility cord rope 8mm thick 10 meters,5.2,Fasteners,60
+TIE-CABLE-100,Nylon Cable Ties Black 100pc,Self-locking nylon cable ties wraps 200mm x 4.8mm pack of 100,3.5,Electrical,150
+GASKET-RUBBER-050,Rubber Gasket Washers 1/2 Inch,Black rubber sealing washers for 1/2 inch hose/pipe pack of 10,1.5,Plumbing,200
+STAPLE-GUN-HD,Heavy Duty Staple Tacker Gun,Manual steel staple gun tracker for upholstery and wood crafts,16.8,Tools,5
+STAPLES-10MM,Staples for Gun 10mm Pack 1000,Steel wire staples 10mm leg length compatible with staple gun,2.5,Tools,50
+KNIFE-UTILITY-RET,Retractable Utility Knife,Zinc alloy body retractable box cutter safety utility knife,4.2,Tools,30
+BLADES-KNIFE-10,Utility Knife Spare Blades 10pc,Heavy duty carbon steel utility knife replacement blades pack of 10,1.99,Tools,100
+GREASE-LITH-400G,White Lithium Grease Cartridge 400g,Multi-purpose lithium lubricating grease for bearings and gears,7.5,Chemicals,20
+STRAP-RATCHET-2pc,Ratchet Tie Down Straps 2pc,Heavy duty load cargo straps with metal ratchet J-hooks 4m x 25mm,12.99,Fasteners,15

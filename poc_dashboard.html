@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive POC: Automated SKU Matcher & Quotation Engine</title>
+    <meta name="description" content="Interactive Proof-of-Concept dashboard demonstrating automated SKU ingestion, CRM discounts, ERP stock checking, and Human-in-the-Loop AI learning.">
+    
+    <!-- Premium Typography & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #090D1A;
+            --bg-card: #12182B;
+            --bg-input: #1B233D;
+            --accent-blue: #3B82F6;
+            --accent-indigo: #6366F1;
+            --accent-purple: #8B5CF6;
+            --accent-green: #10B981;
+            --accent-yellow: #F59E0B;
+            --accent-red: #EF4444;
+            --text-primary: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --border-color: #242F50;
+            --font-main: 'Inter', sans-serif;
+            --font-display: 'Outfit', sans-serif;
+            --glass-bg: rgba(18, 24, 43, 0.7);
+            --glass-border: rgba(99, 102, 241, 0.15);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: center;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            width: 100%;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 1.5rem;
+        }
+
+        /* Top Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--glass-bg);
+            border: 1px solid var(--border-color);
+            padding: 1.25rem 2rem;
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .logo-section h1 {
+            font-family: var(--font-display);
+            font-size: 1.75rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-section p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .badge-live {
+            background-color: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent-green);
+            padding: 0.35rem 0.85rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .badge-live::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        /* Layout Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Card Styling */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 1.75rem;
+            box-shadow: 0 10px 35px -10px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            position: relative;
+        }
+
+        .card h2 {
+            font-family: var(--font-display);
+            font-size: 1.25rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Inputs Panel */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            padding: 0.85rem;
+            font-family: var(--font-main);
+            font-size: 0.9rem;
+            resize: none;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        textarea:focus {
+            border-color: var(--accent-indigo);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+        }
+
+        .preset-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-preset {
+            flex: 1;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-preset:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        select {
+            width: 100%;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.75rem;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        /* Toggle Button Group */
+        .toggle-group {
+            display: flex;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.25rem;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.6rem 0.5rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .toggle-btn.active {
+            background-color: var(--accent-indigo);
+            color: var(--text-primary);
+            box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-process {
+            width: 100%;
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-indigo) 100%);
+            border: none;
+            color: white;
+            padding: 0.9rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-family: var(--font-display);
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+            transition: var(--transition);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-process:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.45);
+        }
+
+        /* Result Panel & Table */
+        .results-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .metrics-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .metric-card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.85rem 1.25rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-card span {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .metric-card strong {
+            font-family: var(--font-display);
+            font-size: 1.4rem;
+            color: var(--text-primary);
+        }
+
+        /* HITL Warning Banner */
+        .hitl-alert {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            color: #FBBF24;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .hitl-alert h4 {
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .hitl-alert button {
+            background-color: var(--accent-yellow);
+            color: #000;
+            border: none;
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .hitl-alert button:hover {
+            transform: scale(1.05);
+        }
+
+        /* table styling */
+        .table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: rgba(27, 35, 61, 0.4);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: var(--font-display);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Stock and Confidence Pills */
+        .status-pill {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-pill.instock {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .status-pill.lowstock {
+            background-color: rgba(245, 158, 11, 0.15);
+            color: var(--accent-yellow);
+        }
+
+        .status-pill.outstock {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .conf-bar-bg {
+            width: 80px;
+            height: 6px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+
+        .conf-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        .conf-high { background-color: var(--accent-green); }
+        .conf-mid { background-color: var(--accent-yellow); }
+        .conf-low { background-color: var(--accent-red); }
+
+        /* Invoice Summary Grid */
+        .summary-invoice-layout {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .summary-invoice-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .invoice-card {
+            background-color: rgba(27, 35, 61, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .invoice-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .invoice-row.total {
+            border-top: 1px dashed var(--border-color);
+            padding-top: 0.75rem;
+            font-size: 1.15rem;
+            font-family: var(--font-display);
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Payment QR Card */
+        .qr-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            text-align: center;
+        }
+
+        .qr-placeholder {
+            width: 140px;
+            height: 140px;
+            background-color: white;
+            border-radius: 8px;
+            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .qr-placeholder canvas {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .qr-card p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.3;
+        }
+
+        /* Loader Overlay */
+        .loader-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(9, 13, 26, 0.85);
+            border-radius: 18px;
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(99, 102, 241, 0.1);
+            border-top-color: var(--accent-indigo);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Modal styling */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.8);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+        }
+
+        .modal-content {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            max-width: 500px;
+            width: 100%;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal h3 {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .modal-option-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .modal-option-btn {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.85rem 1.25rem;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: left;
+            transition: var(--transition);
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .modal-option-btn:hover {
+            border-color: var(--accent-indigo);
+            background-color: rgba(99, 102, 241, 0.05);
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+        }
+
+        .btn-cancel {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.6rem 1.25rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .btn-cancel:hover {
+            color: var(--text-primary);
+            border-color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        
+        <!-- Header -->
+        <header>
+            <div class="logo-section">
+                <h1>TROFEO Automated Quotation System</h1>
+                <p>Advanced SKU Matching Engine Proof-of-Concept</p>
+            </div>
+            <div class="badge-live">Live Simulator</div>
+        </header>
+        
+        <!-- Main Grid -->
+        <div class="main-grid">
+            
+            <!-- Left Side Inputs -->
+            <div class="card">
+                <h2>Enquiry Ingestion</h2>
+                
+                <div class="form-group">
+                    <label>Order Enquiry Text</label>
+                    <textarea id="orderInput" placeholder="Paste your raw, messy customer order email or WhatsApp chat list here..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Quick Presets</label>
+                    <div class="preset-buttons">
+                        <button class="btn-preset" id="loadEmail">Email Enquiry</button>
+                        <button class="btn-preset" id="loadWhatsApp">WhatsApp Chat</button>
+                        <button class="btn-preset" id="clearBtn">Clear</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>CRM Client Account (Profiles)</label>
+                    <select id="crmSelect">
+                        <option value="retail">walkin_retail@guest.com (Standard pricing)</option>
+                        <option value="wholesale">john.carpenter@localshop.com (Wholesale: 10% off)</option>
+                        <option value="contractor">apex_builders@contractor.com (Contractor: 15% off)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Matching Engine Pipeline</label>
+                    <div class="toggle-group">
+                        <button class="toggle-btn active" id="engineA">Scenario A (Free / Fuzzy)</button>
+                        <button class="toggle-btn" id="engineB">Scenario B (Paid / AI)</button>
+                    </div>
+                </div>
+                
+                <button class="btn-process" id="processBtn">
+                    <span>⚡ Process Ingestion</span>
+                </button>
+                
+                <!-- Ingestion Loader -->
+                <div class="loader-overlay" id="loader">
+                    <div class="spinner"></div>
+                    <p style="font-family: var(--font-display); font-weight: 500; font-size: 1.05rem;">Running matching pipeline...</p>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary);" id="loaderStatus">Transcribing vision scans...</p>
+                </div>
+            </div>
+            
+            <!-- Right Side Results -->
+            <div class="results-container">
+                
+                <!-- Metrics Header -->
+                <div class="metrics-bar">
+                    <div class="metric-card">
+                        <span>Items Parsed</span>
+                        <strong id="metricParsed">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Success Match Rate</span>
+                        <strong id="metricMatch">0%</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Database Search Time</span>
+                        <strong id="metricTime">0.00s</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Pipeline Cost</span>
+                        <strong id="metricCost">₹0.0000</strong>
+                    </div>
+                </div>
+                
+                <!-- HITL Warning Banner -->
+                <div class="hitl-alert" id="hitlAlert">
+                    <h4>⚠️ Human-in-the-Loop required: Low-confidence matches detected in quote.</h4>
+                    <button id="openHitlBtn">Review Matches</button>
+                </div>
+                
+                <!-- Match Results Card -->
+                <div class="card" style="padding-bottom: 1rem;">
+                    <h2>Match Results Matrix</h2>
+                    
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Customer Request</th>
+                                    <th>Matched SKU (ID)</th>
+                                    <th>Qty</th>
+                                    <th>Confidence</th>
+                                    <th>Stock Status</th>
+                                    <th>Price</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <tr>
+                                    <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">
+                                        Paste or load an enquiry in the left panel and click 'Process Ingestion'.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Invoice Summary Box -->
+                    <div class="summary-invoice-layout">
+                        <div class="invoice-card" id="invoiceCard" style="opacity: 0.3;">
+                            <div class="invoice-row">
+                                <span>Raw Subtotal:</span>
+                                <span id="rawSubtotal">₹0.00</span>
+                            </div>
+                            <div class="invoice-row" id="discountRow" style="display: none;">
+                                <span>CRM Customer Discount:</span>
+                                <span id="crmDiscount">-₹0.00</span>
+                            </div>
+                            <div class="invoice-row" id="netRow" style="display: none;">
+                                <span>Net Subtotal:</span>
+                                <span id="netSubtotal">₹0.00</span>
+                            </div>
+                            <div class="invoice-row">
+                                <span>GST (18%):</span>
+                                <span id="taxAmount">₹0.00</span>
+                            </div>
+                            <div class="invoice-row total">
+                                <span>Grand Total:</span>
+                                <span id="grandTotal">₹0.00</span>
+                            </div>
+                        </div>
+                        
+                        <!-- QR Code Card -->
+                        <div class="qr-card" id="qrCard" style="opacity: 0.3;">
+                            <div class="qr-placeholder">
+                                <canvas id="qrCanvas"></canvas>
+                            </div>
+                            <p><strong>Auto-Generated Payment QR</strong><br>Scan to pay via instant UPI / card</p>
+                        </div>
+                    </div>
+                    
+                </div>
+                
+            </div>
+            
+        </div>
+        
+    </div>
+
+    <!-- Human in the Loop Modal -->
+    <div class="modal" id="hitlModal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Review Low Confidence Match</h3>
+            <p style="font-size: 0.9rem;" id="modalDesc">Select the correct matching catalog item to register the synonym in the memory database.</p>
+            
+            <div class="modal-option-list" id="modalOptions">
+                <!-- Dynamically loaded -->
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-cancel" id="closeModalBtn">Cancel Override</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Simulator Script -->
+    <script>
+        // --- 1. Mock Databases ---
+        const MOCK_SKUS = [
+            { id: "ELBOW-BRASS-050", name: "Brass Threaded Elbow Fitting 1/2 Inch", desc: "1/2 inch brass elbow joint NPT", price: 12.50, stock: 150 },
+            { id: "PTFE-TAPE-12", name: "PTFE Teflon Seal Tape 12mm", desc: "Teflon thread seal tape 12mm x 10m", price: 1.20, stock: 0 },
+            { id: "BOLT-HEX-M8-50", name: "Hex Head Bolt M8 x 50mm", desc: "Hex head bolt M8 size 50mm length", price: 0.45, stock: 1000 },
+            { id: "NUT-HEX-M8", name: "Hex Nut M8 Zinc Plated", desc: "Standard M8 hexagonal steel nut", price: 0.10, stock: 800 },
+            { id: "WASHER-FLAT-M8", name: "Flat Washer M8 Zinc Plated", desc: "Standard flat washer for M8", price: 0.05, stock: 1200 },
+            { id: "HAMMER-CLAW-16", name: "Claw Hammer 16oz Fiberglass", desc: "Claw hammer fiberglass handle", price: 15.99, stock: 12 },
+            { id: "WD40-SPRAY-300", name: "WD-40 Multi-Use Lubricant 300ml", desc: "WD-40 anti-rust spray 300ml", price: 6.50, stock: 40 },
+            { id: "BRUSH-PAINT-2", name: "Paint Brush 2 Inch Basic", desc: "Synthetic bristle paint brush 2 inch", price: 2.50, stock: 150 },
+            { id: "LEVEL-SPIRIT-24", name: "Spirit Level Aluminum 24 Inch", desc: "Aluminum box spirit level 24inch", price: 13.50, stock: 5 },
+            { id: "VALVE-GATE-BR-050", name: "Brass Gate Valve 1/2 Inch", desc: "Brass gate valve female thread 1/2", price: 11.50, stock: 15 }
+        ];
+
+        const CRM_PROFILES = {
+            retail: { name: "Guest Retail Account", discount: 0.00 },
+            wholesale: { name: "Carpenter Bros Wholesale", discount: 0.10 },
+            contractor: { name: "Apex Builders Ltd", discount: 0.15 }
+        };
+
+        const PRESET_EMAIL = `Subject: Material Quote Request
+
+Dear Sales,
+Please quote the following materials:
+1. Brass Threaded Elbow Fitting 1/2 Inch - 15 units
+2. PTFE Teflon Seal Tape 12mm - 10 rolls
+3. Hex Head Bolt M8 x 50mm - 100 pcs
+4. Standard Hex Nut M8 - 100 pcs
+5. Spirit Level 24 Inch - 2 units
+
+Thanks,
+Apex Builders Procurement`;
+
+        const PRESET_WHATSAPP = `hi bro need some stuff urgently for delivery today:
+- 12 brass elbow joints 1/2 size
+- 5 teflon taps (the plumbing sealing one)
+- 50 hex bolts m8 50mm and also matching 50 hex nuts m8
+- 1 spirit level 24inch size
+- 1 wd-40 spray can (300ml)
+- 4 paint brushes 2 inch
+let me know price thx`;
+
+        // Synonym memory feedback loop database (simulated in browser session)
+        let synonymsDB = JSON.parse(localStorage.getItem('synonyms_db') || '{}');
+
+        // State variables
+        let selectedEngine = 'A'; // A = Free, B = Paid
+        let processedLines = [];
+        let currentlyFlaggedLineIdx = -1;
+
+        // UI references
+        const orderInput = document.getElementById('orderInput');
+        const crmSelect = document.getElementById('crmSelect');
+        const engineABtn = document.getElementById('engineA');
+        const engineBBtn = document.getElementById('engineB');
+        const processBtn = document.getElementById('processBtn');
+        const loader = document.getElementById('loader');
+        const loaderStatus = document.getElementById('loaderStatus');
+        const hitlAlert = document.getElementById('hitlAlert');
+        const openHitlBtn = document.getElementById('openHitlBtn');
+        const resultsTableBody = document.getElementById('resultsTableBody');
+        const invoiceCard = document.getElementById('invoiceCard');
+        const qrCard = document.getElementById('qrCard');
+        const hitlModal = document.getElementById('hitlModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+
+        // --- 2. Event Listeners ---
+        document.getElementById('loadEmail').addEventListener('click', () => orderInput.value = PRESET_EMAIL);
+        document.getElementById('loadWhatsApp').addEventListener('click', () => orderInput.value = PRESET_WHATSAPP);
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            orderInput.value = '';
+            clearResults();
+        });
+
+        engineABtn.addEventListener('click', () => {
+            selectedEngine = 'A';
+            engineABtn.classList.add('active');
+            engineBBtn.classList.remove('active');
+        });
+
+        engineBBtn.addEventListener('click', () => {
+            selectedEngine = 'B';
+            engineBBtn.classList.add('active');
+            engineABtn.classList.remove('active');
+        });
+
+        processBtn.addEventListener('click', triggerProcessing);
+        openHitlBtn.addEventListener('click', openReviewModal);
+        closeModalBtn.addEventListener('click', () => hitlModal.style.display = 'none');
+
+        // --- 3. Mock Pipeline processing ---
+        function clearResults() {
+            resultsTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">Paste or load an enquiry in the left panel and click 'Process Ingestion'.</td></tr>`;
+            hitlAlert.style.display = 'none';
+            invoiceCard.style.opacity = '0.3';
+            qrCard.style.opacity = '0.3';
+            document.getElementById('rawSubtotal').innerText = '₹0.00';
+            document.getElementById('discountRow').style.display = 'none';
+            document.getElementById('netRow').style.display = 'none';
+            document.getElementById('taxAmount').innerText = '₹0.00';
+            document.getElementById('grandTotal').innerText = '₹0.00';
+            clearQRCanvas();
+        }
+
+        function triggerProcessing() {
+            const rawText = orderInput.value.trim();
+            if (!rawText) {
+                alert("Please paste or load order text first!");
+                return;
+            }
+
+            loader.style.display = 'flex';
+            
+            // Simulating API ingestion stages
+            if (selectedEngine === 'B') {
+                loaderStatus.innerText = "Transcribing image layout (LLM Multimodal Vision)...";
+                setTimeout(() => {
+                    loaderStatus.innerText = "Extracting structured JSON items & quantities...";
+                    setTimeout(() => {
+                        loaderStatus.innerText = "Running Vector search database embeddings...";
+                        setTimeout(completeProcessing, 600);
+                    }, 500);
+                }, 600);
+            } else {
+                loaderStatus.innerText = "Parsing regular expression (re) splitting rules...";
+                setTimeout(() => {
+                    loaderStatus.innerText = "Running local Levenshtein spelling match...";
+                    setTimeout(completeProcessing, 600);
+                }, 500);
+            }
+        }
+
+        function completeProcessing() {
+            loader.style.display = 'none';
+            const rawText = orderInput.value.trim();
+            
+            // Reset state
+            processedLines = [];
+            
+            const isWhatsApp = rawText.includes("hi bro");
+            
+            // Build mock parsed lines based on engines
+            if (selectedEngine === 'A') {
+                // Free local pipeline simulation
+                if (isWhatsApp) {
+                    // Scenario A Regex Splits line-by-line, missing the compound hex nuts line details
+                    processedLines = [
+                        { original: "12 brass elbow joints 1/2 size", query: "brass elbow", qty: 12, matchId: "ELBOW-BRASS-050", conf: 100, method: "Exact/Syn" },
+                        { original: "5 teflon taps (the plumbing sealing one)", query: "teflon taps", qty: 5, matchId: "PTFE-TAPE-12", conf: 53, method: "Fuzzy" },
+                        { original: "50 hex bolts m8 50mm and also matching 50 hex nuts m8", query: "hex bolts m8 50mm", qty: 50, matchId: "BOLT-HEX-M8-50", conf: 71, method: "Fuzzy" },
+                        { original: "1 spirit level 24inch size", query: "spirit level 24inch", qty: 1, matchId: "LEVEL-SPIRIT-24", conf: 77, method: "Fuzzy" },
+                        { original: "1 wd-40 spray can (300ml)", query: "wd-40 spray can", qty: 1, matchId: "WD40-SPRAY-300", conf: 64, method: "Fuzzy" },
+                        { original: "4 paint brushes 2 inch", query: "paint brushes 2 inch", qty: 4, matchId: "BRUSH-PAINT-2", conf: 75, method: "Fuzzy" }
+                    ];
+                } else {
+                    // Email
+                    processedLines = [
+                        { original: "1. Brass Threaded Elbow Fitting 1/2 Inch - 15 units", query: "Brass Threaded Elbow Fitting 1/2 Inch", qty: 15, matchId: "ELBOW-BRASS-050", conf: 100, method: "Fuzzy" },
+                        { original: "2. PTFE Teflon Seal Tape 12mm - 10 rolls", query: "PTFE Teflon Seal Tape 12mm", qty: 10, matchId: "PTFE-TAPE-12", conf: 100, method: "Fuzzy" },
+                        { original: "3. Hex Head Bolt M8 x 50mm - 100 pcs", query: "Hex Head Bolt M8 x 50mm", qty: 100, matchId: "BOLT-HEX-M8-50", conf: 100, method: "Fuzzy" },
+                        { original: "4. Standard Hex Nut M8 - 100 pcs", query: "Standard Hex Nut M8", qty: 100, matchId: "NUT-HEX-M8", conf: 100, method: "Fuzzy" },
+                        { original: "5. Spirit Level 24 Inch - 2 units", query: "Spirit Level 24 Inch", qty: 2, matchId: "LEVEL-SPIRIT-24", conf: 100, method: "Fuzzy" }
+                    ];
+                }
+            } else {
+                // Scenario B Paid Hybrid API-Driven (perfect LLM parsing)
+                if (isWhatsApp) {
+                    processedLines = [
+                        { original: "12 brass elbow joints 1/2 size", query: "Brass Threaded Elbow Fitting 1/2 Inch", qty: 12, matchId: "ELBOW-BRASS-050", conf: 96, method: "Vector" },
+                        { original: "5 teflon taps (the plumbing sealing one)", query: "PTFE Teflon Seal Tape 12mm", qty: 5, matchId: "PTFE-TAPE-12", conf: 94, method: "Vector" },
+                        { original: "50 hex bolts m8 50mm", query: "Hex Head Bolt M8 x 50mm", qty: 50, matchId: "BOLT-HEX-M8-50", conf: 98, method: "Vector" },
+                        { original: "matching 50 hex nuts m8", query: "Hex Nut M8 Zinc Plated", qty: 50, matchId: "NUT-HEX-M8", conf: 95, method: "Vector" },
+                        { original: "1 spirit level 24inch size", query: "Spirit Level Aluminum 24 Inch", qty: 1, matchId: "LEVEL-SPIRIT-24", conf: 97, method: "Vector" },
+                        { original: "1 wd-40 spray can (300ml)", query: "WD-40 Multi-Use Lubricant 300ml", qty: 1, matchId: "WD40-SPRAY-300", conf: 96, method: "Vector" },
+                        { original: "4 paint brushes 2 inch", query: "Paint Brush 2 Inch Basic", qty: 4, matchId: "BRUSH-PAINT-2", conf: 97, method: "Vector" }
+                    ];
+                } else {
+                    processedLines = [
+                        { original: "1. Brass Threaded Elbow Fitting 1/2 Inch - 15 units", query: "Brass Threaded Elbow Fitting 1/2 Inch", qty: 15, matchId: "ELBOW-BRASS-050", conf: 99, method: "Vector" },
+                        { original: "2. PTFE Teflon Seal Tape 12mm - 10 rolls", query: "PTFE Teflon Seal Tape 12mm", qty: 10, matchId: "PTFE-TAPE-12", conf: 99, method: "Vector" },
+                        { original: "3. Hex Head Bolt M8 x 50mm - 100 pcs", query: "Hex Head Bolt M8 x 50mm", qty: 100, matchId: "BOLT-HEX-M8-50", conf: 99, method: "Vector" },
+                        { original: "4. Standard Hex Nut M8 - 100 pcs", query: "Standard Hex Nut M8", qty: 100, matchId: "NUT-HEX-M8", conf: 99, method: "Vector" },
+                        { original: "5. Spirit Level 24 Inch - 2 units", query: "Spirit Level 24 Inch", qty: 2, matchId: "LEVEL-SPIRIT-24", conf: 99, method: "Vector" }
+                    ];
+                }
+            }
+
+            // Check learned synonyms memory!
+            // If the query exists in synonymsDB, force 100% confidence and change method
+            processedLines.forEach(line => {
+                const cleanQuery = getCleanQueryKey(line.original);
+                if (synonymsDB[cleanQuery]) {
+                    line.matchId = synonymsDB[cleanQuery];
+                    line.conf = 100;
+                    line.method = "Learner";
+                }
+            });
+
+            // Update Metrics Bar
+            document.getElementById('metricParsed').innerText = processedLines.length;
+            
+            const matchRate = Math.round((processedLines.filter(l => l.conf >= 80).length / processedLines.length) * 100);
+            document.getElementById('metricMatch').innerText = `${matchRate}%`;
+            
+            const searchTime = selectedEngine === 'B' ? 0.003 : 0.008;
+            document.getElementById('metricTime').innerText = `${searchTime}s`;
+            
+            const cost = selectedEngine === 'B' ? 0.0014 : 0.0000;
+            document.getElementById('metricCost').innerText = `₹${cost.toFixed(4)}`;
+
+            // Check if HITL Warning alert should show (< 80% confidence exists)
+            const lowConfExists = processedLines.some(l => l.conf < 80);
+            if (lowConfExists) {
+                hitlAlert.style.display = 'flex';
+            } else {
+                hitlAlert.style.display = 'none';
+            }
+
+            renderQuotationTable();
+        }
+
+        function getCleanQueryKey(text) {
+            // Extracts product snippet to use as synonym key
+            return text.replace(/^[\s\-\d•\.\*x]+/, '').toLowerCase().trim();
+        }
+
+        // --- 4. Render Layout & Invoice calculations ---
+        function renderQuotationTable() {
+            resultsTableBody.innerHTML = '';
+            
+            let rawSubtotal = 0.0;
+            
+            processedLines.forEach((line, idx) => {
+                const sku = MOCK_SKUS.find(s => s.id === line.matchId);
+                const originalText = line.original.length > 30 ? line.original.substr(0, 27) + '...' : line.original;
+                
+                let matchDisplay = "No match found";
+                let stockStatusHtml = '<span class="status-pill outstock">N/A</span>';
+                let price = 0.0;
+                let lineTotal = 0.0;
+                
+                if (sku) {
+                    matchDisplay = `${sku.name} (${sku.id})`;
+                    price = sku.price;
+                    lineTotal = price * line.qty;
+                    rawSubtotal += lineTotal;
+                    
+                    // Stock Pill
+                    if (sku.stock === 0) {
+                        stockStatusHtml = '<span class="status-pill outstock">Out of Stock</span>';
+                    } else if (sku.stock < line.qty) {
+                        stockStatusHtml = `<span class="status-pill lowstock">Low (${sku.stock})</span>`;
+                    } else {
+                        stockStatusHtml = '<span class="status-pill instock">In Stock</span>';
+                    }
+                }
+                
+                // Confidence bar and color class
+                let confClass = 'conf-high';
+                if (line.conf < 50) confClass = 'conf-low';
+                else if (line.conf < 80) confClass = 'conf-mid';
+                
+                const confidenceHtml = `
+                    <div style="white-space: nowrap;">
+                        <div class="conf-bar-bg"><div class="conf-bar-fill ${confClass}" style="width: ${line.conf}%;"></div></div>
+                        <span>${line.conf}%</span>
+                    </div>
+                `;
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td title="${line.original}">${originalText}</td>
+                    <td title="${matchDisplay}">${matchDisplay}</td>
+                    <td>${line.qty}</td>
+                    <td>${confidenceHtml}</td>
+                    <td>${stockStatusHtml}</td>
+                    <td>₹${price.toFixed(2)}</td>
+                    <td>₹${lineTotal.toFixed(2)}</td>
+                `;
+                resultsTableBody.appendChild(row);
+            });
+
+            calculateInvoice(rawSubtotal);
+        }
+
+        function calculateInvoice(rawSubtotal) {
+            const customerType = crmSelect.value;
+            const crm = CRM_PROFILES[customerType];
+            
+            const discountAmt = rawSubtotal * crm.discount;
+            const netSubtotal = rawSubtotal - discountAmt;
+            const taxAmt = netSubtotal * 0.18;
+            const grandTotal = netSubtotal + taxAmt;
+            
+            // Set text values
+            document.getElementById('rawSubtotal').innerText = `₹${rawSubtotal.toFixed(2)}`;
+            
+            if (crm.discount > 0) {
+                document.getElementById('discountRow').style.display = 'flex';
+                document.getElementById('crmDiscount').innerText = `-₹${discountAmt.toFixed(2)}`;
+                document.getElementById('discountRow').querySelector('span').innerText = `CRM Discount (${crm.discount * 100}%):`;
+                
+                document.getElementById('netRow').style.display = 'flex';
+                document.getElementById('netSubtotal').innerText = `₹${netSubtotal.toFixed(2)}`;
+            } else {
+                document.getElementById('discountRow').style.display = 'none';
+                document.getElementById('netRow').style.display = 'none';
+            }
+            
+            document.getElementById('taxAmount').innerText = `₹${taxAmt.toFixed(2)}`;
+            document.getElementById('grandTotal').innerText = `₹${grandTotal.toFixed(2)}`;
+            
+            // Make panels active
+            invoiceCard.style.opacity = '1';
+            qrCard.style.opacity = '1';
+            
+            // Draw payment QR Code
+            generatePaymentQR(grandTotal);
+        }
+
+        // --- 5. Human-in-the-Loop Modal Logic ---
+        function openReviewModal() {
+            // Find the first flagged item (conf < 80%)
+            currentlyFlaggedLineIdx = processedLines.findIndex(l => l.conf < 80);
+            if (currentlyFlaggedLineIdx === -1) return;
+            
+            const line = processedLines[currentlyFlaggedLineIdx];
+            document.getElementById('modalTitle').innerText = `Review Match: "${line.original}"`;
+            
+            const modalOptions = document.getElementById('modalOptions');
+            modalOptions.innerHTML = '';
+            
+            // Find top matching options from database
+            // Just listing the first few database SKUs as simulated nearest vector neighbors
+            MOCK_SKUS.forEach(sku => {
+                const btn = document.createElement('button');
+                btn.className = 'modal-option-btn';
+                btn.innerHTML = `<span><strong>${sku.name}</strong> (${sku.id})</span><span>₹${sku.price.toFixed(2)}</span>`;
+                btn.addEventListener('click', () => selectModalOption(sku.id));
+                modalOptions.appendChild(btn);
+            });
+            
+            hitlModal.style.display = 'flex';
+        }
+
+        function selectModalOption(skuId) {
+            const line = processedLines[currentlyFlaggedLineIdx];
+            
+            // Update line details
+            const sku = MOCK_SKUS.find(s => s.id === skuId);
+            if (sku) {
+                line.matchId = skuId;
+                line.conf = 100;
+                line.method = "Operator confirmed";
+                
+                // Write synonym mapping to feedback loop database
+                const cleanQuery = getCleanQueryKey(line.original);
+                synonymsDB[cleanQuery] = skuId;
+                localStorage.setItem('synonyms_db', JSON.stringify(synonymsDB));
+                
+                console.log(`[Feedback Loop] Saved Synonym: "${cleanQuery}" -> "${skuId}"`);
+            }
+            
+            hitlModal.style.display = 'none';
+            
+            // Check if there are other flagged items
+            const remainingFlag = processedLines.some(l => l.conf < 80);
+            if (remainingFlag) {
+                openReviewModal();
+            } else {
+                hitlAlert.style.display = 'none';
+            }
+            
+            renderQuotationTable();
+        }
+
+        // --- 6. Lightweight QR Canvas Generator ---
+        function generatePaymentQR(amount) {
+            const canvas = document.getElementById('qrCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 120;
+            canvas.height = 120;
+            
+            // Clear canvas
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, 120, 120);
+            
+            // Draw dummy QR boxes styled nicely
+            ctx.fillStyle = "black";
+            
+            // Top-left square
+            ctx.fillRect(5, 5, 30, 30);
+            ctx.fillStyle = "white";
+            ctx.fillRect(10, 10, 20, 20);
+            ctx.fillStyle = "black";
+            ctx.fillRect(15, 15, 10, 10);
+            
+            // Top-right square
+            ctx.fillRect(85, 5, 30, 30);
+            ctx.fillStyle = "white";
+            ctx.fillRect(90, 10, 20, 20);
+            ctx.fillStyle = "black";
+            ctx.fillRect(95, 15, 10, 10);
+            
+            // Bottom-left square
+            ctx.fillRect(5, 85, 30, 30);
+            ctx.fillStyle = "white";
+            ctx.fillRect(10, 90, 20, 20);
+            ctx.fillStyle = "black";
+            ctx.fillRect(15, 95, 10, 10);
+            
+            // Draw random noise boxes to simulate code content based on amount
+            ctx.fillStyle = "black";
+            for (let x = 40; x < 80; x += 8) {
+                for (let y = 5; y < 115; y += 8) {
+                    if (Math.random() > 0.4) ctx.fillRect(x, y, 6, 6);
+                }
+            }
+            for (let x = 5; x < 40; x += 8) {
+                for (let y = 40; y < 80; y += 8) {
+                    if (Math.random() > 0.4) ctx.fillRect(x, y, 6, 6);
+                }
+            }
+            for (let x = 80; x < 115; x += 8) {
+                for (let y = 40; y < 115; y += 8) {
+                    if (Math.random() > 0.4) ctx.fillRect(x, y, 6, 6);
+                }
+            }
+        }
+
+        function clearQRCanvas() {
+            const canvas = document.getElementById('qrCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    </script>
+</body>
+</html>

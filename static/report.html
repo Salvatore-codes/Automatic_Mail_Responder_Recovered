@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trofeo Hardware Ingestion - Live Report</title>
+    <meta name="description" content="Live monitoring of processed emails, AI discount negotiations, and customer hardware orders.">
+    
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #090D1A;
+            --bg-card: #12182B;
+            --bg-input: #1B233D;
+            --accent-blue: #3B82F6;
+            --accent-indigo: #6366F1;
+            --accent-purple: #8B5CF6;
+            --accent-green: #10B981;
+            --accent-yellow: #F59E0B;
+            --accent-red: #EF4444;
+            --text-primary: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --border-color: #242F50;
+            --font-main: 'Inter', sans-serif;
+            --font-display: 'Outfit', sans-serif;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: center;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(18, 24, 43, 0.7);
+            border: 1px solid var(--border-color);
+            padding: 1.25rem 2rem;
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+        }
+
+        .logo h1 {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            cursor: pointer;
+        }
+
+        .logo p { font-size: 0.85rem; color: var(--text-secondary); }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .btn:hover { border-color: var(--accent-indigo); background: rgba(99, 102, 241, 0.1); }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+            border: none;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .badge-live {
+            background-color: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent-green);
+            padding: 0.35rem 0.85rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .badge-live::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.6; }
+        }
+
+        /* Analytics Grid */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: transparent;
+        }
+        .metric-card.total::after { background: var(--accent-blue); }
+        .metric-card.approved::after { background: var(--accent-green); }
+        .metric-card.negotiating::after { background: var(--accent-yellow); }
+        .metric-card.escalated::after { background: var(--accent-red); }
+
+        .metric-title { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+        .metric-value { font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; }
+        .metric-desc { font-size: 0.75rem; color: var(--text-secondary); }
+
+        /* Filter Row */
+        .filter-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 1rem 1.5rem;
+            border-radius: 14px;
+        }
+        .search-group {
+            display: flex;
+            align-items: center;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0 1rem;
+            width: 350px;
+        }
+        .search-group input {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            padding: 0.7rem 0;
+            font-size: 0.9rem;
+            outline: none;
+            width: 100%;
+        }
+        .filter-tabs { display: flex; gap: 0.5rem; }
+        .tab-btn {
+            background: none;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active {
+            background-color: var(--bg-input);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        /* Report Table Card */
+        .report-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            flex: 1;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 1rem;
+        }
+
+        td {
+            padding: 1.1rem 1rem;
+            border-bottom: 1px solid rgba(36, 47, 80, 0.4);
+            font-size: 0.9rem;
+        }
+
+        tr:hover td {
+            background-color: rgba(27, 35, 61, 0.3);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .badge.status-quote_generated {
+            background-color: rgba(59, 130, 246, 0.12);
+            color: var(--accent-blue);
+        }
+        .badge.status-negotiation_approved {
+            background-color: rgba(16, 185, 129, 0.12);
+            color: var(--accent-green);
+        }
+        .badge.status-negotiation_negotiating {
+            background-color: rgba(245, 158, 11, 0.12);
+            color: var(--accent-yellow);
+        }
+        .badge.status-negotiation_escalated {
+            background-color: rgba(239, 68, 68, 0.12);
+            color: var(--accent-red);
+        }
+        .badge.status-unparsed_notice {
+            background-color: rgba(139, 92, 246, 0.12);
+            color: var(--accent-purple);
+        }
+
+        .customer-info b { display: block; color: var(--text-primary); }
+        .customer-info span { font-size: 0.75rem; color: var(--text-secondary); }
+
+        .btn-view {
+            padding: 0.35rem 0.7rem;
+            font-size: 0.8rem;
+        }
+
+        /* Modal Overlay & Card Drawer */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(4, 6, 15, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            justify-content: flex-end;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .drawer {
+            width: 600px;
+            max-width: 100%;
+            height: 100%;
+            background: var(--bg-card);
+            border-left: 1px solid var(--border-color);
+            box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 2rem;
+            gap: 1.5rem;
+            overflow-y: auto;
+        }
+        .modal-overlay.active .drawer {
+            transform: translateX(0);
+        }
+        .drawer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+        .drawer-header h3 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; }
+        .drawer-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .drawer-close:hover { color: var(--text-primary); }
+
+        /* Items List Detail */
+        .details-section h4 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+        .detail-table {
+            width: 100%;
+            background: var(--bg-input);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+        .detail-table th { padding: 0.8rem; background: rgba(36, 47, 80, 0.3); }
+        .detail-table td { padding: 0.8rem; border-bottom: 1px solid rgba(36, 47, 80, 0.3); font-size: 0.85rem; }
+
+        /* Chat history in drawer */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+        .chat-bubble {
+            max-width: 85%;
+            padding: 0.85rem 1.1rem;
+            border-radius: 14px;
+            font-size: 0.85rem;
+            line-height: 1.45;
+            position: relative;
+        }
+        .chat-bubble.customer {
+            background-color: var(--border-color);
+            color: var(--text-primary);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        .chat-bubble.ai {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            color: var(--text-primary);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            white-space: pre-line;
+        }
+        .bubble-meta {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 0.35rem;
+            display: block;
+            text-align: right;
+        }
+        .empty-history {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            padding: 1rem 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <!-- Header -->
+    <header>
+        <div class="logo" onclick="window.location.href='/'">
+            <h1>TROFEO HARDWARE</h1>
+            <p>Live Email Ingestion & CRM Matcher</p>
+        </div>
+        <div class="header-actions">
+            <span class="badge-live">Live Monitoring</span>
+            <button class="btn" onclick="fetchReportData()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Refresh
+            </button>
+            <a href="/" class="btn btn-primary">Go to Tester Dashboard</a>
+        </div>
+    </header>
+
+    <!-- Analytics Dashboard widgets -->
+    <div class="analytics-grid">
+        <div class="metric-card total">
+            <div class="metric-title">Total Orders Today</div>
+            <div class="metric-value" id="count-total">-</div>
+            <div class="metric-desc">Incoming RFQs parsed by listener</div>
+        </div>
+        <div class="metric-card approved">
+            <div class="metric-title">Approved Sales</div>
+            <div class="metric-value" id="count-approved">-</div>
+            <div class="metric-desc">Quotations sent/approved by clients</div>
+        </div>
+        <div class="metric-card negotiating">
+            <div class="metric-title">Active Bargains</div>
+            <div class="metric-value" id="count-negotiating">-</div>
+            <div class="metric-desc">In AI-negotiation loops</div>
+        </div>
+        <div class="metric-card escalated">
+            <div class="metric-title">Escalations</div>
+            <div class="metric-value" id="count-escalated">-</div>
+            <div class="metric-desc">Pending human sales override</div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-row">
+        <div class="search-group">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary); margin-right: 0.5rem;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="search-input" placeholder="Search by customer name, email or invoice..." oninput="applyFilters()">
+        </div>
+        <div class="filter-tabs">
+            <button class="tab-btn active" onclick="filterStatus('all')">All Transactions</button>
+            <button class="tab-btn" onclick="filterStatus('generated')">Generated</button>
+            <button class="tab-btn" onclick="filterStatus('approved')">Approved</button>
+            <button class="tab-btn" onclick="filterStatus('negotiating')">Negotiating</button>
+            <button class="tab-btn" onclick="filterStatus('escalated')">Escalated</button>
+        </div>
+    </div>
+
+    <!-- Main Table -->
+    <div class="report-card">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Inv #</th>
+                    <th>Customer Info</th>
+                    <th>Products Requested</th>
+                    <th>Subtotal</th>
+                    <th>Discount</th>
+                    <th>GST (18%)</th>
+                    <th>Grand Total</th>
+                    <th>Status</th>
+                    <th>Processed At</th>
+                    <th style="text-align: right; width: 120px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="report-tbody">
+                <tr>
+                    <td colspan="10" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">
+                        Loading report data...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal Drawer for Quotation / Conversation Detail -->
+<div class="modal-overlay" id="detail-modal" onclick="closeDrawer(event)">
+    <div class="drawer" onclick="event.stopPropagation()">
+        <div class="drawer-header">
+            <h3 id="drawer-invoice-title">Quotation Detail</h3>
+            <button class="drawer-close" onclick="closeDrawer(null)">&times;</button>
+        </div>
+        
+        <div class="details-section">
+            <h4>Customer Information</h4>
+            <p style="font-size: 0.9rem; margin-bottom: 0.25rem;"><b id="drawer-customer-name">-</b></p>
+            <p style="font-size: 0.8rem; color: var(--text-secondary);" id="drawer-customer-email">-</p>
+        </div>
+        
+        <div class="details-section">
+            <h4>Grouped Invoice Line Items</h4>
+            <table class="detail-table">
+                <thead>
+                    <tr>
+                        <th>Product / SKU</th>
+                        <th style="text-align: center;">Qty</th>
+                        <th style="text-align: right;">Price</th>
+                        <th style="text-align: right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody id="drawer-items-tbody">
+                    <!-- Dynamic details items -->
+                </tbody>
+            </table>
+            
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; font-size: 0.85rem; padding-right: 0.5rem;">
+                <div><span style="color:var(--text-secondary)">Subtotal:</span> <b id="drawer-subtotal">₹0.00</b></div>
+                <div id="drawer-discount-row"><span style="color:var(--accent-green)">Discount:</span> <b id="drawer-discount" style="color:var(--accent-green)">-₹0.00</b></div>
+                <div><span style="color:var(--text-secondary)">GST (18%):</span> <b id="drawer-tax">₹0.00</b></div>
+                <div style="font-size: 1rem; border-top: 1px solid var(--border-color); padding-top: 0.4rem; margin-top: 0.2rem;">
+                    <span>Total Payable:</span> <b id="drawer-total">₹0.00</b>
+                </div>
+            </div>
+        </div>
+        
+        <div class="details-section" style="flex: 1; display: flex; flex-direction: column;">
+            <h4>Negotiation Conversation Log</h4>
+            <div class="chat-container" id="drawer-chat-container">
+                <!-- Chat log items -->
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 0.8rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <a href="#" id="btn-download-pdf" target="_blank" class="btn btn-primary" style="flex: 1; justify-content: center;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Open Quotation PDF
+            </a>
+            <button class="btn" style="flex: 1; justify-content: center;" onclick="closeDrawer(null)">Close Details</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allData = { quotations: [], items: {}, logs: {} };
+    let currentFilterStatus = 'all';
+
+    async function fetchReportData() {
+        try {
+            const res = await fetch('/api/report/data');
+            if (!res.ok) throw new Error('Failed to fetch API data');
+            allData = await res.json();
+            
+            updateMetrics();
+            applyFilters();
+        } catch (err) {
+            console.error('Error fetching report data:', err);
+            document.getElementById('report-tbody').innerHTML = `
+                <tr>
+                    <td colspan="10" style="text-align: center; color: var(--accent-red); padding: 3rem 0; font-weight: 500;">
+                        Failed to fetch live report data. Is the backend server running?
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    function updateMetrics() {
+        const total = allData.quotations.length;
+        const approved = allData.quotations.filter(q => q.status === 'NEGOTIATION_APPROVED' || q.status === 'QUOTE_GENERATED').length;
+        const negotiating = allData.quotations.filter(q => q.status === 'NEGOTIATION_NEGOTIATING').length;
+        const escalated = allData.quotations.filter(q => q.status === 'NEGOTIATION_ESCALATED').length;
+
+        document.getElementById('count-total').innerText = total;
+        document.getElementById('count-approved').innerText = approved;
+        document.getElementById('count-negotiating').innerText = negotiating;
+        document.getElementById('count-escalated').innerText = escalated;
+    }
+
+    function filterStatus(status) {
+        currentFilterStatus = status;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        if (event && event.target) {
+            event.target.classList.add('active');
+        }
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const searchVal = document.getElementById('search-input').value.toLowerCase();
+        let filtered = allData.quotations;
+
+        // Filter by tab
+        if (currentFilterStatus === 'generated') {
+            filtered = filtered.filter(q => q.status === 'QUOTE_GENERATED');
+        } else if (currentFilterStatus === 'approved') {
+            filtered = filtered.filter(q => q.status === 'NEGOTIATION_APPROVED');
+        } else if (currentFilterStatus === 'negotiating') {
+            filtered = filtered.filter(q => q.status === 'NEGOTIATION_NEGOTIATING');
+        } else if (currentFilterStatus === 'escalated') {
+            filtered = filtered.filter(q => q.status === 'NEGOTIATION_ESCALATED');
+        }
+
+        // Filter by search query
+        if (searchVal.trim() !== '') {
+            filtered = filtered.filter(q => 
+                q.invoice_id.toLowerCase().includes(searchVal) ||
+                q.customer_name.toLowerCase().includes(searchVal) ||
+                q.customer_email.toLowerCase().includes(searchVal) ||
+                (q.customer_phone && q.customer_phone.toLowerCase().includes(searchVal))
+            );
+        }
+
+        renderTable(filtered);
+    }
+
+    function renderTable(quotes) {
+        const tbody = document.getElementById('report-tbody');
+        if (quotes.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">
+                        No matching transactions found.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = quotes.map(q => {
+            const formattedDate = q.created_at || 'Unknown';
+            const discAmt = q.subtotal * q.discount_pct;
+            const netVal = q.subtotal - discAmt;
+            const taxAmt = netVal * 0.18;
+            
+            const items = allData.items[q.invoice_id] || [];
+            const productSummary = items.map(item => `${item.sku_name} (x${item.quantity})`).join(', ') || 'No products requested';
+            const truncatedSummary = productSummary.length > 50 ? productSummary.substring(0, 47) + '...' : productSummary;
+            
+            return `
+                <tr>
+                    <td><b>#${q.invoice_id}</b></td>
+                    <td class="customer-info">
+                        <b>${escapeHtml(q.customer_name)}</b>
+                        <span>${escapeHtml(q.customer_email)}</span>
+                        <span style="display:block; font-size:0.75rem; color:var(--accent-indigo); font-weight:600; margin-top:2px;">📞 ${escapeHtml(q.customer_phone || '—')}</span>
+                    </td>
+                    <td style="color: var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(productSummary)}">
+                        ${escapeHtml(truncatedSummary)}
+                    </td>
+                    <td>₹${q.subtotal.toFixed(2)}</td>
+                    <td>${q.discount_pct > 0 ? `<span style="color:var(--accent-green)">₹${discAmt.toFixed(2)} (${(q.discount_pct*100).toFixed(0)}%)</span>` : '—'}</td>
+                    <td>₹${q.tax_amt ? q.tax_amt.toFixed(2) : taxAmt.toFixed(2)}</td>
+                    <td><b>₹${q.grand_total.toFixed(2)}</b></td>
+                    <td><span class="badge status-${q.status.toLowerCase()}">${q.status.replace('NEGOTIATION_', '')}</span></td>
+                    <td style="color: var(--text-secondary); font-size: 0.8rem;">${formattedDate}</td>
+                    <td style="text-align: right;">
+                        <button class="btn btn-view" onclick="showQuotationDetails('${q.invoice_id}')">View Details</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function showQuotationDetails(invoiceId) {
+        const quote = allData.quotations.find(q => q.invoice_id === invoiceId);
+        if (!quote) return;
+
+        document.getElementById('drawer-invoice-title').innerText = `Quotation Ref: #${invoiceId}`;
+        document.getElementById('drawer-customer-name').innerText = quote.customer_name;
+        document.getElementById('drawer-customer-email').innerHTML = `
+            ${escapeHtml(quote.customer_email)}<br>
+            <span style="display:inline-block; font-size:0.85rem; color:var(--accent-indigo); font-weight:600; margin-top:4px;">📞 Contact: ${escapeHtml(quote.customer_phone || '—')}</span>
+        `;
+        
+        // Render item list
+        const items = allData.items[invoiceId] || [];
+        const itemsTbody = document.getElementById('drawer-items-tbody');
+        if (items.length === 0) {
+            itemsTbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-secondary)">No items recorded.</td></tr>`;
+        } else {
+            itemsTbody.innerHTML = items.map(item => `
+                <tr>
+                    <td>
+                        <b>${escapeHtml(item.sku_name)}</b><br>
+                        <span style="font-size:0.75rem; color:var(--text-secondary)">SKU: ${item.sku_id}</span>
+                    </td>
+                    <td style="text-align: center;">${item.quantity}</td>
+                    <td style="text-align: right;">₹${item.unit_price.toFixed(2)}</td>
+                    <td style="text-align: right;">₹${item.line_total.toFixed(2)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Totals
+        const discAmt = quote.subtotal * quote.discount_pct;
+        document.getElementById('drawer-subtotal').innerText = `₹${quote.subtotal.toFixed(2)}`;
+        if (quote.discount_pct > 0) {
+            document.getElementById('drawer-discount-row').style.display = 'block';
+            document.getElementById('drawer-discount').innerText = `-₹${discAmt.toFixed(2)} (${(quote.discount_pct*100).toFixed(0)}%)`;
+        } else {
+            document.getElementById('drawer-discount-row').style.display = 'none';
+        }
+        document.getElementById('drawer-tax').innerText = `₹${quote.tax_amt.toFixed(2)}`;
+        document.getElementById('drawer-total').innerText = `₹${quote.grand_total.toFixed(2)}`;
+        
+        // Render conversation log
+        const logs = allData.logs[invoiceId] || [];
+        const chatContainer = document.getElementById('drawer-chat-container');
+        if (logs.length === 0) {
+            chatContainer.innerHTML = `<div class="empty-history">No discussion or negotiation messages logged for this quotation.</div>`;
+        } else {
+            chatContainer.innerHTML = logs.map(log => {
+                const bubbleClass = log.sender === 'customer' ? 'customer' : 'ai';
+                const label = log.sender === 'customer' ? 'Client' : 'AI Assistant (Rajaram)';
+                return `
+                    <div class="chat-bubble ${bubbleClass}">
+                        <strong>${label}</strong><br>
+                        ${escapeHtml(log.message).replace(/\n/g, '<br>')}
+                        <span class="bubble-meta">${log.timestamp}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Set PDF link
+        const pdfLink = `/api/quote/pdf/${invoiceId}`;
+        document.getElementById('btn-download-pdf').href = pdfLink;
+
+        // Open modal
+        document.getElementById('detail-modal').classList.add('active');
+        
+        // Auto-scroll chat to bottom
+        setTimeout(() => {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }, 100);
+    }
+
+    function closeDrawer(event) {
+        if (!event || event.target === document.getElementById('detail-modal') || event.target.classList.contains('drawer-close')) {
+            document.getElementById('detail-modal').classList.remove('active');
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;")
+                  .replace(/'/g, "&#039;");
+    }
+
+    // Auto load on start
+    fetchReportData();
+    
+    // Auto refresh every 15 seconds
+    setInterval(fetchReportData, 15000);
+</script>
+</body>
+</html>

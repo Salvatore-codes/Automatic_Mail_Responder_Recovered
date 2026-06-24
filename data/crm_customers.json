@@ -1,0 +1,20 @@
+{
+  "apex_builders@contractor.com": {
+    "name": "Apex Builders Ltd",
+    "tier": "contractor",
+    "discount": 0.15,
+    "phone": "+91 94440 12345"
+  },
+  "john.carpenter@localshop.com": {
+    "name": "Carpenter Bros",
+    "tier": "wholesale",
+    "discount": 0.10,
+    "phone": "+91 98840 54321"
+  },
+  "walkin_retail@guest.com": {
+    "name": "Retail Guest",
+    "tier": "retail",
+    "discount": 0.00,
+    "phone": "+91 90000 00000"
+  }
+}

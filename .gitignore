@@ -1,0 +1,25 @@
+# Sensitive environment configurations
+.env
+
+# Python compilation cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local databases & run data
+data/trofeo_sales.db
+mock_inbox/*
+!mock_inbox/.gitkeep
+mock_outbox/*
+!mock_outbox/.gitkeep
+static/quotes/*
+!static/quotes/.gitkeep
+
+# IDE / System temporary directories
+.system_generated/
+.idea/
+.vscode/
+~$*.docx
+*.docx
