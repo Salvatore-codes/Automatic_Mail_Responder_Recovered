@@ -418,6 +418,13 @@
             padding: 1rem 0;
             font-style: italic;
         }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .anim-rotate {
+            animation: rotate 1s linear infinite;
+        }
     </style>
 </head>
 <body>
@@ -431,6 +438,10 @@
         </div>
         <div class="header-actions">
             <span class="badge-live">Live Monitoring</span>
+            <button class="btn" id="btn-send-pdf" onclick="sendPdfReport()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                Send PDF Report
+            </button>
             <button class="btn" onclick="fetchReportData()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                 Refresh
@@ -460,6 +471,11 @@
             <div class="metric-title">Escalations</div>
             <div class="metric-value" id="count-escalated">-</div>
             <div class="metric-desc">Pending human sales override</div>
+        </div>
+        <div class="metric-card" style="border-top-color: var(--accent-red);">
+            <div class="metric-title" style="color: var(--accent-red);">⚠ Unmatched Enquiries</div>
+            <div class="metric-value" id="count-unmatched" style="color: var(--accent-red);">-</div>
+            <div class="metric-desc">Require manual quote from master</div>
         </div>
     </div>
 
@@ -500,6 +516,36 @@
                     <td colspan="10" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">
                         Loading report data...
                     </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Unmatched Enquiries Section -->
+<div style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 style="font-family: var(--font-display); font-size: 1.1rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+            <span style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; color: var(--accent-red); font-weight: 600;">ACTION REQUIRED</span>
+            Unmatched Customer Enquiries
+        </h2>
+        <span style="font-size: 0.8rem; color: var(--text-secondary);">Items the bot couldn't quote — master must quote manually</span>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Customer Name</th>
+                    <th>Customer Email</th>
+                    <th>Enquiry Excerpt</th>
+                    <th>Source</th>
+                    <th>Received At</th>
+                </tr>
+            </thead>
+            <tbody id="unmatched-tbody">
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 2rem 0;">Loading...</td>
                 </tr>
             </tbody>
         </table>
@@ -773,11 +819,72 @@
                   .replace(/'/g, "&#039;");
     }
 
+    async function sendPdfReport() {
+        const btn = document.getElementById('btn-send-pdf');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `
+            <svg class="anim-rotate" style="margin-right: 5px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2v4"></path></svg>
+            Sending...
+        `;
+        try {
+            const res = await fetch('/api/report/send_pdf', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                alert('✅ Success: Daily PDF Report emailed to:\n• rajarajanodooimplementers@gmail.com\n• rajarajansvelora@gmail.com (Master)');
+            } else {
+                alert('Error: ' + (data.detail || 'Failed to email daily report.'));
+            }
+        } catch (err) {
+            console.error('Error sending PDF report:', err);
+            alert('Error: Network request failed.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+
+    async function fetchUnmatchedData() {
+        try {
+            const res = await fetch('/api/unmatched');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Update stat card
+            document.getElementById('count-unmatched').textContent = data.count;
+
+            const tbody = document.getElementById('unmatched-tbody');
+            if (!data.items || data.items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-secondary); padding:2rem 0; font-style:italic;">No unmatched enquiries. All items successfully categorized. ✅</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = data.items.map((item, i) => {
+                const excerpt = (item.original_body || '').substring(0, 200).replace(/\n/g, ' ').trim();
+                const sourceColor = item.source === 'live_email' ? 'var(--accent-blue)' : 'var(--accent-yellow)';
+                return `
+                    <tr>
+                        <td style="color:var(--text-secondary); font-size:0.8rem;">${item.id}</td>
+                        <td><span style="font-weight:600;">${escapeHtml(item.customer_name || '—')}</span></td>
+                        <td style="color:var(--text-secondary); font-size:0.8rem;">${escapeHtml(item.customer_email || '—')}</td>
+                        <td style="font-size:0.8rem; color:var(--text-secondary); max-width:300px; word-break:break-word;">${escapeHtml(excerpt)}${(item.original_body || '').length > 200 ? '...' : ''}</td>
+                        <td><span style="background:rgba(0,0,0,0.3); border:1px solid ${sourceColor}; border-radius:4px; padding:2px 8px; font-size:0.72rem; color:${sourceColor};">${escapeHtml(item.source || '—')}</span></td>
+                        <td style="color:var(--text-secondary); font-size:0.8rem;">${escapeHtml(item.created_at || '—')}</td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (err) {
+            console.warn('Failed to load unmatched enquiries:', err);
+        }
+    }
+
     // Auto load on start
     fetchReportData();
+    fetchUnmatchedData();
     
     // Auto refresh every 15 seconds
     setInterval(fetchReportData, 15000);
+    setInterval(fetchUnmatchedData, 15000);
 </script>
 </body>
 </html>

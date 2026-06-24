@@ -270,10 +270,58 @@ async def get_report_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/report/send_pdf")
+async def send_report_pdf():
+    smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+    try:
+        smtp_port = int(os.environ.get("SMTP_PORT", 465))
+    except (ValueError, TypeError):
+        smtp_port = 465
+    email_user = os.environ.get("EMAIL_USER")
+    email_pass = os.environ.get("EMAIL_PASS")
+    master_email = os.environ.get("MASTER_EMAIL", "rajarajansvelora@gmail.com")
+    
+    if not email_user or not email_pass:
+        raise HTTPException(status_code=400, detail="SMTP credentials are not configured in .env")
+        
+    from src.daily_report_pdf import send_daily_report_email
+    
+    # Send to both the monitored inbox and the master email
+    recipients = list({
+        "rajarajanodooimplementers@gmail.com",
+        master_email
+    })
+    
+    results = []
+    for recipient in recipients:
+        success = send_daily_report_email(smtp_server, smtp_port, email_user, email_pass, recipient)
+        results.append({"recipient": recipient, "success": success})
+    
+    if all(r["success"] for r in results):
+        return {"status": "SUCCESS", "message": f"Daily report PDF sent to: {', '.join(r['recipient'] for r in results)}", "results": results}
+    else:
+        failed = [r["recipient"] for r in results if not r["success"]]
+        raise HTTPException(status_code=500, detail=f"Failed to send to: {', '.join(failed)}")
+
+@app.get("/api/unmatched")
+async def get_unmatched_enquiries():
+    """Returns all unmatched / uncategorized customer enquiries from the database."""
+    try:
+        from src.database_sqlite import get_all_unmatched_items, get_unmatched_items_count
+        items = get_all_unmatched_items(limit=100)
+        count = get_unmatched_items_count()
+        return {
+            "count": count,
+            "items": items
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/report")
 async def get_report():
     from fastapi.responses import FileResponse
     return FileResponse(os.path.join(static_dir, "report.html"))
+
 
 @app.get("/")
 async def get_index():

@@ -4,6 +4,8 @@ import sys
 import html
 import time
 import json
+import base64
+import tempfile
 import imaplib
 import smtplib
 import email
@@ -682,7 +684,92 @@ def load_crm_emails(crm_path):
         print(f"[Warning] Failed to load CRM customer emails: {e}")
         return set()
 
-def is_email_relevant(sender, subject, body, catalog, crm_emails):
+
+def extract_text_from_attachments(msg):
+    """
+    Scans all MIME parts of an email.message object for PDF or image attachments
+    and uses Gemini 2.5 Flash (multimodal) to extract text / product item lists
+    from each attachment. Returns a single concatenated string with extracted text,
+    or empty string if nothing was found or Gemini is unavailable.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key or api_key.startswith("your_"):
+        return ""
+
+    supported_mime_types = {
+        "application/pdf": ".pdf",
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/tiff": ".tiff",
+        "image/bmp": ".bmp",
+    }
+
+    extracted_texts = []
+
+    for part in msg.walk():
+        content_type = part.get_content_type()
+        disposition = part.get("Content-Disposition", "")
+
+        # Only process actual attachments (not inline text parts)
+        is_attachment = ("attachment" in disposition.lower() or
+                         content_type in supported_mime_types)
+
+        if not is_attachment or content_type not in supported_mime_types:
+            continue
+
+        payload = part.get_payload(decode=True)
+        if not payload:
+            continue
+
+        ext = supported_mime_types[content_type]
+        filename = part.get_filename() or f"attachment{ext}"
+        print(f"[Attachment] Detected attachment: '{filename}' ({content_type}). Sending to Gemini for text extraction.")
+
+        try:
+            from google import genai
+            from google.genai import types as genai_types
+
+            client = genai.Client(api_key=api_key)
+
+            # Encode payload as inline base64 data
+            b64_data = base64.standard_b64encode(payload).decode("utf-8")
+
+            # Build a multimodal prompt asking Gemini to extract product items
+            prompt = (
+                "You are a purchasing document analyser. Extract ALL product names, item descriptions, "
+                "SKU codes, part numbers, quantities, and specifications mentioned in this document. "
+                "Return them as a plain numbered list. Do NOT add any extra commentary or headings — "
+                "just list each line item or product request exactly as written. "
+                "If you cannot find any product items, reply with the single word: NONE."
+            )
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    genai_types.Part.from_bytes(
+                        data=payload,
+                        mime_type=content_type
+                    ),
+                    prompt
+                ]
+            )
+
+            extracted = response.text.strip() if response.text else ""
+            if extracted and extracted.upper() != "NONE":
+                print(f"[Attachment] Extracted text from '{filename}':\n{extracted[:300]}...")
+                extracted_texts.append(f"[From attachment '{filename}']:\n{extracted}")
+            else:
+                print(f"[Attachment] No product items found in '{filename}'.")
+
+        except Exception as e:
+            print(f"[Attachment] Gemini extraction failed for '{filename}': {e}")
+
+    return "\n\n".join(extracted_texts)
+
+def is_email_relevant(sender, subject, body, catalog, crm_emails, attachment_text=""):
     """
     Checks if an incoming email is relevant to Trofeo Hardware.
     An email is relevant if:
@@ -691,10 +778,12 @@ def is_email_relevant(sender, subject, body, catalog, crm_emails):
     3. Subject contains standard quotation/sales keywords.
     4. Body contains any SKU ID from our catalog.
     5. Body contains any of our catalog product names/keywords.
+    6. Attachment text (extracted via Gemini) contains product keywords.
     """
     sender_lower = sender.lower().strip()
     subject_lower = subject.lower().strip()
-    body_lower = body.lower().strip() if body else ""
+    combined_body = ((body or "") + "\n" + (attachment_text or "")).strip()
+    body_lower = combined_body.lower()
     
     # 1. Check if sender is a registered CRM client
     if sender_lower in crm_emails:
@@ -873,7 +962,43 @@ def poll_email_inbox(catalog, crm_path, mode="mock"):
                         f"Trofeo Auto-bot"
                     )
                     send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_reply_notif, body_reply_notif)
-                
+
+                # --- Handle UNPARSED_NOTICE: log unmatched items + alert master ---
+                if status == "UNPARSED_NOTICE":
+                    print(f"[Unmatched] No valid SKU matches for mock enquiry from {sender}. Logging & alerting master.")
+                    try:
+                        from src.database_sqlite import log_unmatched_item
+                        log_unmatched_item(
+                            customer_email=sender,
+                            customer_name=sender_name,
+                            original_body=body,
+                            source="mock_email"
+                        )
+                    except Exception as ue:
+                        print(f"[Warning] Failed to log unmatched item: {ue}")
+
+                    if master_email and email_user and email_pass and email_user.strip() and not email_user.startswith("your_"):
+                        subject_unmatch_notif = f"[ACTION REQUIRED] Unmatched enquiry from {sender_name} — Manual Quote Needed"
+                        body_unmatch_notif = (
+                            f"Dear Master User,\n\n"
+                            f"The auto-bot received an enquiry but could NOT prepare an automated quote because "
+                            f"the requested items do not match any product in our catalogue.\n\n"
+                            f"Customer Details:\n"
+                            f"- Name: {sender_name}\n"
+                            f"- Email: {email_addr if email_addr else sender}\n"
+                            f"- Contact Number: {contact_phone}\n\n"
+                            f"Original Enquiry:\n"
+                            f"Subject: {subject}\n"
+                            f"--------------------------------------------------\n"
+                            f"{body}\n"
+                            f"--------------------------------------------------\n\n"
+                            f"Please review the above request and prepare a manual quotation directly to the customer.\n\n"
+                            f"This enquiry has been logged in the database for your reference.\n\n"
+                            f"Regards,\n"
+                            f"Trofeo Auto-bot"
+                        )
+                        send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_unmatch_notif, body_unmatch_notif)
+
                 reply_filename = file.replace(".txt", "_reply.txt")
                 reply_path = os.path.join(outbox_dir, reply_filename)
                 
@@ -962,9 +1087,14 @@ def poll_email_inbox(catalog, crm_path, mode="mock"):
                                 break
                     else:
                         body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+
+                    # Extract text from PDF/image attachments via Gemini multimodal
+                    attachment_text = extract_text_from_attachments(msg)
+                    if attachment_text:
+                        body = body + "\n\n" + attachment_text
                     
                     # Apply unified relevance check (skips if not matched)
-                    if not is_email_relevant(sender, subject, body, catalog, crm_emails):
+                    if not is_email_relevant(sender, subject, body, catalog, crm_emails, attachment_text):
                         print(f"[Email Filter] Skipped irrelevant email from {sender} (Subject: {subject})")
                         mail.store(m_id, '+FLAGS', '\\Seen')
                         continue
@@ -1067,7 +1197,43 @@ def poll_email_inbox(catalog, crm_path, mode="mock"):
                     
                     mail.store(m_id, '+FLAGS', '\\Seen')
                     print(f"[Success] Processed email from {sender} (status: {status}) and sent reply via SMTP.")
-                    
+
+                    # --- Handle UNPARSED_NOTICE: log unmatched items + alert master ---
+                    if status == "UNPARSED_NOTICE":
+                        print(f"[Unmatched] No valid SKU matches for enquiry from {sender}. Logging & alerting master.")
+                        try:
+                            from src.database_sqlite import log_unmatched_item
+                            log_unmatched_item(
+                                customer_email=sender,
+                                customer_name=sender_name,
+                                original_body=body,
+                                source="live_email"
+                            )
+                        except Exception as ue:
+                            print(f"[Warning] Failed to log unmatched item: {ue}")
+
+                        if master_email and email_user and email_pass:
+                            subject_unmatch_notif = f"[ACTION REQUIRED] Unmatched enquiry from {sender_name} — Manual Quote Needed"
+                            body_unmatch_notif = (
+                                f"Dear Master User,\n\n"
+                                f"The auto-bot received an enquiry but could NOT prepare an automated quote because "
+                                f"the requested items do not match any product in our catalogue.\n\n"
+                                f"Customer Details:\n"
+                                f"- Name: {sender_name}\n"
+                                f"- Email: {sender}\n"
+                                f"- Contact Number: {contact_phone}\n\n"
+                                f"Original Enquiry:\n"
+                                f"Subject: {subject}\n"
+                                f"--------------------------------------------------\n"
+                                f"{body}\n"
+                                f"--------------------------------------------------\n\n"
+                                f"Please review the above request and prepare a manual quotation directly to the customer.\n\n"
+                                f"This enquiry has been logged in the database for your reference.\n\n"
+                                f"Regards,\n"
+                                f"Trofeo Auto-bot"
+                            )
+                            send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_unmatch_notif, body_unmatch_notif)
+
                     # 2. Notify Master User of outgoing reply
                     if master_email and email_user and email_pass:
                         subject_reply_notif = f"[Notification] Reply sent to {sender_name}"

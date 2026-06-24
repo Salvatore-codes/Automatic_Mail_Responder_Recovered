@@ -74,6 +74,29 @@ def init_db():
     )
     """)
     
+    # 5. Unmatched items table (for manual supervisor followups)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS unmatched_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_email TEXT,
+        customer_name TEXT,
+        original_body TEXT,
+        source TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Backward-compat: add columns if they were missing from older schema
+    for col_def in [
+        ("customer_name", "TEXT"),
+        ("original_body", "TEXT"),
+        ("source", "TEXT"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE unmatched_items ADD COLUMN {col_def[0]} {col_def[1]}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    
     conn.commit()
     conn.close()
  
@@ -167,6 +190,45 @@ def get_synonyms_from_db():
         
     conn.close()
     return synonyms
+
+def log_unmatched_item(customer_email, customer_name, original_body, source="unknown"):
+    """
+    Logs an enquiry that the bot could not match to any catalogue SKU.
+    The full original body (which may contain text extracted from attachments)
+    is stored so the master can review and quote manually.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO unmatched_items (customer_email, customer_name, original_body, source)
+    VALUES (?, ?, ?, ?)
+    """, (customer_email, customer_name, original_body, source))
+    conn.commit()
+    conn.close()
+
+def get_all_unmatched_items(limit=100):
+    """Returns recent unmatched enquiries for use in reports and the dashboard."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, customer_email, customer_name, original_body, source, created_at
+        FROM unmatched_items
+        ORDER BY created_at DESC
+        LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    items = [dict(row) for row in rows]
+    conn.close()
+    return items
+
+def get_unmatched_items_count():
+    """Returns count of unmatched enquiries for dashboard stats."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as cnt FROM unmatched_items")
+    row = cursor.fetchone()
+    conn.close()
+    return row["cnt"] if row else 0
 
 # Initialize DB on import
 init_db()
