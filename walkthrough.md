@@ -79,6 +79,16 @@ We have successfully implemented and verified all components of the multi-tenant
   * **Automated Subject blocklist:** Blocks common automated/bounce email subjects (e.g., `delivery status`, `undeliverable`, `returned mail`, `bounce`, `failure notice`, `out of office`, `auto-reply`, `payment receipt`, `otp`, `verification code`).
   * **Strict Enquiry Signature Check for New Senders:** Requires unregistered customers (who are not in the CRM and not replying to an active thread) to have either an exact catalog SKU ID in the body/subject OR a hardware keyword and a clear quantity pattern (e.g., `10 x`, `5 count`) in the text. This prevents the bot from auto-responding to random promotional or conversational emails.
 
+### 9. Organized Sequential Quotation Numbering
+* **Files:**
+  * [email_listener.py](file:///D:/sku-matcher-prototype/src/email_listener.py) [MODIFY]
+  * [database_sqlite.py](file:///D:/sku-matcher-prototype/src/database_sqlite.py) [PRE-EXISTING FUNCTION ACTIVATED]
+* **Problem Fixed:** Quotation numbers were previously generated using `int(time.time()) % 100000`, which produced seemingly random 5-digit numbers (e.g. `79740`, `79549`).
+* **Solution:** The `generate_next_invoice_id(tenant_id)` function in `database_sqlite.py` queries the highest existing `QTN-` prefixed number in the quotations table and returns the next increment.
+* **Format:** `QTN-XXXXX` (zero-padded 5 digits) — e.g., `QTN-00001`, `QTN-00002`, `QTN-00003`, ...
+* **Tenant-Aware:** Each tenant maintains its own sequential counter, isolated in its own database file.
+* **Example:** The very next email enquiry received will generate quotation `QTN-00001`, followed by `QTN-00002`, ensuring a clean, traceable audit trail.
+
 ---
 
 ## 🔒 Security & Concurrency Enhancements (Pitfalls Resolved)
