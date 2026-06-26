@@ -71,6 +71,11 @@ class NegotiationResolveRequest(BaseModel):
     override_discount_pct: float = 0.0  # used only for "approve" or "counter"
     tenant_id: str = "default"
 
+class InventoryUpdateRequest(BaseModel):
+    sku_id: str
+    new_stock: int
+    tenant_id: str = "default"
+
 # Helper: Load CRM Customers for a specific tenant
 def load_tenant_crm_customers(tenant_id):
     tenant_config = get_tenant_config(tenant_id)
@@ -732,6 +737,21 @@ async def resolve_negotiation_endpoint(req: NegotiationResolveRequest):
             "message": f"Negotiation for {invoice_id} resolved ({req.action}) with {round(discount_pct*100,1)}% discount. Customer notified.",
             "pdf_url": f"/api/quote/pdf/{invoice_id}?tenant_id={req.tenant_id}"
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/inventory/update")
+async def update_inventory_stock(req: InventoryUpdateRequest):
+    """Updates the stock of a specific SKU in the catalog."""
+    try:
+        from src.tenants import get_tenant_catalog
+        catalog = get_tenant_catalog(req.tenant_id)
+        success = catalog.update_sku_stock(req.sku_id, req.new_stock)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"SKU {req.sku_id} not found in catalog.")
+        return {"status": "SUCCESS", "message": f"Stock for SKU {req.sku_id} updated to {req.new_stock}."}
     except HTTPException:
         raise
     except Exception as e:

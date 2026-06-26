@@ -1113,6 +1113,29 @@
     </div>
 </div>
 
+<!-- Inventory Update Modal -->
+<div class="modal-overlay" id="inventoryModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>✏️ Update Stock Quantity</h3>
+            <button class="modal-close" onclick="closeModal('inventoryModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="deficit-meta" id="inventoryModalMeta"></div>
+            <hr class="divider">
+            <div class="form-group">
+                <label class="form-label">New Stock Level (On-Hand)</label>
+                <input type="number" id="inventoryStockInput" class="form-control" min="0" placeholder="Enter new stock level…">
+                <p class="text-muted text-sm mt-1">This will update the catalog stock level on disk immediately.</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeModal('inventoryModal')">Cancel</button>
+            <button class="btn btn-primary" id="updateInventoryBtn">💾 Save Stock</button>
+        </div>
+    </div>
+</div>
+
 <!-- Chat History Modal -->
 <div class="modal-overlay" id="chatModal">
     <div class="modal-box" style="max-width:620px">
@@ -1630,6 +1653,50 @@ document.getElementById('resolveDeficitBtn').onclick = async function() {
     }
 };
 
+// ========== DIRECT INVENTORY UPDATE ==========
+let currentUpdateSkuId = null;
+function openInventoryUpdateModal(skuId, skuName, currentStock) {
+    currentUpdateSkuId = skuId;
+    document.getElementById('inventoryStockInput').value = currentStock;
+    document.getElementById('inventoryModalMeta').innerHTML = `
+        <div class="meta-row"><span>SKU ID</span><span><code style="color:#A5B4FC">${skuId}</code></span></div>
+        <div class="meta-row"><span>Product</span><span>${skuName}</span></div>
+        <div class="meta-row"><span>Current Stock</span><span>${currentStock} units</span></div>
+    `;
+    openModal('inventoryModal');
+}
+
+document.getElementById('updateInventoryBtn').onclick = async function() {
+    if (!currentUpdateSkuId) return;
+    const newStock = parseInt(document.getElementById('inventoryStockInput').value);
+    if (isNaN(newStock) || newStock < 0) { showToast('Invalid stock quantity.', 'error'); return; }
+
+    this.disabled = true;
+    this.innerHTML = '<div class="spinner"></div> Saving…';
+    try {
+        const res = await fetch('/api/inventory/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sku_id: currentUpdateSkuId, new_stock: newStock, tenant_id: getTenantId() })
+        });
+        const data = await res.json();
+        if (data.status === 'SUCCESS') {
+            showToast('✅ Stock updated successfully!', 'success');
+            closeModal('inventoryModal');
+            loadLowStock(); // reload low stock indicators
+            // Check activeTab (loaded via global or check switchTab)
+            if (typeof loadDeficits === 'function') loadDeficits(); // reload deficits if needed
+        } else {
+            showToast('❌ ' + (data.detail || data.message || 'Error updating stock.'), 'error');
+        }
+    } catch (e) {
+        showToast('Error updating stock: ' + e.message, 'error');
+    } finally {
+        this.disabled = false;
+        this.innerHTML = '💾 Save Stock';
+    }
+};
+
 // ========== NEGOTIATIONS ==========
 async function loadNegotiations() {
     const tbody = document.getElementById('negsTableBody');
@@ -1857,7 +1924,10 @@ async function loadLowStock() {
                     <div class="text-sm text-muted" style="margin-top:0.15rem"><code>${sku.sku_id}</code> · ${sku.category}</div>
                     <div class="text-sm" style="color:#A5B4FC;margin-top:0.2rem">${fmt(sku.price)} / unit</div>
                 </div>
-                ${isZero ? '<span class="pill red">Out of Stock</span>' : '<span class="pill yellow">Low Stock</span>'}`;
+                <div style="display:flex;align-items:center;gap:0.75rem">
+                    ${isZero ? '<span class="pill red">Out of Stock</span>' : '<span class="pill yellow">Low Stock</span>'}
+                    <button class="btn btn-primary btn-sm" onclick="openInventoryUpdateModal('${sku.sku_id}', '${sku.sku_name.replace(/'/g, "\\'")}', ${sku.stock})">✏️ Update Stock</button>
+                </div>`;
             body.appendChild(div);
         });
     } catch (e) {

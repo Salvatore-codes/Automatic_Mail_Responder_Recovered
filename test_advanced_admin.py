@@ -114,6 +114,27 @@ def run_admin_tests():
     # Verify it is no longer in escalated negotiations list
     escalated_after = get_escalated_negotiations(tenant_id="test_tenant")
     assert len(escalated_after) == 0, "Approved negotiation should not appear in escalated list anymore"
+
+    print("\n5. Testing Direct Inventory Update...")
+    from src.tenants import get_tenant_catalog
+    catalog = get_tenant_catalog("default")
+    test_sku = catalog.skus[0]
+    sku_id = test_sku["sku_id"]
+    original_stock = int(test_sku.get("stock", 0))
+    print(f"Original stock for SKU {sku_id}: {original_stock}")
+
+    new_stock = original_stock + 10
+    success = catalog.update_sku_stock(sku_id, new_stock)
+    assert success, "Stock update should succeed"
+
+    # Refresh catalog to see if new stock is loaded correctly
+    catalog_refreshed = get_tenant_catalog("default")
+    updated_sku = next(s for s in catalog_refreshed.skus if s["sku_id"] == sku_id)
+    print(f"Updated stock for SKU {sku_id}: {updated_sku['stock']} (Expected: {new_stock})")
+    assert int(updated_sku["stock"]) == new_stock
+
+    # Restore original stock
+    catalog.update_sku_stock(sku_id, original_stock)
     
     print("\n\033[92mALL ADVANCED ADMIN TESTS PASSED SUCCESSFULLY!\033[0m")
 
