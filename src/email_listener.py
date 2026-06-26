@@ -705,7 +705,25 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             for line in matched_lines:
                 if line['matched_sku_id'] != "UNKNOWN":
                     line['quantity'] = override_qty
-        adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=cap_by_stock)
+
+        # Extract customer details and check for new phone number
+        customer_name = meta.get("customer_name", "Walk-in Retail Client")
+        customer_phone = meta.get("customer_phone", "—")
+        new_phone = extract_phone_number(body_clean)
+        if new_phone:
+            customer_phone = new_phone
+            meta["customer_phone"] = customer_phone
+
+        adjust_quantities_by_stock(
+            matched_lines,
+            catalog,
+            cap_by_stock=cap_by_stock,
+            invoice_id=existing_invoice_id,
+            customer_name=customer_name,
+            customer_email=email_addr,
+            customer_phone=customer_phone,
+            tenant_id=tenant_id
+        )
         has_valid_matches = matched_lines and any(
             line['matched_sku_id'] != "UNKNOWN" and line['confidence'] >= 80.0 
             for line in matched_lines
@@ -714,14 +732,6 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         if has_valid_matches:
             # Re-generate the quote with the new items under the same ID
             discount_pct = meta.get("discount_pct", 0.0)
-            customer_name = meta.get("customer_name", "Walk-in Retail Client")
-            customer_phone = meta.get("customer_phone", "—")
-            
-            # If body has a new phone number, extract it
-            new_phone = extract_phone_number(body_clean)
-            if new_phone:
-                customer_phone = new_phone
-                meta["customer_phone"] = customer_phone
             
             if mode == "mock":
                 if tenant_id and tenant_id != "default":
@@ -860,14 +870,6 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             return reply_subject, reply_payload, None, "CONVERSATIONAL_REPLY"
 
     # Default logic: Brand new quotation request
-    matched_lines = run_scenario_free(body_clean, catalog, gemini_client=client)
-    if override_qty is not None:
-        for line in matched_lines:
-            if line['matched_sku_id'] != "UNKNOWN":
-                line['quantity'] = override_qty
-    adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=cap_by_stock)
-    
-
     discount_pct, customer_name, customer_phone = get_crm_discount(email_addr, crm_path)
     if customer_name == "Walk-in Retail Client":
         if display_name:
@@ -882,6 +884,23 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             
     from src.database_sqlite import generate_next_invoice_id
     invoice_id = generate_next_invoice_id(tenant_id=tenant_id)
+
+    matched_lines = run_scenario_free(body_clean, catalog, gemini_client=client)
+    if override_qty is not None:
+        for line in matched_lines:
+            if line['matched_sku_id'] != "UNKNOWN":
+                line['quantity'] = override_qty
+
+    deficit_lines = adjust_quantities_by_stock(
+        matched_lines, 
+        catalog, 
+        cap_by_stock=cap_by_stock,
+        invoice_id=invoice_id,
+        customer_name=customer_name,
+        customer_email=email_addr,
+        customer_phone=customer_phone,
+        tenant_id=tenant_id
+    )
     
     has_valid_matches = matched_lines and any(
         line['matched_sku_id'] != "UNKNOWN" and line['confidence'] >= 80.0 
@@ -1570,7 +1589,7 @@ def send_unmatched_products_alert(smtp_server, smtp_port, email_user, email_pass
     except Exception as e:
         print(f"[Warning] Failed to send unmatched products alert: {e}")
 
-def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True):
+def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True, invoice_id=None, customer_name=None, customer_email=None, customer_phone=None, tenant_id=None):
     deficit_lines = []
     for line in matched_lines:
         sku_id = line.get("matched_sku_id")
@@ -1601,6 +1620,26 @@ def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True):
                 line["deficit"] = 0
         else:
             line["deficit"] = 0
+
+    if deficit_lines and invoice_id:
+        from src.database_sqlite import log_deficit
+        for line in deficit_lines:
+            try:
+                log_deficit(
+                    invoice_id=invoice_id,
+                    sku_id=line["matched_sku_id"],
+                    sku_name=line.get("matched_sku_name", "UNKNOWN"),
+                    requested_qty=line["original_requested_qty"],
+                    available_qty=line.get("stock_avail", 0),
+                    deficit_qty=line["deficit"],
+                    customer_name=customer_name or "Walk-in Retail Client",
+                    customer_email=customer_email or "",
+                    customer_phone=customer_phone or "—",
+                    tenant_id=tenant_id
+                )
+            except Exception as e:
+                print(f"[Warning] Failed to log deficit inside adjust_quantities_by_stock: {e}")
+
     return deficit_lines
 
 
@@ -1638,6 +1677,116 @@ def send_deficit_purchase_order_alert(smtp_server, smtp_port, email_user, email_
         send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject, body_text)
     except Exception as e:
         print(f"[Warning] Failed to send deficit PO alert: {e}")
+
+def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, plain_body, html_body, pdf_path):
+    """
+    Sends the quotation email containing the PDF attachment to the customer.
+    If the tenant SMTP settings are not set or are mock, it writes to mock_outbox.
+    """
+    from src.tenants import get_tenant_config
+    tenant_config = get_tenant_config(tenant_id)
+    email_user = tenant_config.get("email_user")
+    email_pass = tenant_config.get("email_pass")
+    smtp_server = tenant_config.get("smtp_server", "smtp.gmail.com")
+    try:
+        smtp_port = int(tenant_config.get("smtp_port", 465))
+    except (ValueError, TypeError):
+        smtp_port = 465
+        
+    is_mock = not email_user or not email_pass or email_user.strip() == "" or email_user.startswith("your_")
+    
+    if is_mock:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if tenant_id and tenant_id != "default":
+            outbox_dir = os.path.join(project_root, "mock_outbox", tenant_id)
+        else:
+            outbox_dir = os.path.join(project_root, "mock_outbox")
+        os.makedirs(outbox_dir, exist_ok=True)
+        
+        invoice_id = "UNKNOWN"
+        if pdf_path:
+            basename = os.path.basename(pdf_path)
+            inv_match = re.search(r'Quote_([A-Za-z0-9\-]+)\.pdf', basename)
+            if inv_match:
+                invoice_id = inv_match.group(1)
+        if invoice_id == "UNKNOWN":
+            inv_match = re.search(r'\[Quotation\s+#([A-Za-z0-9\-]+)\]', reply_subject, re.IGNORECASE)
+            if inv_match:
+                invoice_id = inv_match.group(1)
+                
+        reply_filename = f"Quote_{invoice_id}_reply.txt" if invoice_id != "UNKNOWN" else f"mock_reply_{int(time.time())}.txt"
+        reply_path = os.path.join(outbox_dir, reply_filename)
+        
+        with open(reply_path, 'w', encoding='utf-8') as rf:
+            rf.write(f"To: {customer_email}\n")
+            rf.write(f"Subject: {reply_subject}\n")
+            if pdf_path:
+                rf.write(f"Attachment: {os.path.basename(pdf_path)}\n")
+            rf.write("=" * 80 + "\n")
+            rf.write(plain_body)
+        print(f"[Mock Mailer] Written mock reply for tenant {tenant_id} to {reply_path}")
+        
+        if pdf_path and os.path.exists(pdf_path):
+            outbox_pdf_path = os.path.join(outbox_dir, os.path.basename(pdf_path))
+            if os.path.abspath(pdf_path) != os.path.abspath(outbox_pdf_path):
+                import shutil
+                try:
+                    shutil.copy2(pdf_path, outbox_pdf_path)
+                except Exception as ce:
+                    print(f"[Mock Mailer] Warning: Failed to copy PDF to outbox: {ce}")
+        return True
+    else:
+        try:
+            reply_msg = MIMEMultipart()
+            reply_msg["From"] = email_user
+            reply_msg["To"] = customer_email
+            reply_msg["Subject"] = reply_subject
+            
+            msg_alt = MIMEMultipart('alternative')
+            msg_alt.attach(MIMEText(plain_body, 'plain'))
+            msg_alt.attach(MIMEText(html_body, 'html'))
+            reply_msg.attach(msg_alt)
+            
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            logo_file_path = tenant_config.get("company_logo_path")
+            if logo_file_path:
+                if not os.path.isabs(logo_file_path):
+                    logo_file_path = os.path.join(project_root, logo_file_path)
+            else:
+                logo_file_path = find_company_logo(project_root)
+                
+            if logo_file_path and os.path.exists(logo_file_path):
+                try:
+                    from email.mime.image import MIMEImage
+                    with open(logo_file_path, 'rb') as f:
+                        logo_img = MIMEImage(f.read())
+                    logo_img.add_header('Content-ID', '<company_logo>')
+                    logo_img.add_header('Content-Disposition', 'inline', filename=os.path.basename(logo_file_path))
+                    reply_msg.attach(logo_img)
+                except Exception as le:
+                    print(f"[Warning] Failed to attach inline logo: {le}")
+            
+            if pdf_path and os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(f.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(pdf_path)}")
+                reply_msg.attach(part)
+            
+            if smtp_port == 465:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+            server.login(email_user, email_pass)
+            server.sendmail(email_user, customer_email, reply_msg.as_string())
+            server.close()
+            print(f"[SMTP Mailer] Successfully sent email to {customer_email} (Subject: {reply_subject})")
+            return True
+        except Exception as e:
+            print(f"[SMTP Mailer] Error sending email via SMTP: {e}")
+            return False
 
 def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
     """

@@ -132,6 +132,24 @@ def init_db_conn(conn):
     )
     """)
     
+    # 7. Deficits table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS deficits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id TEXT,
+        sku_id TEXT,
+        sku_name TEXT,
+        requested_qty INTEGER,
+        available_qty INTEGER,
+        deficit_qty INTEGER,
+        customer_name TEXT,
+        customer_email TEXT,
+        customer_phone TEXT,
+        status TEXT DEFAULT 'PENDING',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    
     conn.commit()
 
 def init_db(tenant_id=None):
@@ -325,3 +343,47 @@ def generate_next_invoice_id(tenant_id=None):
 
 # Initialize default DB on import
 init_db()
+
+def log_deficit(invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO deficits (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+    """, (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone))
+    conn.commit()
+    conn.close()
+
+def get_all_deficits(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at
+    FROM deficits
+    ORDER BY created_at DESC
+    """)
+    rows = cursor.fetchall()
+    items = [dict(row) for row in rows]
+    conn.close()
+    return items
+
+def resolve_deficit(deficit_id, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE deficits SET status = 'RESOLVED' WHERE id = ?", (deficit_id,))
+    conn.commit()
+    conn.close()
+
+def get_escalated_negotiations(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, created_at
+    FROM quotations
+    WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING')
+    ORDER BY created_at DESC
+    """)
+    rows = cursor.fetchall()
+    items = [dict(row) for row in rows]
+    conn.close()
+    return items

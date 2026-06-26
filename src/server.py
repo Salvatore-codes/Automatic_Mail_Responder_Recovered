@@ -60,6 +60,17 @@ class NegotiateRequest(BaseModel):
     chat_history: List[Dict[str, str]]
     tenant_id: str = "default"
 
+class DeficitResolveRequest(BaseModel):
+    deficit_id: int
+    new_stock: int
+    tenant_id: str = "default"
+
+class NegotiationResolveRequest(BaseModel):
+    invoice_id: str
+    action: str  # "approve", "reject", or "counter"
+    override_discount_pct: float = 0.0  # used only for "approve" or "counter"
+    tenant_id: str = "default"
+
 # Helper: Load CRM Customers for a specific tenant
 def load_tenant_crm_customers(tenant_id):
     tenant_config = get_tenant_config(tenant_id)
@@ -171,7 +182,16 @@ async def generate_quote_pdf(req: PDFRequest):
 
         # Cap quantities based on on-hand stock and track deficits
         from src.email_listener import adjust_quantities_by_stock, send_deficit_purchase_order_alert
-        deficit_lines = adjust_quantities_by_stock(req.matched_lines, catalog)
+        deficit_lines = adjust_quantities_by_stock(
+            req.matched_lines,
+            catalog,
+            cap_by_stock=True,
+            invoice_id=req.invoice_id,
+            customer_name=req.customer_name,
+            customer_email=cust_email,
+            customer_phone=cust_phone,
+            tenant_id=req.tenant_id
+        )
 
         # Send deficit PO alert to master if SMTP settings are configured
         email_user = tenant_config.get("email_user")
@@ -396,6 +416,346 @@ async def get_unmatched_enquiries(tenant_id: str = "default"):
             "count": count,
             "items": items
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/deficits")
+async def get_deficits(tenant_id: str = "default"):
+    """Returns all stock deficit items from the database."""
+    try:
+        from src.database_sqlite import get_all_deficits
+        items = get_all_deficits(tenant_id=tenant_id)
+        return {"count": len(items), "deficits": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/deficits/resolve")
+async def resolve_deficit_endpoint(req: DeficitResolveRequest):
+    """
+    Resolves a stock deficit by:
+    1. Updating the SKU stock in the catalog CSV (triggers mtime reload)
+    2. Marking the deficit as RESOLVED in SQLite
+    3. Recalculating and regenerating the quotation PDF
+    4. Emailing the updated quote to the customer
+    """
+    try:
+        from src.database_sqlite import get_all_deficits, resolve_deficit, get_connection
+        from src.tenants import get_tenant_catalog, get_tenant_config
+
+        # 1. Get the deficit record from DB
+        conn = get_connection(req.tenant_id)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM deficits WHERE id = ?", (req.deficit_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Deficit record not found.")
+        deficit = dict(row)
+
+        invoice_id = deficit["invoice_id"]
+
+        # 2. Update catalog stock
+        catalog = get_tenant_catalog(req.tenant_id)
+        catalog.update_sku_stock(deficit["sku_id"], req.new_stock)
+
+        # 3. Mark deficit as RESOLVED in DB
+        resolve_deficit(req.deficit_id, tenant_id=req.tenant_id)
+
+        # 4. Load quotation meta JSON to get original matched_lines
+        import json
+        from src.tenants import sanitize_tenant_id
+        t_id = sanitize_tenant_id(req.tenant_id)
+        tenant_config = get_tenant_config(req.tenant_id)
+        
+        meta_filename = f"Quote_{invoice_id}_meta.json"
+        meta_paths = [
+            os.path.join(project_root, "static", "quotes", meta_filename),
+            os.path.join(project_root, "mock_outbox", meta_filename),
+        ]
+        if t_id and t_id != "default":
+            meta_paths.insert(0, os.path.join(project_root, "static", "quotes", t_id, meta_filename))
+            meta_paths.insert(1, os.path.join(project_root, "mock_outbox", t_id, meta_filename))
+
+        meta = None
+        meta_path = None
+        for p in meta_paths:
+            if os.path.exists(p):
+                meta_path = p
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        meta = json.load(f)
+                    break
+                except Exception:
+                    pass
+
+        if not meta:
+            return {
+                "status": "PARTIAL",
+                "message": "Stock updated and deficit resolved, but quotation meta file not found — email not re-sent."
+            }
+
+        # 5. Re-run adjust_quantities_by_stock with fresh catalog (new stock loaded)
+        catalog_fresh = get_tenant_catalog(req.tenant_id)  # will reload from CSV due to mtime change
+        from src.email_listener import adjust_quantities_by_stock
+        matched_lines = meta.get("matched_lines", [])
+        adjust_quantities_by_stock(matched_lines, catalog_fresh, cap_by_stock=True)
+
+        # Filter out lines still at zero (other deficits still pending)
+        quoted_lines = [l for l in matched_lines if l.get("quantity", 0) > 0 and l.get("matched_sku_id") != "UNKNOWN"]
+        if not quoted_lines:
+            return {
+                "status": "PARTIAL",
+                "message": "Stock updated and deficit resolved, but no items have stock available — nothing quoted yet."
+            }
+
+        # 6. Regenerate PDF
+        discount_pct = meta.get("discount_pct", 0.0)
+        customer_name = meta.get("customer_name", "Walk-in Retail Client")
+        customer_phone = meta.get("customer_phone", "—")
+        customer_email = meta.get("customer_email", "")
+
+        if t_id and t_id != "default":
+            pdf_out_path = os.path.join(project_root, "static", "quotes", t_id, f"Quote_{invoice_id}.pdf")
+            os.makedirs(os.path.dirname(pdf_out_path), exist_ok=True)
+        else:
+            pdf_out_path = os.path.join(project_root, "static", "quotes", f"Quote_{invoice_id}.pdf")
+            os.makedirs(os.path.dirname(pdf_out_path), exist_ok=True)
+
+        from src.pdf_generator import generate_pdf_quotation
+        generate_pdf_quotation(
+            matched_lines=quoted_lines,
+            discount_pct=discount_pct,
+            customer_name=customer_name,
+            invoice_id=invoice_id,
+            output_path=pdf_out_path,
+            catalog=catalog_fresh,
+            customer_phone=customer_phone,
+            upi_id=tenant_config.get("upi_id"),
+            upi_name=tenant_config.get("upi_name"),
+            logo_path=tenant_config.get("company_logo_path"),
+            business_name=tenant_config.get("business_name"),
+            customer_email=customer_email
+        )
+
+        # 7. Send updated quote to customer
+        if customer_email:
+            from src.email_listener import build_email_reply_body, send_quotation_email_to_customer
+            reply_body, grand_total = build_email_reply_body(
+                matched_lines=quoted_lines,
+                discount_pct=discount_pct,
+                customer_name=customer_name,
+                invoice_id=invoice_id,
+                logo_cid="company_logo",
+                tenant_config=tenant_config,
+                customer_email=customer_email,
+                customer_phone=customer_phone
+            )
+            if isinstance(reply_body, tuple):
+                plain_body, html_body = reply_body
+            else:
+                plain_body = reply_body
+                html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
+            
+            reply_subject = f"[Quotation #{invoice_id}] Updated Stock — Re-issued Quote"
+            send_quotation_email_to_customer(
+                tenant_id=req.tenant_id,
+                customer_email=customer_email,
+                reply_subject=reply_subject,
+                plain_body=plain_body,
+                html_body=html_body,
+                pdf_path=pdf_out_path
+            )
+
+        return {
+            "status": "SUCCESS",
+            "message": f"Deficit resolved, stock updated to {req.new_stock}, and updated quote sent to {customer_email}.",
+            "pdf_url": f"/api/quote/pdf/{invoice_id}?tenant_id={req.tenant_id}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/negotiations/escalated")
+async def get_escalated_negotiations(tenant_id: str = "default"):
+    """Returns all quotations in NEGOTIATION_ESCALATED or NEGOTIATION_NEGOTIATING status."""
+    try:
+        from src.database_sqlite import get_escalated_negotiations
+        items = get_escalated_negotiations(tenant_id=tenant_id)
+        return {"count": len(items), "negotiations": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/negotiations/resolve")
+async def resolve_negotiation_endpoint(req: NegotiationResolveRequest):
+    """
+    Manually resolves an escalated negotiation:
+    - approve: accepts the customer's requested discount (or a custom override)
+    - reject: rejects the negotiation, keeps original pricing
+    - counter: uses the admin's counter-offer discount_pct
+    Then recalculates totals, regenerates PDF, and emails the customer.
+    """
+    try:
+        from src.database_sqlite import update_quotation_status, get_connection
+        from src.tenants import get_tenant_catalog, get_tenant_config, sanitize_tenant_id
+        import json
+
+        invoice_id = req.invoice_id
+        t_id = sanitize_tenant_id(req.tenant_id)
+        tenant_config = get_tenant_config(req.tenant_id)
+        catalog = get_tenant_catalog(req.tenant_id)
+
+        # Load quotation from DB
+        conn = get_connection(req.tenant_id)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quotations WHERE invoice_id = ?", (invoice_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Quotation {invoice_id} not found.")
+        quotation = dict(row)
+
+        if req.action == "reject":
+            update_quotation_status(invoice_id, "NEGOTIATION_REJECTED", tenant_id=req.tenant_id)
+            # Notify customer
+            customer_email = quotation.get("customer_email", "")
+            customer_name = quotation.get("customer_name", "Valued Customer")
+            if customer_email:
+                from src.email_listener import send_quotation_email_to_customer
+                reject_body = (
+                    f"Dear {customer_name},\n\n"
+                    f"Thank you for your interest. After careful consideration, we are unable to offer "
+                    f"an additional discount on Quotation #{invoice_id} at this time.\n\n"
+                    f"Our original quoted price stands as the best we can offer. "
+                    f"Please feel free to reach out if you have any further questions.\n\n"
+                    f"Best Regards,\nTrofeo Solution Sales Team"
+                )
+                send_quotation_email_to_customer(
+                    tenant_id=req.tenant_id,
+                    customer_email=customer_email,
+                    reply_subject=f"[Quotation #{invoice_id}] Regarding Your Discount Request",
+                    plain_body=reject_body,
+                    html_body=f"<html><body><p>{reject_body.replace(chr(10), '<br>')}</p></body></html>",
+                    pdf_path=None
+                )
+            return {"status": "SUCCESS", "message": f"Negotiation for {invoice_id} rejected and customer notified."}
+
+        # For approve or counter, apply the override discount
+        discount_pct = req.override_discount_pct
+        new_status = "NEGOTIATION_APPROVED" if req.action in ["approve", "counter"] else "NEGOTIATION_APPROVED"
+        update_quotation_status(invoice_id, new_status, discount_pct=discount_pct, tenant_id=req.tenant_id)
+
+        # Load meta to get matched_lines
+        meta_filename = f"Quote_{invoice_id}_meta.json"
+        meta_paths = [
+            os.path.join(project_root, "static", "quotes", meta_filename),
+            os.path.join(project_root, "mock_outbox", meta_filename),
+        ]
+        if t_id and t_id != "default":
+            meta_paths.insert(0, os.path.join(project_root, "static", "quotes", t_id, meta_filename))
+            meta_paths.insert(1, os.path.join(project_root, "mock_outbox", t_id, meta_filename))
+
+        meta = None
+        for p in meta_paths:
+            if os.path.exists(p):
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        meta = json.load(f)
+                    break
+                except Exception:
+                    pass
+
+        if not meta:
+            return {"status": "PARTIAL", "message": "Status updated but meta file not found — PDF not regenerated."}
+
+        matched_lines = meta.get("matched_lines", [])
+        quoted_lines = [l for l in matched_lines if l.get("quantity", 0) > 0 and l.get("matched_sku_id") != "UNKNOWN"]
+        customer_name = meta.get("customer_name", quotation.get("customer_name", "Valued Customer"))
+        customer_phone = meta.get("customer_phone", quotation.get("customer_phone", "—"))
+        customer_email = meta.get("customer_email", quotation.get("customer_email", ""))
+
+        if t_id and t_id != "default":
+            pdf_out_path = os.path.join(project_root, "static", "quotes", t_id, f"Quote_{invoice_id}.pdf")
+        else:
+            pdf_out_path = os.path.join(project_root, "static", "quotes", f"Quote_{invoice_id}.pdf")
+        os.makedirs(os.path.dirname(pdf_out_path), exist_ok=True)
+
+        from src.pdf_generator import generate_pdf_quotation
+        generate_pdf_quotation(
+            matched_lines=quoted_lines,
+            discount_pct=discount_pct,
+            customer_name=customer_name,
+            invoice_id=invoice_id,
+            output_path=pdf_out_path,
+            catalog=catalog,
+            customer_phone=customer_phone,
+            upi_id=tenant_config.get("upi_id"),
+            upi_name=tenant_config.get("upi_name"),
+            logo_path=tenant_config.get("company_logo_path"),
+            business_name=tenant_config.get("business_name"),
+            customer_email=customer_email
+        )
+
+        if customer_email:
+            from src.email_listener import build_email_reply_body, send_quotation_email_to_customer
+            reply_body, grand_total = build_email_reply_body(
+                matched_lines=quoted_lines,
+                discount_pct=discount_pct,
+                customer_name=customer_name,
+                invoice_id=invoice_id,
+                logo_cid="company_logo",
+                tenant_config=tenant_config,
+                customer_email=customer_email,
+                customer_phone=customer_phone
+            )
+            if isinstance(reply_body, tuple):
+                plain_body, html_body = reply_body
+            else:
+                plain_body = reply_body
+                html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
+
+            disc_label = f"{round(discount_pct * 100, 1)}%" if discount_pct > 0 else "standard pricing"
+            reply_subject = f"[Quotation #{invoice_id}] Updated Quote with {disc_label} Discount"
+            send_quotation_email_to_customer(
+                tenant_id=req.tenant_id,
+                customer_email=customer_email,
+                reply_subject=reply_subject,
+                plain_body=plain_body,
+                html_body=html_body,
+                pdf_path=pdf_out_path
+            )
+
+        return {
+            "status": "SUCCESS",
+            "message": f"Negotiation for {invoice_id} resolved ({req.action}) with {round(discount_pct*100,1)}% discount. Customer notified.",
+            "pdf_url": f"/api/quote/pdf/{invoice_id}?tenant_id={req.tenant_id}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/inventory/low-stock")
+async def get_low_stock(tenant_id: str = "default", threshold: int = 5):
+    """Returns all SKUs with stock <= threshold."""
+    try:
+        from src.tenants import get_tenant_catalog
+        catalog = get_tenant_catalog(tenant_id)
+        low_stock_items = [
+            {
+                "sku_id": sku["sku_id"],
+                "sku_name": sku.get("sku_name", "—"),
+                "category": sku.get("category", "—"),
+                "stock": int(sku.get("stock", 0)),
+                "price": float(sku.get("price", 0))
+            }
+            for sku in catalog.skus
+            if int(sku.get("stock", 0)) <= threshold
+        ]
+        low_stock_items.sort(key=lambda x: x["stock"])
+        return {"count": len(low_stock_items), "threshold": threshold, "items": low_stock_items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

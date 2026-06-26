@@ -635,3 +635,48 @@ class Catalog:
                 else:
                     final_results.append(self.match_vector(queries[idx], client, threshold, limit))
             return final_results
+
+    def update_sku_stock(self, sku_id, new_stock):
+        """
+        Updates the stock of a specific SKU in both memory and the catalog CSV file on disk.
+        """
+        # 1. Update in memory
+        found = False
+        for sku in self.skus:
+            if sku['sku_id'] == sku_id:
+                sku['stock'] = int(new_stock)
+                found = True
+                break
+        
+        if not found:
+            print(f"[Catalog] Warning: SKU {sku_id} not found in catalog for stock update.")
+            return False
+            
+        # 2. Write back to CSV file
+        try:
+            # Read the current file to get headers and all rows
+            rows = []
+            headers = []
+            with open(self.csv_path, mode='r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+                
+            # Read rows as dicts to preserve structure
+            with open(self.csv_path, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get('sku_id') == sku_id:
+                        row['stock'] = str(new_stock)
+                    rows.append(row)
+                    
+            # Write back to CSV
+            with open(self.csv_path, mode='w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=headers)
+                writer.writeheader()
+                writer.writerows(rows)
+                
+            print(f"[Catalog] Successfully updated SKU {sku_id} stock to {new_stock} on disk.")
+            return True
+        except Exception as e:
+            print(f"[Catalog] Error writing updated stock to CSV: {e}")
+            return False

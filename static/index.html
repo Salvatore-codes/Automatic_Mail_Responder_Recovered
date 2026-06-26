@@ -3,1092 +3,1898 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trofeo Hardware Ingestion Dashboard</title>
-    <meta name="description" content="Production-grade automated SKU Matching, CRM discounts, ERP stock checks, and AI negotiation interface.">
-    
-    <!-- Premium Fonts -->
+    <title>Trofeo Hardware — Admin Control Panel</title>
+    <meta name="description" content="Admin Command Center for Trofeo Hardware: manage stock deficits, approve negotiations, and view quotation history.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
     <style>
         :root {
-            --bg-dark: #090D1A;
-            --bg-card: #12182B;
-            --bg-input: #1B233D;
+            --bg-dark: #070B18;
+            --bg-card: #0F1628;
+            --bg-card2: #141D35;
+            --bg-input: #1A2340;
             --accent-blue: #3B82F6;
             --accent-indigo: #6366F1;
             --accent-purple: #8B5CF6;
             --accent-green: #10B981;
             --accent-yellow: #F59E0B;
             --accent-red: #EF4444;
-            --text-primary: #F8FAFC;
-            --text-secondary: #94A3B8;
-            --border-color: #242F50;
+            --accent-orange: #F97316;
+            --accent-cyan: #06B6D4;
+            --text-primary: #F0F4FF;
+            --text-secondary: #8B9CB8;
+            --border-color: #1E2B4A;
+            --border-glow: rgba(99, 102, 241, 0.25);
             --font-main: 'Inter', sans-serif;
             --font-display: 'Outfit', sans-serif;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.15);
         }
-
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
+        html { scroll-behavior: smooth; }
         body {
             font-family: var(--font-main);
-            background-color: var(--bg-dark);
+            background: var(--bg-dark);
             color: var(--text-primary);
             min-height: 100vh;
-            padding: 1.5rem;
-            display: flex;
-            justify-content: center;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
+            background-image:
+                radial-gradient(ellipse at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 55%),
+                radial-gradient(ellipse at 100% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 55%),
+                radial-gradient(ellipse at 50% 50%, rgba(6, 182, 212, 0.04) 0px, transparent 55%);
         }
 
-        .dashboard {
-            max-width: 1440px;
-            width: 100%;
-            display: grid;
-            grid-template-rows: auto 1fr;
-            gap: 1.5rem;
+        /* === LAYOUT === */
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
 
-        header {
+        /* === TOP NAVIGATION BAR === */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(7, 11, 24, 0.92);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 2rem;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            background: rgba(18, 24, 43, 0.7);
-            border: 1px solid var(--border-color);
-            padding: 1.25rem 2rem;
-            border-radius: 16px;
-            backdrop-filter: blur(12px);
+            justify-content: space-between;
+            height: 64px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
         }
 
-        .logo h1 {
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .nav-brand-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            box-shadow: 0 0 16px rgba(99, 102, 241, 0.4);
+        }
+        .nav-brand h1 {
             font-family: var(--font-display);
-            font-size: 1.75rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%);
+            font-size: 1.15rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #A5B4FC, #E879F9);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
+        .nav-brand p { font-size: 0.72rem; color: var(--text-secondary); margin-top: 1px; }
 
-        .logo p { font-size: 0.85rem; color: var(--text-secondary); }
-
-        .badge-live {
-            background-color: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: var(--accent-green);
-            padding: 0.35rem 0.85rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+        .nav-tabs {
             display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            gap: 0.25rem;
         }
-
-        .badge-live::before {
-            content: '';
-            width: 8px;
-            height: 8px;
-            background-color: var(--accent-green);
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(0.95); opacity: 0.6; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(0.95); opacity: 0.6; }
-        }
-
-        .main-grid {
-            display: grid;
-            grid-template-columns: 420px 1fr;
-            gap: 1.5rem;
-        }
-
-        @media (max-width: 1024px) {
-            .main-grid { grid-template-columns: 1fr; }
-        }
-
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 18px;
-            padding: 1.75rem;
-            box-shadow: 0 10px 35px rgba(0,0,0,0.4);
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            position: relative;
-        }
-
-        .card h2 {
-            font-family: var(--font-display);
-            font-size: 1.25rem;
-            font-weight: 600;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.75rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
-        label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
-        
-        textarea {
-            width: 100%;
-            height: 150px;
-            background-color: var(--bg-input);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            color: var(--text-primary);
-            padding: 0.85rem;
-            font-size: 0.9rem;
-            resize: none;
-            outline: none;
-            transition: var(--transition);
-        }
-        textarea:focus { border-color: var(--accent-indigo); }
-
-        .preset-buttons { display: flex; gap: 0.5rem; }
-        .btn-preset {
-            flex: 1;
-            background-color: var(--bg-input);
-            border: 1px solid var(--border-color);
+        .nav-tab {
+            background: none; border: none;
             color: var(--text-secondary);
-            padding: 0.5rem;
-            border-radius: 8px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-        .btn-preset:hover { border-color: var(--accent-blue); color: var(--text-primary); }
-
-        select {
-            width: 100%;
-            background-color: var(--bg-input);
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-            padding: 0.75rem;
-            border-radius: 10px;
-            outline: none;
-        }
-
-        .toggle-group {
-            display: flex;
-            background-color: var(--bg-input);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 0.25rem;
-        }
-        .toggle-btn {
-            flex: 1;
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            padding: 0.6rem 0.5rem;
+            padding: 0.5rem 1.1rem;
             border-radius: 8px;
             font-size: 0.85rem;
             font-weight: 500;
             cursor: pointer;
             transition: var(--transition);
+            display: flex; align-items: center; gap: 0.45rem;
+            position: relative;
         }
-        .toggle-btn.active {
-            background-color: var(--accent-indigo);
-            color: var(--text-primary);
+        .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+        .nav-tab.active {
+            color: #A5B4FC;
+            background: rgba(99, 102, 241, 0.12);
         }
-
-        .btn-process {
-            width: 100%;
-            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-indigo) 100%);
-            border: none;
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px; left: 50%; transform: translateX(-50%);
+            width: 60%; height: 2px;
+            background: linear-gradient(90deg, #6366F1, #8B5CF6);
+            border-radius: 2px;
+        }
+        .tab-badge {
+            background: var(--accent-red);
             color: white;
-            padding: 0.9rem;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-family: var(--font-display);
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.25);
-            transition: var(--transition);
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.1rem 0.45rem;
+            border-radius: 10px;
+            min-width: 18px;
+            text-align: center;
         }
-        .btn-process:hover { transform: translateY(-1px); }
+        .tab-badge.yellow { background: var(--accent-yellow); color: #000; }
 
-        /* Metrics */
-        .metrics-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
-        .metric-card {
-            background-color: rgba(255, 255, 255, 0.02);
+        .nav-controls {
+            display: flex; align-items: center; gap: 0.75rem;
+        }
+        .tenant-selector {
+            background: var(--bg-input);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 0.85rem 1.25rem;
-            display: flex;
-            flex-direction: column;
+            color: var(--text-primary);
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.8rem;
+            cursor: pointer;
         }
-        .metric-card span { font-size: 0.75rem; color: var(--text-secondary); }
-        .metric-card strong { font-family: var(--font-display); font-size: 1.4rem; }
+        .live-indicator {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--accent-green);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .live-dot {
+            width: 7px; height: 7px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: livePulse 1.8s infinite;
+        }
+        @keyframes livePulse {
+            0%, 100% { opacity: 0.5; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
 
-        /* HITL & Table */
-        .hitl-alert {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
+        /* === MAIN CONTENT === */
+        .tab-content {
+            display: none;
+            padding: 2rem;
+            flex: 1;
+            animation: fadeIn 0.3s ease;
+        }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* === KPI BAR === */
+        .kpi-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.75rem;
+        }
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.2rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 3px; height: 100%;
+            border-radius: 3px 0 0 3px;
+        }
+        .kpi-card.blue::before { background: var(--accent-blue); }
+        .kpi-card.green::before { background: var(--accent-green); }
+        .kpi-card.red::before { background: var(--accent-red); }
+        .kpi-card.yellow::before { background: var(--accent-yellow); }
+        .kpi-card.purple::before { background: var(--accent-purple); }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
+        .kpi-icon {
+            font-size: 1.6rem;
+            width: 48px; height: 48px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            flex-shrink: 0;
+        }
+        .kpi-content { flex: 1; min-width: 0; }
+        .kpi-content span { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; display: block; }
+        .kpi-content strong {
+            font-family: var(--font-display);
+            font-size: 1.8rem;
+            font-weight: 700;
+            line-height: 1;
+            display: block;
+            margin-top: 0.2rem;
+        }
+
+        /* === LOW STOCK ALERT BANNER === */
+        .low-stock-banner {
+            display: none;
+            background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(245,158,11,0.08));
+            border: 1px solid rgba(239,68,68,0.3);
             border-radius: 12px;
             padding: 1rem 1.5rem;
-            display: none;
-            justify-content: space-between;
-            align-items: center;
-            color: #FBBF24;
-        }
-        .hitl-alert button {
-            background-color: var(--accent-yellow);
-            color: #000;
-            border: none;
-            padding: 0.4rem 1rem;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .table-wrapper { border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
-        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
-        th, td { padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--border-color); }
-        th { background-color: rgba(27,35,61,0.4); }
-
-        .status-pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-        .status-pill.instock { background-color: rgba(16, 185, 129, 0.12); color: var(--accent-green); }
-        .status-pill.lowstock { background-color: rgba(245, 158, 11, 0.12); color: var(--accent-yellow); }
-        .status-pill.outstock { background-color: rgba(239, 68, 68, 0.12); color: var(--accent-red); }
-
-        /* Summary & Dynamic Invoices */
-        .summary-invoice-layout { display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; margin-top: 1rem; }
-        @media (max-width: 768px) { .summary-invoice-layout { grid-template-columns: 1fr; } }
-        
-        .invoice-card {
-            background-color: rgba(27, 35, 61, 0.3);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-        .invoice-row { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-secondary); }
-        .invoice-row.total { border-top: 1px dashed var(--border-color); padding-top: 0.75rem; font-size: 1.15rem; font-family: var(--font-display); font-weight: 700; color: var(--text-primary); }
-
-        .qr-card {
-            background-color: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-        }
-        .qr-placeholder { width: 130px; height: 130px; background-color: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-        .qr-placeholder canvas { width: 110px; height: 110px; }
-
-        /* Action Buttons */
-        .action-row { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
-        .btn-secondary {
-            background-color: var(--bg-input);
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-            padding: 0.75rem 1.5rem;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-        .btn-secondary:hover { border-color: var(--accent-blue); }
-
-        /* Ingestion Loader */
-        .loader-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(9, 13, 26, 0.85);
-            border-radius: 18px;
-            z-index: 10;
-            display: none;
-            flex-direction: column;
-            justify-content: center;
+            margin-bottom: 1.5rem;
             align-items: center;
             gap: 1rem;
         }
-        .spinner { width: 45px; height: 45px; border: 4px solid rgba(99, 102, 241, 0.1); border-top-color: var(--accent-indigo); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .low-stock-banner.visible { display: flex; }
+        .low-stock-banner .banner-icon { font-size: 1.4rem; }
+        .low-stock-banner .banner-text { flex: 1; }
+        .low-stock-banner .banner-text strong { color: #FCA5A5; }
+        .low-stock-banner .banner-text p { font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.2rem; }
 
-        /* Modal styling */
-        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.8); z-index: 100; display: none; justify-content: center; align-items: center; padding: 1.5rem; }
-        .modal-content { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 18px; max-width: 500px; width: 100%; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
-        .modal h3 { font-family: var(--font-display); font-size: 1.3rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
-        .modal-option-list { display: flex; flex-direction: column; gap: 0.75rem; }
-        .modal-option-btn { background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.85rem 1.25rem; border-radius: 10px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; }
-        .modal-option-btn:hover { border-color: var(--accent-indigo); }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
-        .btn-cancel { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 0.6rem 1.25rem; border-radius: 8px; cursor: pointer; }
-
-        /* AI Negotiation Panel */
-        .negotiation-panel {
-            background-color: var(--bg-card);
+        /* === SECTION CARD === */
+        .section-card {
+            background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: 18px;
-            padding: 1.75rem;
-            display: none;
-            flex-direction: column;
-            gap: 1.25rem;
-            margin-top: 1.5rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-card);
+            margin-bottom: 1.5rem;
         }
-        .chat-box {
-            height: 250px;
-            background-color: var(--bg-input);
+        .section-header {
+            padding: 1.25rem 1.75rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.015);
+        }
+        .section-header h2 {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 600;
+            display: flex; align-items: center; gap: 0.65rem;
+        }
+        .section-header h2 .icon { font-size: 1.1rem; }
+        .section-body { padding: 1.5rem 1.75rem; }
+
+        /* === DATA TABLE === */
+        .data-table-wrapper { overflow-x: auto; }
+        .data-table {
+            width: 100%; border-collapse: collapse;
+            text-align: left; font-size: 0.85rem;
+        }
+        .data-table th {
+            padding: 0.75rem 1rem;
+            background: rgba(26, 35, 64, 0.6);
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .data-table td {
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid rgba(30, 43, 74, 0.5);
+            vertical-align: middle;
+        }
+        .data-table tbody tr:hover { background: rgba(99, 102, 241, 0.04); }
+        .data-table tbody tr:last-child td { border-bottom: none; }
+
+        /* === STATUS PILLS === */
+        .pill {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .pill.green { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
+        .pill.red { background: rgba(239,68,68,0.12); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+        .pill.yellow { background: rgba(245,158,11,0.12); color: #FCD34D; border: 1px solid rgba(245,158,11,0.2); }
+        .pill.blue { background: rgba(59,130,246,0.12); color: #60A5FA; border: 1px solid rgba(59,130,246,0.2); }
+        .pill.purple { background: rgba(139,92,246,0.12); color: #A78BFA; border: 1px solid rgba(139,92,246,0.2); }
+        .pill.gray { background: rgba(148,163,184,0.1); color: #94A3B8; border: 1px solid rgba(148,163,184,0.15); }
+
+        /* === ACTION BUTTONS === */
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.45rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn-primary {
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            color: white;
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary:hover { box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45); }
+        .btn-success {
+            background: linear-gradient(135deg, #059669, #10B981);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #DC2626, #EF4444);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+        }
+        .btn-warning {
+            background: linear-gradient(135deg, #D97706, #F59E0B);
+            color: #000;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+        }
+        .btn-ghost {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        .btn-ghost:hover { border-color: var(--accent-indigo); background: rgba(99,102,241,0.1); }
+        .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.75rem; }
+        .btn-lg {
+            padding: 0.75rem 1.5rem;
+            font-size: 0.9rem;
+            border-radius: 12px;
+            font-family: var(--font-display);
+        }
+        .btn-full { width: 100%; justify-content: center; }
+
+        /* === SIMULATOR TAB === */
+        .sim-layout {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 1.5rem;
+            align-items: start;
+        }
+        @media (max-width: 1024px) { .sim-layout { grid-template-columns: 1fr; } }
+
+        .form-group { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+        .form-label { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+        .form-control {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.7rem 0.9rem;
+            border-radius: 10px;
+            outline: none;
+            font-size: 0.88rem;
+            font-family: var(--font-main);
+            transition: var(--transition);
+        }
+        .form-control:focus { border-color: var(--accent-indigo); box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+        textarea.form-control { resize: vertical; min-height: 140px; }
+        select.form-control { cursor: pointer; }
+
+        .toggle-row {
+            display: flex;
+            gap: 0.4rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.2rem;
+        }
+        .toggle-opt {
+            flex: 1; background: none; border: none;
+            color: var(--text-secondary);
+            padding: 0.55rem 0.5rem;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .toggle-opt.active { background: var(--accent-indigo); color: white; }
+
+        .preset-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .btn-preset {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.4rem 0.75rem;
+            border-radius: 7px;
+            font-size: 0.77rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .btn-preset:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+
+        .results-box { display: flex; flex-direction: column; gap: 1.25rem; }
+
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+        }
+        .metric-box {
+            background: var(--bg-card2);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.85rem 1rem;
+        }
+        .metric-box span { font-size: 0.7rem; color: var(--text-secondary); }
+        .metric-box strong { font-family: var(--font-display); font-size: 1.35rem; display: block; margin-top: 0.15rem; }
+
+        .hitl-warn {
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.25);
+            border-radius: 10px;
+            padding: 0.9rem 1.2rem;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .hitl-warn p { color: #FCD34D; font-size: 0.85rem; }
+        .hitl-warn.visible { display: flex; }
+
+        .conf-bar { height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; margin-top: 4px; width: 80px; }
+        .conf-fill { height: 100%; border-radius: 3px; }
+        .conf-fill.high { background: var(--accent-green); }
+        .conf-fill.mid { background: var(--accent-yellow); }
+        .conf-fill.low { background: var(--accent-red); }
+
+        .invoice-layout {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+        @media (max-width: 768px) { .invoice-layout { grid-template-columns: 1fr; } }
+        .invoice-box {
+            background: var(--bg-card2);
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            padding: 1rem;
+            padding: 1.25rem;
+        }
+        .inv-row { display: flex; justify-content: space-between; padding: 0.4rem 0; font-size: 0.88rem; color: var(--text-secondary); }
+        .inv-row.grand { border-top: 1px dashed var(--border-color); margin-top: 0.5rem; padding-top: 0.75rem; font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+
+        .qr-box {
+            background: var(--bg-card2);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 0.75rem;
+        }
+        .qr-bg { width: 120px; height: 120px; background: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+
+        /* === NEGOTIATIONS DESK === */
+        .chat-history-modal .modal-body {
+            max-height: 420px;
             overflow-y: auto;
+            padding: 1rem;
             display: flex;
             flex-direction: column;
             gap: 0.85rem;
         }
-        .chat-msg {
-            max-width: 80%;
+        .chat-bubble {
+            max-width: 78%;
             padding: 0.75rem 1rem;
-            border-radius: 10px;
-            font-size: 0.85rem;
-            line-height: 1.4;
+            border-radius: 12px;
+            font-size: 0.83rem;
+            line-height: 1.5;
         }
-        .chat-msg.customer {
+        .chat-bubble.customer {
             align-self: flex-end;
-            background-color: var(--accent-indigo);
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
             color: white;
-            border-bottom-right-radius: 0;
+            border-bottom-right-radius: 3px;
         }
-        .chat-msg.ai {
+        .chat-bubble.ai {
             align-self: flex-start;
-            background-color: var(--bg-card);
+            background: var(--bg-card2);
             border: 1px solid var(--border-color);
             color: var(--text-primary);
-            border-bottom-left-radius: 0;
+            border-bottom-left-radius: 3px;
         }
-        .chat-input-row { display: flex; gap: 0.5rem; }
-        .chat-input {
-            flex: 1;
-            background-color: var(--bg-input);
+        .chat-bubble .bubble-sender { font-size: 0.68rem; font-weight: 600; opacity: 0.7; margin-bottom: 0.3rem; }
+        .chat-bubble .bubble-time { font-size: 0.65rem; opacity: 0.5; margin-top: 0.25rem; text-align: right; }
+
+        /* === NEGOTIATION ACTION ROW === */
+        .neg-action-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .neg-counter-input {
+            width: 80px;
+            background: var(--bg-input);
             border: 1px solid var(--border-color);
             color: var(--text-primary);
-            padding: 0.75rem 1rem;
+            padding: 0.35rem 0.6rem;
+            border-radius: 7px;
+            outline: none;
+            font-size: 0.8rem;
+        }
+
+        /* === MODAL === */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(6px);
+            z-index: 200;
+            display: none;
+            align-items: center; justify-content: center;
+            padding: 1.5rem;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+            animation: modalIn 0.25s ease;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(16px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .modal-header {
+            padding: 1.25rem 1.75rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-header h3 { font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; }
+        .modal-close {
+            background: none; border: none; color: var(--text-secondary);
+            font-size: 1.3rem; cursor: pointer; padding: 0.25rem;
+            border-radius: 6px; transition: var(--transition);
+        }
+        .modal-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+        .modal-body { padding: 1.5rem 1.75rem; overflow-y: auto; flex: 1; }
+        .modal-footer {
+            padding: 1rem 1.75rem;
+            border-top: 1px solid var(--border-color);
+            display: flex; gap: 0.75rem; justify-content: flex-end;
+        }
+
+        /* === HITL MODAL === */
+        .match-option {
+            background: var(--bg-card2);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.85rem 1.25rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .match-option:hover { border-color: var(--accent-indigo); background: rgba(99,102,241,0.06); }
+        .match-option .mo-name { font-weight: 600; font-size: 0.88rem; }
+        .match-option .mo-id { font-size: 0.75rem; color: var(--text-secondary); }
+        .match-option .mo-score { font-size: 0.75rem; color: var(--accent-green); font-weight: 600; }
+
+        /* === DEFICIT RESOLVE MODAL === */
+        .deficit-meta { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1.25rem; }
+        .meta-row { display: flex; justify-content: space-between; font-size: 0.85rem; }
+        .meta-row span:first-child { color: var(--text-secondary); }
+        .meta-row span:last-child { font-weight: 600; }
+
+        /* === NEGOTIATION PANEL (Simulator) === */
+        .neg-panel {
+            display: none;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+        .neg-panel.visible { display: flex; }
+        .chat-wrap {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            height: 260px;
+            overflow-y: auto;
+            display: flex; flex-direction: column; gap: 0.75rem;
+        }
+        .chat-row { display: flex; gap: 0.75rem; }
+        .chat-send-row { display: flex; gap: 0.5rem; }
+        .chat-send-input {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.65rem 1rem;
             border-radius: 10px;
             outline: none;
+            font-size: 0.85rem;
         }
-        .btn-send {
-            background-color: var(--accent-blue);
-            border: none;
-            color: white;
-            padding: 0 1.25rem;
-            border-radius: 10px;
-            font-weight: 600;
+        .chat-send-input:focus { border-color: var(--accent-indigo); }
+
+        /* === QUOTE REPOSITORY === */
+        .quote-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .quote-card {
+            background: var(--bg-card2);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.25rem;
             cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
         }
+        .quote-card::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+        }
+        .quote-card.generated::after { background: linear-gradient(90deg, #6366F1, #8B5CF6); }
+        .quote-card.escalated::after { background: linear-gradient(90deg, #F59E0B, #EF4444); }
+        .quote-card.approved::after { background: linear-gradient(90deg, #10B981, #06B6D4); }
+        .quote-card.rejected::after { background: linear-gradient(90deg, #EF4444, #DC2626); }
+        .quote-card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(0,0,0,0.4), var(--shadow-glow); border-color: var(--accent-indigo); }
+        .quote-card h3 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 0.5rem; }
+        .quote-card .qc-customer { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 0.75rem; }
+        .quote-card .qc-total { font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; color: var(--accent-cyan); }
+        .quote-card .qc-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.05); }
+        .quote-card .qc-date { font-size: 0.72rem; color: var(--text-secondary); }
+
+        /* === INVENTORY TABLE === */
+        .inventory-card {
+            background: var(--bg-card2);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            display: flex; align-items: center; gap: 1rem;
+            margin-bottom: 0.5rem;
+            transition: var(--transition);
+        }
+        .inventory-card:hover { border-color: var(--accent-red); }
+        .inv-stock-badge {
+            background: rgba(239,68,68,0.12);
+            color: var(--accent-red);
+            border: 1px solid rgba(239,68,68,0.2);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            text-align: center;
+            min-width: 60px;
+        }
+        .inv-stock-badge.zero { background: rgba(239,68,68,0.2); color: #FF6B6B; }
+        .inv-stock-badge .stock-num { font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; line-height: 1; }
+        .inv-stock-badge .stock-label { font-size: 0.6rem; color: var(--text-secondary); }
+
+        /* === SPINNER === */
+        .spinner {
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* === EMPTY STATE === */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+        .empty-state .es-icon { font-size: 3.5rem; margin-bottom: 1rem; opacity: 0.4; }
+        .empty-state h3 { font-family: var(--font-display); font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.5rem; }
+        .empty-state p { font-size: 0.85rem; }
+
+        /* === NOTIFICATION TOAST === */
+        #toast-container {
+            position: fixed; bottom: 2rem; right: 2rem;
+            display: flex; flex-direction: column; gap: 0.75rem;
+            z-index: 999;
+        }
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.9rem 1.25rem;
+            max-width: 360px;
+            display: flex; align-items: center; gap: 0.75rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            animation: toastIn 0.3s ease;
+        }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+        .toast.success { border-left: 3px solid var(--accent-green); }
+        .toast.error { border-left: 3px solid var(--accent-red); }
+        .toast.info { border-left: 3px solid var(--accent-blue); }
+        .toast-msg { font-size: 0.83rem; }
+
+        /* === LOADER OVERLAY === */
+        .loader-overlay {
+            position: absolute; inset: 0;
+            background: rgba(7,11,24,0.85);
+            border-radius: inherit;
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 1rem;
+        }
+        .loader-overlay.visible { display: flex; }
+        .big-spinner { width: 48px; height: 48px; border: 4px solid rgba(99,102,241,0.1); border-top-color: var(--accent-indigo); border-radius: 50%; animation: spin 1s linear infinite; }
+
+        /* Misc */
+        .divider { border: none; border-top: 1px solid var(--border-color); margin: 1.25rem 0; }
+        .text-muted { color: var(--text-secondary); }
+        .text-sm { font-size: 0.8rem; }
+        .fw-600 { font-weight: 600; }
+        .mt-1 { margin-top: 0.5rem; }
+        .gap-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
     </style>
 </head>
 <body>
 
-    <div class="dashboard">
-        
-        <!-- Header -->
-        <header>
-            <div class="logo">
-                <h1>TROFEO Ingestion Dashboard</h1>
-                <p>Fully Functional Client-Server SKU matching quotation engine</p>
+<div class="app-shell">
+
+    <!-- TOP NAVIGATION -->
+    <nav class="top-nav">
+        <div class="nav-brand">
+            <div class="nav-brand-icon">🔩</div>
+            <div>
+                <h1>TROFEO Admin</h1>
+                <p>Hardware Command Center</p>
             </div>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <div class="form-group" style="margin-bottom: 0; min-width: 200px;">
-                    <select id="tenantSelect" style="background-color: var(--bg-card); border-color: var(--border-color); padding: 0.5rem 1rem; border-radius: 10px; color: var(--text-primary); outline: none;">
-                        <!-- Dynamically filled -->
-                    </select>
-                </div>
-                <div class="badge-live">Server Connected</div>
+        </div>
+        <div class="nav-tabs">
+            <button class="nav-tab active" id="tab-simulator" onclick="switchTab('simulator')">
+                ⚡ Live Simulator
+            </button>
+            <button class="nav-tab" id="tab-deficits" onclick="switchTab('deficits')">
+                📦 Deficits
+                <span class="tab-badge" id="deficits-badge" style="display:none">0</span>
+            </button>
+            <button class="nav-tab" id="tab-negotiations" onclick="switchTab('negotiations')">
+                🤝 Negotiations
+                <span class="tab-badge yellow" id="negs-badge" style="display:none">0</span>
+            </button>
+            <button class="nav-tab" id="tab-quotes" onclick="switchTab('quotes')">
+                🗂️ Quote Repository
+            </button>
+        </div>
+        <div class="nav-controls">
+            <select class="tenant-selector" id="tenantSelect">
+                <option value="default">Trofeo Hardware</option>
+            </select>
+            <div class="live-indicator">
+                <div class="live-dot"></div>
+                Connected
             </div>
-        </header>
-        
-        <!-- Main Layout -->
-        <div class="main-grid">
-            
-            <!-- Left inputs card -->
-            <div class="card">
-                <h2>Enquiry Ingestion</h2>
-                
-                <div class="form-group">
-                    <label>Order enquiry list</label>
-                    <textarea id="orderInput" placeholder="Paste order list or email text here..."></textarea>
+        </div>
+    </nav>
+
+    <!-- ===================== TAB 1: LIVE SIMULATOR ===================== -->
+    <div class="tab-content active" id="content-simulator">
+        <div class="sim-layout">
+            <!-- Input Card -->
+            <div class="section-card" style="position:relative">
+                <div class="section-header">
+                    <h2><span class="icon">📩</span> Enquiry Ingestion</h2>
                 </div>
-                
-                <div class="form-group">
-                    <label>Quick presets</label>
-                    <div class="preset-buttons">
-                        <button class="btn-preset" id="loadEmail">Email Enquiry</button>
-                        <button class="btn-preset" id="loadWhatsApp">WhatsApp Chat</button>
-                        <button class="btn-preset" id="clearBtn">Clear</button>
+                <div class="section-body">
+                    <div class="form-group">
+                        <label class="form-label">Order Enquiry Text</label>
+                        <textarea id="orderInput" class="form-control" placeholder="Paste customer enquiry email or WhatsApp message here…"></textarea>
                     </div>
+                    <div class="form-group">
+                        <label class="form-label">Quick Presets</label>
+                        <div class="preset-row">
+                            <button class="btn-preset" id="loadEmail">📧 Email</button>
+                            <button class="btn-preset" id="loadWhatsApp">💬 WhatsApp</button>
+                            <button class="btn-preset" id="loadDeficitTest">⚠️ Deficit Test</button>
+                            <button class="btn-preset" id="clearBtn">🗑️ Clear</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">CRM Customer</label>
+                        <select id="crmSelect" class="form-control">
+                            <option value="walkin_retail@guest.com">Walk-in Retail (0%)</option>
+                            <option value="john.carpenter@localshop.com">John Carpenter — Wholesale (10%)</option>
+                            <option value="apex_builders@contractor.com">Apex Builders — Contractor (15%)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Extraction Engine</label>
+                        <div class="toggle-row">
+                            <button class="toggle-opt active" id="engineA">Scenario A (Fuzzy / Free)</button>
+                            <button class="toggle-opt" id="engineB">Scenario B (Semantic AI)</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-full btn-lg" id="processBtn">⚡ Run Matching Pipeline</button>
+                </div>
+                <div class="loader-overlay" id="simLoader">
+                    <div class="big-spinner"></div>
+                    <p style="font-family:var(--font-display);font-weight:500" id="simLoaderMsg">Connecting to backend…</p>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="results-box">
+                <!-- Metrics Row -->
+                <div class="metrics-row">
+                    <div class="metric-box"><span>Items Parsed</span><strong id="metricParsed">—</strong></div>
+                    <div class="metric-box"><span>Match Rate</span><strong id="metricMatch">—</strong></div>
+                    <div class="metric-box"><span>Search Time</span><strong id="metricTime">—</strong></div>
+                    <div class="metric-box"><span>API Cost</span><strong id="metricCost">—</strong></div>
                 </div>
 
-                <div class="form-group">
-                    <label>CRM Client Profiling</label>
-                    <select id="crmSelect">
-                        <option value="walkin_retail@guest.com">walkin_retail@guest.com (Standard retail)</option>
-                        <option value="john.carpenter@localshop.com">john.carpenter@localshop.com (Wholesale: 10% off)</option>
-                        <option value="apex_builders@contractor.com">apex_builders@contractor.com (Contractor: 15% off)</option>
-                    </select>
+                <!-- HITL Warning -->
+                <div class="hitl-warn" id="hitlAlert">
+                    <p>⚠️ Low-confidence matches detected (&lt;80%). Human review recommended.</p>
+                    <button class="btn btn-warning btn-sm" id="openHitlBtn">Review</button>
                 </div>
 
-                <div class="form-group">
-                    <label>Extraction Engine</label>
-                    <div class="toggle-group">
-                        <button class="toggle-btn active" id="engineA">Scenario A (Fuzzy / Free)</button>
-                        <button class="toggle-btn" id="engineB">Scenario B (Semantic / Paid)</button>
+                <!-- Results Table -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <h2><span class="icon">🧮</span> Match Results Matrix</h2>
+                        <div class="gap-row" id="actionRow" style="display:none">
+                            <button class="btn btn-ghost btn-sm" id="negotiateOpenBtn">🤝 Negotiate</button>
+                            <button class="btn btn-primary btn-sm" id="generatePdfBtn">📄 Generate Quote PDF</button>
+                        </div>
                     </div>
-                </div>
-                
-                <button class="btn-process" id="processBtn">⚡ Process Order</button>
-                
-                <div class="loader-overlay" id="loader">
-                    <div class="spinner"></div>
-                    <p style="font-family: var(--font-display); font-weight: 500;" id="loaderStatus">Running matching pipeline...</p>
-                </div>
-            </div>
-            
-            <!-- Right side Results and outputs -->
-            <div class="results-container">
-                
-                <!-- Metrics -->
-                <div class="metrics-bar">
-                    <div class="metric-card">
-                        <span>Items Parsed</span>
-                        <strong id="metricParsed">0</strong>
-                    </div>
-                    <div class="metric-card">
-                        <span>Success Match Rate</span>
-                        <strong id="metricMatch">0%</strong>
-                    </div>
-                    <div class="metric-card">
-                        <span>Database Lookup Time</span>
-                        <strong id="metricTime">0.00s</strong>
-                    </div>
-                    <div class="metric-card">
-                        <span>API Cost</span>
-                        <strong id="metricCost">$0.0000</strong>
-                    </div>
-                </div>
-                
-                <!-- HITL Alert -->
-                <div class="hitl-alert" id="hitlAlert">
-                    <h4>⚠️ Quality Gate: Low-confidence matches detected (<80%). Review is required.</h4>
-                    <button id="openHitlBtn">Review Matches</button>
-                </div>
-                
-                <!-- Match Results Matrix -->
-                <div class="card" style="padding-bottom: 1rem;">
-                    <h2>Match Results Matrix</h2>
-                    <div class="table-wrapper">
-                        <table>
+                    <div class="data-table-wrapper">
+                        <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Customer Enquiry Line</th>
-                                    <th>Matched SKU (ID)</th>
+                                    <th>Customer Line</th>
+                                    <th>Matched SKU</th>
                                     <th>Qty</th>
                                     <th>Confidence</th>
-                                    <th>Stock Status</th>
-                                    <th>Price</th>
-                                    <th>Total</th>
+                                    <th>Stock</th>
+                                    <th>Unit Price</th>
+                                    <th>Line Total</th>
                                 </tr>
                             </thead>
                             <tbody id="resultsTableBody">
-                                <tr>
-                                    <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">
-                                        Paste or load an enquiry in the left panel and click 'Process Order'.
-                                    </td>
-                                </tr>
+                                <tr><td colspan="7" class="empty-state" style="padding:3rem 0;border:none;"><div class="es-icon">🔍</div><p class="text-muted">Run the pipeline to see results here.</p></td></tr>
                             </tbody>
                         </table>
                     </div>
-                    
-                    <div class="summary-invoice-layout">
-                        <!-- Invoice breakdown card -->
-                        <div class="invoice-card" id="invoiceCard" style="opacity: 0.3;">
-                            <div class="invoice-row">
-                                <span>Raw Subtotal:</span>
-                                <span id="rawSubtotal">₹0.00</span>
+                    <div class="section-body" id="invoiceSection" style="display:none">
+                        <div class="invoice-layout">
+                            <div class="invoice-box" id="invoiceCard">
+                                <div class="inv-row"><span>Raw Subtotal:</span><span id="rawSubtotal">₹0.00</span></div>
+                                <div class="inv-row" id="discountRow" style="display:none"><span id="discountLabel">CRM Discount:</span><span id="crmDiscount">−₹0.00</span></div>
+                                <div class="inv-row" id="netRow" style="display:none"><span>Net Subtotal:</span><span id="netSubtotal">₹0.00</span></div>
+                                <div class="inv-row"><span>GST (18%):</span><span id="taxAmount">₹0.00</span></div>
+                                <div class="inv-row grand"><span>Grand Total:</span><span id="grandTotal">₹0.00</span></div>
                             </div>
-                            <div class="invoice-row" id="discountRow" style="display: none;">
-                                <span>CRM Customer Discount:</span>
-                                <span id="crmDiscount">-₹0.00</span>
-                            </div>
-                            <div class="invoice-row" id="netRow" style="display: none;">
-                                <span>Net Subtotal:</span>
-                                <span id="netSubtotal">₹0.00</span>
-                            </div>
-                            <div class="invoice-row">
-                                <span>GST (18%):</span>
-                                <span id="taxAmount">₹0.00</span>
-                            </div>
-                            <div class="invoice-row total">
-                                <span>Grand Total:</span>
-                                <span id="grandTotal">₹0.00</span>
+                            <div class="qr-box" id="qrCard">
+                                <div class="qr-bg"><canvas id="qrCanvas"></canvas></div>
+                                <p class="text-sm text-muted" style="text-align:center"><strong>UPI Payment QR</strong><br>Scan to pay balance</p>
                             </div>
                         </div>
-                        
-                        <!-- QR payment Code -->
-                        <div class="qr-card" id="qrCard" style="opacity: 0.3;">
-                            <div class="qr-placeholder">
-                                <canvas id="qrCanvas"></canvas>
-                            </div>
-                            <p style="font-size: 0.75rem; text-align: center; color: var(--text-secondary);"><strong>UPI Payment QR</strong><br>Scan to pay invoice balance</p>
-                        </div>
-                    </div>
-                    
-                    <!-- Action row for Exporting PDF and discounts -->
-                    <div class="action-row" id="actionRow" style="display: none;">
-                        <button class="btn-secondary" id="negotiateOpenBtn">🤝 Negotiate Discount</button>
-                        <button class="btn-secondary" id="generatePdfBtn" style="background-color: var(--accent-indigo); border-color: var(--accent-indigo);">📄 Export Quote PDF</button>
                     </div>
                 </div>
-                
-                <!-- AI Negotiation Interface -->
-                <div class="negotiation-panel" id="negotiationPanel">
-                    <h2 style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
-                        <span>🤝 Conversational AI Sales Negotiator</span>
-                        <span id="negotiationStatus" style="font-size: 0.75rem; background-color: rgba(99, 102, 241, 0.15); color: #A5B4FC; padding: 0.2rem 0.5rem; border-radius: 4px;">Active Chat</span>
-                    </h2>
-                    <div class="form-group">
-                        <label>Target Discount Request (%)</label>
-                        <input type="number" id="targetDiscountInput" value="10" min="1" max="50" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 0.5rem; border-radius: 8px; width: 100px; outline: none;">
-                    </div>
-                    <div class="chat-box" id="chatBox">
-                        <!-- Chat messages -->
-                    </div>
-                    <div class="chat-input-row" id="chatInputRow">
-                        <input type="text" class="chat-input" id="chatInput" placeholder="Explain why you want the discount or write a counter-offer...">
-                        <button class="btn-send" id="chatSendBtn">Send</button>
-                    </div>
-                </div>
-                
-            </div>
-            
-        </div>
-        
-    </div>
 
-    <!-- Review Override Modal -->
-    <div class="modal" id="hitlModal">
-        <div class="modal-content">
-            <h3 id="modalTitle">Review Low Confidence Match</h3>
-            <p style="font-size: 0.9rem;" id="modalDesc">Select the correct matching catalog item to register the synonym in the database.</p>
-            <div class="modal-option-list" id="modalOptions"></div>
-            <div class="modal-actions">
-                <button class="btn-cancel" id="closeModalBtn">Cancel Override</button>
+                <!-- AI Negotiation Chat -->
+                <div class="section-card neg-panel" id="negotiationPanel">
+                    <div class="section-header">
+                        <h2><span class="icon">🤝</span> AI Negotiation Chat</h2>
+                        <span class="pill purple" id="negStatus">Active</span>
+                    </div>
+                    <div class="section-body" style="display:flex;flex-direction:column;gap:1rem">
+                        <div class="form-group" style="flex-direction:row;align-items:center;gap:1rem;margin-bottom:0">
+                            <label class="form-label" style="white-space:nowrap;margin-bottom:0">Target Discount (%)</label>
+                            <input type="number" id="targetDiscountInput" value="10" min="1" max="50" class="form-control" style="width:90px">
+                        </div>
+                        <div class="chat-wrap" id="chatBox"></div>
+                        <div class="chat-send-row">
+                            <input type="text" class="chat-send-input" id="chatInput" placeholder="Write your counter offer or explain why…">
+                            <button class="btn btn-primary" id="chatSendBtn">Send</button>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
 
-    <script>
-        // Preset texts
-        const PRESET_EMAIL = `Subject: Material Quote Request
+    <!-- ===================== TAB 2: DEFICITS MANAGER ===================== -->
+    <div class="tab-content" id="content-deficits">
 
-Dear Sales,
-Please quote the following materials:
+        <!-- Low Stock Alert Banner -->
+        <div class="low-stock-banner" id="lowStockBanner">
+            <div class="banner-icon">🚨</div>
+            <div class="banner-text">
+                <strong id="lowStockCount">0 SKUs</strong> are at critically low stock levels (≤ 5 units).
+                <p id="lowStockNames">—</p>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="switchTab('quotes')">View Inventory</button>
+        </div>
+
+        <!-- KPI Bar -->
+        <div class="kpi-bar">
+            <div class="kpi-card red">
+                <div class="kpi-icon">📦</div>
+                <div class="kpi-content">
+                    <span>Pending Deficits</span>
+                    <strong id="kpiPending">—</strong>
+                </div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-content">
+                    <span>Resolved Today</span>
+                    <strong id="kpiResolved">—</strong>
+                </div>
+            </div>
+            <div class="kpi-card yellow">
+                <div class="kpi-icon">🏭</div>
+                <div class="kpi-content">
+                    <span>Unique SKUs Affected</span>
+                    <strong id="kpiSKUs">—</strong>
+                </div>
+            </div>
+            <div class="kpi-card blue">
+                <div class="kpi-icon">👥</div>
+                <div class="kpi-content">
+                    <span>Customers Waiting</span>
+                    <strong id="kpiCustomers">—</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deficits Table -->
+        <div class="section-card" style="position:relative">
+            <div class="section-header">
+                <h2><span class="icon">⚠️</span> Active Stock Deficits</h2>
+                <button class="btn btn-ghost btn-sm" onclick="loadDeficits()">🔄 Refresh</button>
+            </div>
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Invoice</th>
+                            <th>SKU ID</th>
+                            <th>Product</th>
+                            <th>Requested</th>
+                            <th>Available</th>
+                            <th>Deficit</th>
+                            <th>Customer</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deficitsTableBody">
+                        <tr><td colspan="11"><div class="empty-state"><div class="es-icon">📦</div><h3>Loading deficits…</h3></div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="loader-overlay" id="deficitsLoader"><div class="big-spinner"></div><p style="font-family:var(--font-display)">Loading deficits…</p></div>
+        </div>
+    </div>
+
+    <!-- ===================== TAB 3: NEGOTIATIONS DESK ===================== -->
+    <div class="tab-content" id="content-negotiations">
+        <div class="section-card" style="position:relative">
+            <div class="section-header">
+                <h2><span class="icon">🤝</span> Escalated Negotiations Desk</h2>
+                <button class="btn btn-ghost btn-sm" onclick="loadNegotiations()">🔄 Refresh</button>
+            </div>
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Invoice</th>
+                            <th>Customer</th>
+                            <th>Subtotal</th>
+                            <th>Current Discount</th>
+                            <th>Grand Total</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Chat History</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="negsTableBody">
+                        <tr><td colspan="9"><div class="empty-state"><div class="es-icon">🤝</div><h3>Loading negotiations…</h3></div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="loader-overlay" id="negsLoader"><div class="big-spinner"></div><p style="font-family:var(--font-display)">Loading negotiations…</p></div>
+        </div>
+    </div>
+
+    <!-- ===================== TAB 4: QUOTE REPOSITORY ===================== -->
+    <div class="tab-content" id="content-quotes">
+
+        <!-- Low Stock Inventory Cards (shown at top of quotes tab) -->
+        <div class="section-card" style="margin-bottom:1.5rem">
+            <div class="section-header">
+                <h2><span class="icon">🏭</span> Live Inventory — Low Stock Warning</h2>
+                <button class="btn btn-ghost btn-sm" onclick="loadLowStock()">🔄 Refresh</button>
+            </div>
+            <div class="section-body" id="lowStockBody">
+                <div class="empty-state"><div class="es-icon">✅</div><h3>All Good</h3><p>No low-stock items detected.</p></div>
+            </div>
+        </div>
+
+        <div class="section-card" style="position:relative">
+            <div class="section-header">
+                <h2><span class="icon">🗂️</span> Quotation Repository</h2>
+                <div class="gap-row">
+                    <input type="text" id="quoteSearch" class="form-control" style="width:220px;padding:0.4rem 0.75rem;font-size:0.82rem" placeholder="Search by customer or invoice…">
+                    <button class="btn btn-ghost btn-sm" onclick="loadQuotes()">🔄 Refresh</button>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="quote-grid" id="quoteGrid">
+                    <div class="empty-state" style="grid-column:1/-1"><div class="es-icon">🗂️</div><h3>Loading quotes…</h3></div>
+                </div>
+            </div>
+            <div class="loader-overlay" id="quotesLoader"><div class="big-spinner"></div><p style="font-family:var(--font-display)">Loading quotes…</p></div>
+        </div>
+    </div>
+
+</div><!-- end app-shell -->
+
+<!-- ===== MODALS ===== -->
+
+<!-- HITL Override Modal -->
+<div class="modal-overlay" id="hitlModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="hitlModalTitle">Review Match</h3>
+            <button class="modal-close" onclick="closeModal('hitlModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted text-sm" style="margin-bottom:1rem" id="hitlModalDesc">Select the correct SKU to register as a synonym in the database.</p>
+            <div id="hitlOptions"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeModal('hitlModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Deficit Resolve Modal -->
+<div class="modal-overlay" id="deficitModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>🏭 Fulfill Deficit &amp; Update Stock</h3>
+            <button class="modal-close" onclick="closeModal('deficitModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="deficit-meta" id="deficitModalMeta"></div>
+            <hr class="divider">
+            <div class="form-group">
+                <label class="form-label">New Stock Quantity to Add</label>
+                <input type="number" id="newStockInput" class="form-control" min="1" value="10" placeholder="Enter new total stock…">
+                <p class="text-muted text-sm mt-1">This will update the catalog CSV and trigger the auto-reload. The customer will receive a new updated quotation email automatically.</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeModal('deficitModal')">Cancel</button>
+            <button class="btn btn-success" id="resolveDeficitBtn">✅ Resolve &amp; Email Customer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chat History Modal -->
+<div class="modal-overlay" id="chatModal">
+    <div class="modal-box" style="max-width:620px">
+        <div class="modal-header">
+            <h3 id="chatModalTitle">💬 Chat History</h3>
+            <button class="modal-close" onclick="closeModal('chatModal')">✕</button>
+        </div>
+        <div class="modal-body" style="padding:0">
+            <div style="padding:1.5rem;display:flex;flex-direction:column;gap:0.75rem;max-height:450px;overflow-y:auto" id="chatModalBody">
+                <div class="empty-state"><div class="es-icon">💬</div><h3>No chat messages</h3></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeModal('chatModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Negotiation Resolve Modal -->
+<div class="modal-overlay" id="negResolveModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="negResolveTitle">Resolve Negotiation</h3>
+            <button class="modal-close" onclick="closeModal('negResolveModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="deficit-meta" id="negResolveMeta"></div>
+            <hr class="divider">
+            <p class="text-muted text-sm" style="margin-bottom:1rem">Choose an action. The customer will receive an updated quotation email immediately.</p>
+            <div style="display:flex;flex-direction:column;gap:0.75rem">
+                <div class="form-group">
+                    <label class="form-label">Custom Discount % (for Approve / Counter)</label>
+                    <div style="display:flex;gap:0.75rem;align-items:center">
+                        <input type="number" id="negDiscountInput" class="form-control" style="max-width:100px" min="0" max="50" step="0.5" value="10">
+                        <span class="text-muted text-sm">Set 0 to use standard pricing</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="closeModal('negResolveModal')">Cancel</button>
+            <button class="btn btn-danger btn-sm" id="negRejectBtn">✗ Reject</button>
+            <button class="btn btn-warning btn-sm" id="negCounterBtn">↔ Counter Offer</button>
+            <button class="btn btn-success btn-sm" id="negApproveBtn">✓ Approve Discount</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<script>
+// ========== STATE ==========
+let selectedEngine = 'A';
+let matchedLines = [];
+let discountPct = 0.0;
+let customerName = 'Walk-in Retail Client';
+let invoiceId = '';
+let chatHistory = [];
+let currentTenant = 'default';
+let currentDeficitId = null;
+let currentNegInvoiceId = null;
+let allQuotes = [];
+let lowStockData = [];
+
+// ========== TAB SWITCHING ==========
+function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('content-' + tab).classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+
+    if (tab === 'deficits') loadDeficits();
+    if (tab === 'negotiations') loadNegotiations();
+    if (tab === 'quotes') { loadQuotes(); loadLowStock(); }
+}
+
+// ========== UTILS ==========
+function fmt(n) { return '₹' + parseFloat(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function getTenantId() { return document.getElementById('tenantSelect').value || 'default'; }
+
+function showToast(msg, type = 'info', duration = 4000) {
+    const container = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    el.innerHTML = `<span>${icon}</span><span class="toast-msg">${msg}</span>`;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), duration);
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ========== TENANT LOADING ==========
+async function loadTenants() {
+    try {
+        const res = await fetch('/api/tenants');
+        const data = await res.json();
+        const sel = document.getElementById('tenantSelect');
+        sel.innerHTML = '';
+        data.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.tenant_id;
+            opt.textContent = t.display_name || t.tenant_id;
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('Could not load tenants:', e);
+    }
+}
+
+// ========== SIMULATOR ==========
+const PRESET_EMAIL = `Subject: Material Quote Request
+Dear Sales Team,
+Please quote the following items urgently:
 1. Brass Threaded Elbow Fitting 1/2 Inch - 15 units
 2. PTFE Teflon Seal Tape 12mm - 10 rolls
 3. Hex Head Bolt M8 x 50mm - 100 pcs
 4. Standard Hex Nut M8 - 100 pcs
 5. Spirit Level 24 Inch - 2 units
+Contact: +91 90000 00000
+Thanks, Apex Builders Procurement`;
 
-Thanks,
-Apex Builders Procurement`;
-
-        const PRESET_WHATSAPP = `hi bro need some stuff urgently for delivery today:
+const PRESET_WHATSAPP = `hi need stuff urgently:
 - 12 brass elbow joints 1/2 size
-- 5 teflon taps (the plumbing sealing one)
-- 50 hex bolts m8 50mm and also matching 50 hex nuts m8
-- 1 spirit level 24inch size
-- 1 wd-40 spray can (300ml)
-- 4 paint brushes 2 inch
-let me know price thx`;
+- 5 teflon taps
+- 50 hex bolts m8 50mm and matching 50 hex nuts m8
+- 1 spirit level 24inch
+- 1 wd-40 spray 300ml
+let me know price`;
 
-        // Backend state variables
-        let selectedEngine = 'A';
-        let matchedLines = [];
-        let discountPct = 0.0;
-        let customerName = "Walk-in Retail Client";
-        let invoiceId = "";
-        let currentlyFlaggedLineIdx = -1;
-        let chatHistory = [];
+const PRESET_DEFICIT = `Subject: Urgent Stock Request
+Dear Sales,
+I need the following items immediately:
+1. Heavy Duty Staple Tacker Gun - 10 units
+2. PTFE Teflon Seal Tape 12mm - 100 rolls
+3. Hex Head Bolt M8 x 50mm - 500 pcs
+Contact: +91 90000 00000
+Rajarajan S`;
 
-        // DOM elements
-        const orderInput = document.getElementById('orderInput');
-        const crmSelect = document.getElementById('crmSelect');
-        const engineABtn = document.getElementById('engineA');
-        const engineBBtn = document.getElementById('engineB');
-        const processBtn = document.getElementById('processBtn');
-        const loader = document.getElementById('loader');
-        const loaderStatus = document.getElementById('loaderStatus');
-        const hitlAlert = document.getElementById('hitlAlert');
-        const openHitlBtn = document.getElementById('openHitlBtn');
-        const resultsTableBody = document.getElementById('resultsTableBody');
-        const invoiceCard = document.getElementById('invoiceCard');
-        const qrCard = document.getElementById('qrCard');
-        const actionRow = document.getElementById('actionRow');
-        const generatePdfBtn = document.getElementById('generatePdfBtn');
-        const negotiateOpenBtn = document.getElementById('negotiateOpenBtn');
-        const negotiationPanel = document.getElementById('negotiationPanel');
-        const targetDiscountInput = document.getElementById('targetDiscountInput');
-        const chatBox = document.getElementById('chatBox');
-        const chatInput = document.getElementById('chatInput');
-        const chatSendBtn = document.getElementById('chatSendBtn');
-        const hitlModal = document.getElementById('hitlModal');
-        const closeModalBtn = document.getElementById('closeModalBtn');
+document.getElementById('loadEmail').onclick = () => document.getElementById('orderInput').value = PRESET_EMAIL;
+document.getElementById('loadWhatsApp').onclick = () => document.getElementById('orderInput').value = PRESET_WHATSAPP;
+document.getElementById('loadDeficitTest').onclick = () => document.getElementById('orderInput').value = PRESET_DEFICIT;
+document.getElementById('clearBtn').onclick = () => { document.getElementById('orderInput').value = ''; clearSimResults(); };
 
-        // Setup presets
-        document.getElementById('loadEmail').addEventListener('click', () => orderInput.value = PRESET_EMAIL);
-        document.getElementById('loadWhatsApp').addEventListener('click', () => orderInput.value = PRESET_WHATSAPP);
-        document.getElementById('clearBtn').addEventListener('click', () => {
-            orderInput.value = '';
-            clearDashboard();
+document.getElementById('engineA').onclick = function() {
+    selectedEngine = 'A';
+    this.classList.add('active');
+    document.getElementById('engineB').classList.remove('active');
+};
+document.getElementById('engineB').onclick = function() {
+    selectedEngine = 'B';
+    this.classList.add('active');
+    document.getElementById('engineA').classList.remove('active');
+};
+
+document.getElementById('processBtn').onclick = runPipeline;
+document.getElementById('openHitlBtn').onclick = openHitlModal;
+document.getElementById('generatePdfBtn').onclick = generatePdf;
+document.getElementById('negotiateOpenBtn').onclick = toggleNegPanel;
+document.getElementById('chatSendBtn').onclick = sendNegMsg;
+document.getElementById('chatInput').onkeypress = e => { if (e.key === 'Enter') sendNegMsg(); };
+
+function clearSimResults() {
+    document.getElementById('resultsTableBody').innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:3rem 0;border:none;"><div class="es-icon">🔍</div><p class="text-muted">Run the pipeline to see results here.</p></td></tr>';
+    document.getElementById('hitlAlert').classList.remove('visible');
+    document.getElementById('invoiceSection').style.display = 'none';
+    document.getElementById('actionRow').style.display = 'none';
+    document.getElementById('negotiationPanel').classList.remove('visible');
+    ['metricParsed','metricMatch','metricTime','metricCost'].forEach(id => document.getElementById(id).textContent = '—');
+}
+
+async function runPipeline() {
+    const rawText = document.getElementById('orderInput').value.trim();
+    if (!rawText) { showToast('Please enter an enquiry first.', 'error'); return; }
+
+    const loader = document.getElementById('simLoader');
+    const msg = document.getElementById('simLoaderMsg');
+    loader.classList.add('visible');
+    msg.textContent = 'Connecting to backend…';
+
+    let inputType = 'custom';
+    if (rawText.includes('Subject:')) inputType = 'email';
+    else if (rawText.toLowerCase().includes('hi ') || rawText.toLowerCase().includes('bro')) inputType = 'whatsapp';
+
+    const payload = {
+        text: rawText,
+        engine: selectedEngine,
+        customer_email: document.getElementById('crmSelect').value,
+        input_type: inputType,
+        tenant_id: getTenantId()
+    };
+
+    try {
+        msg.textContent = 'Running matching pipeline…';
+        const res = await fetch('/api/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
+        if (!res.ok) throw new Error('Processing failed.');
+        const data = await res.json();
 
-        // Setup engines
-        engineABtn.addEventListener('click', () => { selectedEngine = 'A'; engineABtn.classList.add('active'); engineBBtn.classList.remove('active'); });
-        engineBBtn.addEventListener('click', () => { selectedEngine = 'B'; engineBBtn.classList.add('active'); engineABtn.classList.remove('active'); });
+        matchedLines = data.matched_lines;
+        discountPct = data.discount_pct;
+        customerName = data.customer_name;
+        invoiceId = 'QTN-' + String(Math.floor(Math.random()*90000 + 10000));
+        chatHistory = [];
+        document.getElementById('negotiationPanel').classList.remove('visible');
 
-        // Setup processing
-        processBtn.addEventListener('click', processOrderWithServer);
-        openHitlBtn.addEventListener('click', openHitlReviewModal);
-        closeModalBtn.addEventListener('click', () => hitlModal.style.display = 'none');
-        generatePdfBtn.addEventListener('click', generateQuotationPdf);
-        negotiateOpenBtn.addEventListener('click', toggleNegotiationPanel);
-        chatSendBtn.addEventListener('click', sendNegotiationMessage);
-        chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendNegotiationMessage(); });
+        document.getElementById('metricParsed').textContent = data.metrics.parsed_count;
+        const matched = matchedLines.filter(l => l.matched_sku_id !== 'UNKNOWN' && l.confidence >= 80).length;
+        document.getElementById('metricMatch').textContent = matchedLines.length ? Math.round(matched/matchedLines.length*100)+'%' : '0%';
+        document.getElementById('metricTime').textContent = data.metrics.search_time_sec + 's';
+        document.getElementById('metricCost').textContent = '$' + data.metrics.cost_usd.toFixed(4);
 
-        function clearDashboard() {
-            resultsTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem 0;">Paste or load an enquiry in the left panel and click 'Process Order'.</td></tr>`;
-            hitlAlert.style.display = 'none';
-            invoiceCard.style.opacity = '0.3';
-            qrCard.style.opacity = '0.3';
-            actionRow.style.display = 'none';
-            negotiationPanel.style.display = 'none';
-            document.getElementById('rawSubtotal').innerText = '₹0.00';
-            document.getElementById('discountRow').style.display = 'none';
-            document.getElementById('netRow').style.display = 'none';
-            document.getElementById('taxAmount').innerText = '₹0.00';
-            document.getElementById('grandTotal').innerText = '₹0.00';
-            clearQRCanvas();
-        }
+        const lowConf = matchedLines.some(l => l.confidence < 80 && l.matched_sku_id !== 'UNKNOWN');
+        document.getElementById('hitlAlert').classList.toggle('visible', lowConf);
 
-        async function processOrderWithServer() {
-            const rawText = orderInput.value.trim();
-            if (!rawText) {
-                alert("Please load or paste order text first!");
-                return;
-            }
+        document.getElementById('actionRow').style.display = 'flex';
+        renderTable();
 
-            loader.style.display = 'flex';
-            loaderStatus.innerText = "Connecting to backend FastAPI server...";
+    } catch (err) {
+        showToast('Error: ' + err.message + '. Is the FastAPI server running?', 'error');
+    } finally {
+        loader.classList.remove('visible');
+    }
+}
 
-            let inputType = "custom";
-            if (rawText.includes("Subject:")) inputType = "email";
-            else if (rawText.includes("hi bro")) inputType = "whatsapp";
+function renderTable() {
+    const tbody = document.getElementById('resultsTableBody');
+    tbody.innerHTML = '';
+    let rawSub = 0;
 
-            const selectedTenant = document.getElementById('tenantSelect').value;
-            const payload = {
-                text: rawText,
-                engine: selectedEngine,
-                customer_email: crmSelect.value,
-                input_type: inputType,
-                tenant_id: selectedTenant
-            };
+    matchedLines.forEach(line => {
+        const orig = line.original_line.length > 32 ? line.original_line.substr(0,29)+'…' : line.original_line;
+        const skuDisplay = line.matched_sku_id === 'UNKNOWN' ? '<span class="pill red">No match</span>' : `<strong>${line.matched_sku_name}</strong><br><span class="text-sm text-muted">${line.matched_sku_id}</span>`;
+        const price = line.unit_price || 0;
+        const qty = line.quantity || 0;
+        const total = price * qty;
+        rawSub += total;
 
-            try {
-                const response = await fetch('/api/process', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (!response.ok) throw new Error("Processing failed on server.");
-                
-                const data = await response.json();
-                
-                // Save state
-                matchedLines = data.matched_lines;
-                discountPct = data.discount_pct;
-                customerName = data.customer_name;
-                invoiceId = Math.floor(1000 + Math.random() * 9000).toString();
-                chatHistory = []; // Reset chat
-                negotiationPanel.style.display = 'none'; // Reset chat panel view
+        const confPct = line.confidence || 0;
+        let confClass = confPct >= 80 ? 'high' : confPct >= 50 ? 'mid' : 'low';
+        const confHtml = `<div style="font-size:0.8rem">${confPct}%</div><div class="conf-bar"><div class="conf-fill ${confClass}" style="width:${confPct}%"></div></div>`;
 
-                // Update Metrics Bar
-                document.getElementById('metricParsed').innerText = data.metrics.parsed_count;
-                document.getElementById('metricMatch').innerText = `${Math.round((matchedLines.filter(l => l.confidence >= 80).length / matchedLines.length) * 100)}%`;
-                document.getElementById('metricTime').innerText = `${data.metrics.search_time_sec}s`;
-                document.getElementById('metricCost').innerText = `₹${data.metrics.cost_usd.toFixed(4)}`; // API cost (internal metric)
+        let stockHtml = '<span class="pill green">In Stock</span>';
+        if (line.matched_sku_id === 'UNKNOWN') stockHtml = '<span class="pill gray">N/A</span>';
+        else if (qty === 0) stockHtml = '<span class="pill red">Out of Stock</span>';
+        else if (line.stock_avail !== undefined && line.stock_avail <= 5) stockHtml = `<span class="pill yellow">Low (${line.stock_avail})</span>`;
 
-                // Check for HITL
-                const lowConfExists = matchedLines.some(l => l.confidence < 80);
-                if (lowConfExists) {
-                    hitlAlert.style.display = 'flex';
-                } else {
-                    hitlAlert.style.display = 'none';
-                }
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td title="${line.original_line}">${orig}</td><td>${skuDisplay}</td><td>${qty}</td><td>${confHtml}</td><td>${stockHtml}</td><td>${fmt(price)}</td><td><strong>${fmt(total)}</strong></td>`;
+        tbody.appendChild(tr);
+    });
 
-                actionRow.style.display = 'flex';
-                renderTableAndInvoice();
-                
-            } catch (err) {
-                alert(`Error: ${err.message}. Make sure the FastAPI server is running!`);
-            } finally {
-                loader.style.display = 'none';
-            }
-        }
+    const discount = rawSub * discountPct;
+    const net = rawSub - discount;
+    const tax = net * 0.18;
+    const grand = net + tax;
 
-        function renderTableAndInvoice() {
-            resultsTableBody.innerHTML = '';
-            let rawSubtotal = 0.0;
+    document.getElementById('rawSubtotal').textContent = fmt(rawSub);
+    if (discountPct > 0) {
+        document.getElementById('discountRow').style.display = 'flex';
+        document.getElementById('netRow').style.display = 'flex';
+        document.getElementById('discountLabel').textContent = `CRM Discount (${Math.round(discountPct*100)}%):`;
+        document.getElementById('crmDiscount').textContent = '−' + fmt(discount);
+        document.getElementById('netSubtotal').textContent = fmt(net);
+    } else {
+        document.getElementById('discountRow').style.display = 'none';
+        document.getElementById('netRow').style.display = 'none';
+    }
+    document.getElementById('taxAmount').textContent = fmt(tax);
+    document.getElementById('grandTotal').textContent = fmt(grand);
+    document.getElementById('invoiceSection').style.display = 'block';
+    drawQR(grand);
+}
 
-            matchedLines.forEach((line) => {
-                const originalText = line.original_line.length > 30 ? line.original_line.substr(0, 27) + '...' : line.original_line;
-                const skuDisplay = line.matched_sku_id === "UNKNOWN" ? "No match found" : `${line.matched_sku_name} (${line.matched_sku_id})`;
-                const price = line.unit_price;
-                const lineTotal = price * line.quantity;
-                rawSubtotal += lineTotal;
+function drawQR(amount) {
+    const canvas = document.getElementById('qrCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 110; canvas.height = 110;
+    ctx.fillStyle = '#1a2340';
+    ctx.fillRect(0, 0, 110, 110);
+    ctx.fillStyle = '#6366F1';
+    ctx.font = 'bold 10px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('UPI QR', 55, 50);
+    ctx.fillText(fmt(amount), 55, 65);
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '9px Inter';
+    ctx.fillText('Trofeo Solution', 55, 80);
+}
 
-                // Confidence pill
-                let confClass = 'conf-high';
-                if (line.confidence < 50) confClass = 'conf-low';
-                else if (line.confidence < 80) confClass = 'conf-mid';
+// HITL modal
+let hitlQueue = [];
+let hitlIdx = 0;
 
-                const confidenceHtml = `
-                    <div style="white-space: nowrap;">
-                        <div class="conf-bar-bg"><div class="conf-bar-fill ${confClass}" style="width: ${line.confidence}%;"></div></div>
-                        <span>${line.confidence}%</span>
-                    </div>
-                `;
+function openHitlModal() {
+    hitlQueue = matchedLines.filter(l => l.confidence < 80 && l.matched_sku_id !== 'UNKNOWN');
+    hitlIdx = 0;
+    showHitlItem();
+    openModal('hitlModal');
+}
 
-                // Stock pill logic (re-implemented in client for speed)
-                // In production, backend serves the exact string, but we can verify
-                let stockStatusHtml = '<span class="status-pill instock">In Stock</span>';
-                if (line.matched_sku_id === "PTFE-TAPE-12" || line.matched_sku_id === "SCREW-WOOD-8-40") {
-                    stockStatusHtml = '<span class="status-pill outstock">Out of Stock</span>';
-                }
+function showHitlItem() {
+    if (hitlIdx >= hitlQueue.length) { closeModal('hitlModal'); showToast('All low-confidence matches reviewed!', 'success'); return; }
+    const line = hitlQueue[hitlIdx];
+    document.getElementById('hitlModalTitle').textContent = `Review Match ${hitlIdx + 1} of ${hitlQueue.length}`;
+    document.getElementById('hitlModalDesc').textContent = `Customer wrote: "${line.original_line}"`;
 
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td title="${line.original_line}">${originalText}</td>
-                    <td title="${skuDisplay}">${skuDisplay}</td>
-                    <td>${line.quantity}</td>
-                    <td>${confidenceHtml}</td>
-                    <td>${stockStatusHtml}</td>
-                    <td>₹${price.toFixed(2)}</td>
-                    <td>₹${lineTotal.toFixed(2)}</td>
-                `;
-                resultsTableBody.appendChild(row);
+    const opts = document.getElementById('hitlOptions');
+    opts.innerHTML = '';
+    (line.candidates || [{ sku_id: line.matched_sku_id, sku_name: line.matched_sku_name, score: line.confidence }]).forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'match-option';
+        div.innerHTML = `<div><div class="mo-name">${c.sku_name || line.matched_sku_name}</div><div class="mo-id">${c.sku_id || line.matched_sku_id}</div></div><span class="mo-score">${c.score || line.confidence}%</span>`;
+        div.onclick = async () => {
+            await fetch('/api/hitl/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: line.parsed_query, sku_id: c.sku_id || line.matched_sku_id, tenant_id: getTenantId() })
             });
+            showToast(`Synonym registered: "${line.parsed_query}" → ${c.sku_id || line.matched_sku_id}`, 'success');
+            hitlIdx++;
+            showHitlItem();
+        };
+        opts.appendChild(div);
+    });
+}
 
-            calculateInvoiceTotals(rawSubtotal);
-        }
-
-        function calculateInvoiceTotals(rawSubtotal) {
-            const discountAmt = rawSubtotal * discountPct;
-            const netSubtotal = rawSubtotal - discountAmt;
-            const taxAmt = netSubtotal * 0.18;
-            const grandTotal = netSubtotal + taxAmt;
-
-            document.getElementById('rawSubtotal').innerText = `₹${rawSubtotal.toFixed(2)}`;
-            
-            if (discountPct > 0) {
-                document.getElementById('discountRow').style.display = 'flex';
-                document.getElementById('crmDiscount').innerText = `-₹${discountAmt.toFixed(2)}`;
-                document.getElementById('discountRow').querySelector('span').innerText = `CRM Discount (${discountPct * 100}%):`;
-                document.getElementById('netRow').style.display = 'flex';
-                document.getElementById('netSubtotal').innerText = `₹${netSubtotal.toFixed(2)}`;
-            } else {
-                document.getElementById('discountRow').style.display = 'none';
-                document.getElementById('netRow').style.display = 'none';
-            }
-
-            document.getElementById('taxAmount').innerText = `₹${taxAmt.toFixed(2)}`;
-            document.getElementById('grandTotal').innerText = `₹${grandTotal.toFixed(2)}`;
-
-            invoiceCard.style.opacity = '1';
-            qrCard.style.opacity = '1';
-
-            drawQR(grandTotal);
-        }
-
-        function openHitlReviewModal() {
-            currentlyFlaggedLineIdx = matchedLines.findIndex(l => l.confidence < 80);
-            if (currentlyFlaggedLineIdx === -1) return;
-
-            const line = matchedLines[currentlyFlaggedLineIdx];
-            document.getElementById('modalTitle').innerText = `Review Match: "${line.parsed_query}"`;
-
-            const modalOptions = document.getElementById('modalOptions');
-            modalOptions.innerHTML = '';
-
-            // Simulated alternative database options for the selector
-            const mockCatalogList = [
-                { id: "ELBOW-BRASS-050", name: "Brass Threaded Elbow Fitting 1/2 Inch", price: 12.50 },
-                { id: "PTFE-TAPE-12", name: "PTFE Teflon Seal Tape 12mm", price: 1.20 },
-                { id: "BOLT-HEX-M8-50", name: "Hex Head Bolt M8 x 50mm", price: 0.45 },
-                { id: "NUT-HEX-M8", name: "Hex Nut M8 Zinc Plated", price: 0.10 },
-                { id: "LEVEL-SPIRIT-24", name: "Spirit Level Aluminum 24 Inch", price: 13.50 },
-                { id: "WD40-SPRAY-300", name: "WD-40 Multi-Use Lubricant 300ml", price: 6.50 },
-                { id: "BRUSH-PAINT-2", name: "Paint Brush 2 Inch Basic", price: 2.50 }
-            ];
-
-            mockCatalogList.forEach(sku => {
-                const btn = document.createElement('button');
-                btn.className = 'modal-option-btn';
-                btn.innerHTML = `<span><strong>${sku.name}</strong> (${sku.id})</span><span>$${sku.price.toFixed(2)}</span>`;
-                btn.addEventListener('click', () => selectHitlOption(sku.id, sku.name, sku.price));
-                modalOptions.appendChild(btn);
-            });
-
-            hitlModal.style.display = 'flex';
-        }
-
-        async function selectHitlOption(skuId, skuName, price) {
-            const line = matchedLines[currentlyFlaggedLineIdx];
-            const selectedTenant = document.getElementById('tenantSelect').value;
-            
-            // 1. Post to Server /api/hitl/confirm
-            try {
-                const resp = await fetch('/api/hitl/confirm', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: line.parsed_query, sku_id: skuId, tenant_id: selectedTenant })
-                });
-                
-                if (!resp.ok) throw new Error("Failed to confirm hitl on server.");
-                
-                // Update client state
-                line.matched_sku_id = skuId;
-                line.matched_sku_name = skuName;
-                line.unit_price = price;
-                line.confidence = 100.0;
-                line.match_method = "Operator Confirmed";
-
-            } catch (err) {
-                alert(`Error confirming: ${err.message}`);
-            }
-
-            hitlModal.style.display = 'none';
-
-            // Check for remaining flagged items
-            const remainingFlag = matchedLines.some(l => l.confidence < 80);
-            if (remainingFlag) {
-                openHitlReviewModal();
-            } else {
-                hitlAlert.style.display = 'none';
-            }
-
-            renderTableAndInvoice();
-        }
-
-        async function generateQuotationPdf() {
-            loader.style.display = 'flex';
-            loaderStatus.innerText = "Compiling ReportLab PDF quotation document...";
-
-            const selectedTenant = document.getElementById('tenantSelect').value;
-            const payload = {
+async function generatePdf() {
+    const btn = document.getElementById('generatePdfBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Generating…';
+    try {
+        const res = await fetch('/api/quote/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
                 matched_lines: matchedLines,
                 discount_pct: discountPct,
                 customer_name: customerName,
                 invoice_id: invoiceId,
-                tenant_id: selectedTenant
-            };
-
-            try {
-                const response = await fetch('/api/quote/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) throw new Error("Failed to generate PDF quote.");
-                
-                const data = await response.json();
-                
-                // Download PDF
-                window.open(data.pdf_url, '_blank');
-                
-            } catch (err) {
-                alert(`Error: ${err.message}`);
-            } finally {
-                loader.style.display = 'none';
-            }
-        }
-
-        // --- 7. Conversational AI Negotiation ---
-        function toggleNegotiationPanel() {
-            if (negotiationPanel.style.display === 'flex') {
-                negotiationPanel.style.display = 'none';
-            } else {
-                negotiationPanel.style.display = 'flex';
-                chatBox.innerHTML = '';
-                chatHistory = [];
-                addChatMessage("ai", "Hello! I am the automated Trofeo sales coordinator. I see you've requested a discount. How can I help you today?");
-            }
-        }
-
-        function addChatMessage(sender, text) {
-            const bubble = document.createElement('div');
-            bubble.className = `chat-msg ${sender}`;
-            bubble.innerText = text;
-            chatBox.appendChild(bubble);
-            chatBox.scrollTop = chatBox.scrollHeight;
-            chatHistory.push({ sender: sender, text: text });
-        }
-
-        async function sendNegotiationMessage() {
-            const text = chatInput.value.trim();
-            if (!text) return;
-
-            addChatMessage("customer", text);
-            chatInput.value = '';
-
-            const requested = parseFloat(targetDiscountInput.value) || 5.0;
-
-            // Call /api/negotiate endpoint
-            try {
-                const selectedTenant = document.getElementById('tenantSelect').value;
-                const response = await fetch('/api/negotiate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        customer_message: text,
-                        requested_discount: requested,
-                        chat_history: chatHistory,
-                        tenant_id: selectedTenant
-                    })
-                });
-
-                if (!response.ok) throw new Error("Bargaining failed.");
-                
-                const data = await response.json();
-                
-                setTimeout(() => {
-                    addChatMessage("ai", data.reply);
-                    
-                    if (data.status === "APPROVED") {
-                        // Apply new discount and recalculate
-                        discountPct = data.approved_discount / 100.0;
-                        document.getElementById('negotiationStatus').innerText = "DISCOUNT APPLIED";
-                        document.getElementById('negotiationStatus').style.backgroundColor = "rgba(16, 185, 129, 0.2)";
-                        document.getElementById('negotiationStatus').style.color = "var(--accent-green)";
-                        renderTableAndInvoice();
-                    } else if (data.status === "ESCALATED") {
-                        document.getElementById('negotiationStatus').innerText = "ESCALATED TO ADMIN";
-                        document.getElementById('negotiationStatus').style.backgroundColor = "rgba(239, 68, 68, 0.2)";
-                        document.getElementById('negotiationStatus').style.color = "var(--accent-red)";
-                        document.getElementById('chatInputRow').style.display = 'none'; // Lock chat
-                    }
-                }, 800);
-
-            } catch (err) {
-                alert(`Negotiation Error: ${err.message}`);
-            }
-        }
-
-        // --- 8. QR Canvas drawer ---
-        function drawQR(amount) {
-            const canvas = document.getElementById('qrCanvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 110;
-            canvas.height = 110;
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, 110, 110);
-            ctx.fillStyle = "black";
-            
-            ctx.fillRect(5, 5, 25, 25);
-            ctx.fillStyle = "white";
-            ctx.fillRect(9, 9, 17, 17);
-            ctx.fillStyle = "black";
-            ctx.fillRect(13, 13, 9, 9);
-            
-            ctx.fillRect(80, 5, 25, 25);
-            ctx.fillStyle = "white";
-            ctx.fillRect(84, 9, 17, 17);
-            ctx.fillStyle = "black";
-            ctx.fillRect(88, 13, 9, 9);
-            
-            ctx.fillRect(5, 80, 25, 25);
-            ctx.fillStyle = "white";
-            ctx.fillRect(9, 84, 17, 17);
-            ctx.fillStyle = "black";
-            ctx.fillRect(13, 88, 9, 9);
-            
-            ctx.fillStyle = "black";
-            for (let x = 35; x < 75; x += 6) {
-                for (let y = 5; y < 105; y += 6) {
-                    if (Math.random() > 0.4) ctx.fillRect(x, y, 4, 4);
-                }
-            }
-            for (let x = 5; x < 35; x += 6) {
-                for (let y = 35; y < 75; y += 6) {
-                    if (Math.random() > 0.4) ctx.fillRect(x, y, 4, 4);
-                }
-            }
-            for (let x = 75; x < 105; x += 6) {
-                for (let y = 35; y < 105; y += 6) {
-                    if (Math.random() > 0.4) ctx.fillRect(x, y, 4, 4);
-                }
-            }
-        }
-
-        function clearQRCanvas() {
-            const canvas = document.getElementById('qrCanvas');
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-
-        // Multi-tenant initialization
-        const tenantSelect = document.getElementById('tenantSelect');
-        
-        async function loadTenants() {
-            try {
-                const res = await fetch('/api/tenants');
-                if (res.ok) {
-                    const list = await res.json();
-                    tenantSelect.innerHTML = '';
-                    list.forEach(t => {
-                        const opt = document.createElement('option');
-                        opt.value = t.id;
-                        opt.textContent = t.name;
-                        tenantSelect.appendChild(opt);
-                    });
-                    
-                    const saved = localStorage.getItem('selected_tenant');
-                    if (saved && list.some(t => t.id === saved)) {
-                        tenantSelect.value = saved;
-                    }
-                }
-            } catch (err) {
-                console.error("Failed to load tenants:", err);
-            }
-        }
-        
-        tenantSelect.addEventListener('change', () => {
-            localStorage.setItem('selected_tenant', tenantSelect.value);
-            clearDashboard();
+                tenant_id: getTenantId()
+            })
         });
+        const data = await res.json();
+        if (data.pdf_url) {
+            window.open(data.pdf_url, '_blank');
+            showToast('PDF generated and opened!', 'success');
+        } else {
+            throw new Error(data.detail || 'Unknown error');
+        }
+    } catch (err) {
+        showToast('PDF error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '📄 Generate Quote PDF';
+    }
+}
 
-        // Load tenants on start
-        loadTenants();
-    </script>
+function toggleNegPanel() {
+    const panel = document.getElementById('negotiationPanel');
+    panel.classList.toggle('visible');
+    if (panel.classList.contains('visible') && chatHistory.length === 0) {
+        const disc = document.getElementById('targetDiscountInput').value;
+        addChatBubble('customer', `Hi, I would like to request a ${disc}% discount on this quotation.`);
+        sendNegMsg(true);
+    }
+}
+
+function addChatBubble(sender, text) {
+    const box = document.getElementById('chatBox');
+    const div = document.createElement('div');
+    div.className = 'chat-bubble ' + sender;
+    div.innerHTML = `<div class="bubble-sender">${sender === 'customer' ? '👤 Customer' : '🤖 AI Sales Bot'}</div>${text}`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+    chatHistory.push({ role: sender === 'customer' ? 'user' : 'assistant', content: text });
+}
+
+async function sendNegMsg(isInitial = false) {
+    const input = document.getElementById('chatInput');
+    const disc = parseFloat(document.getElementById('targetDiscountInput').value) / 100;
+    let msg = input.value.trim();
+    if (!isInitial && !msg) return;
+    if (!isInitial) addChatBubble('customer', msg);
+    input.value = '';
+
+    document.getElementById('chatSendBtn').disabled = true;
+    try {
+        const res = await fetch('/api/negotiate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customer_message: msg || `Requesting ${Math.round(disc*100)}% discount.`, requested_discount: disc, chat_history: chatHistory, tenant_id: getTenantId() })
+        });
+        const data = await res.json();
+        addChatBubble('ai', data.reply || 'Thank you for your message. Our team will review shortly.');
+        const status = data.status;
+        const statusEl = document.getElementById('negStatus');
+        if (status === 'APPROVED') { statusEl.textContent = '✅ Approved'; statusEl.className = 'pill green'; }
+        else if (status === 'REJECTED') { statusEl.textContent = '✗ Rejected'; statusEl.className = 'pill red'; }
+        else if (status === 'ESCALATED') { statusEl.textContent = '⬆ Escalated'; statusEl.className = 'pill yellow'; }
+        else { statusEl.textContent = 'Active'; statusEl.className = 'pill purple'; }
+    } catch (e) {
+        addChatBubble('ai', 'Sorry, I could not process your request at this time. Please try again.');
+    }
+    document.getElementById('chatSendBtn').disabled = false;
+}
+
+// ========== DEFICITS ==========
+async function loadDeficits() {
+    const tbody = document.getElementById('deficitsTableBody');
+    const loader = document.getElementById('deficitsLoader');
+    loader.classList.add('visible');
+    try {
+        const res = await fetch(`/api/deficits?tenant_id=${getTenantId()}`);
+        const data = await res.json();
+        const deficits = data.deficits || [];
+
+        const pending = deficits.filter(d => d.status === 'PENDING');
+        const resolved = deficits.filter(d => d.status === 'RESOLVED');
+        const uniqueSkus = [...new Set(pending.map(d => d.sku_id))].length;
+        const uniqueCustomers = [...new Set(pending.map(d => d.customer_email))].length;
+
+        document.getElementById('kpiPending').textContent = pending.length;
+        document.getElementById('kpiResolved').textContent = resolved.length;
+        document.getElementById('kpiSKUs').textContent = uniqueSkus;
+        document.getElementById('kpiCustomers').textContent = uniqueCustomers;
+
+        const defBadge = document.getElementById('deficits-badge');
+        defBadge.style.display = pending.length ? 'inline-block' : 'none';
+        defBadge.textContent = pending.length;
+
+        if (deficits.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><div class="es-icon">✅</div><h3>No Deficits</h3><p>All stock deficits have been resolved.</p></div></td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        deficits.forEach((d, i) => {
+            const statusPill = d.status === 'PENDING'
+                ? '<span class="pill red">⚠ Pending</span>'
+                : '<span class="pill green">✓ Resolved</span>';
+
+            const date = d.created_at ? d.created_at.split(' ')[0] : '—';
+            const actionBtn = d.status === 'PENDING'
+                ? `<button class="btn btn-success btn-sm" onclick="openDeficitModal(${d.id}, '${d.sku_id}', '${(d.sku_name||'').replace(/'/g,"\\'")}', ${d.requested_qty}, ${d.available_qty}, ${d.deficit_qty}, '${d.customer_name||''}', '${d.customer_email||''}')">🏭 Fulfill</button>`
+                : '<span class="text-muted text-sm">Resolved</span>';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-sm text-muted">${i + 1}</td>
+                <td><span class="pill blue">${d.invoice_id}</span></td>
+                <td class="text-sm"><code style="color:#A5B4FC">${d.sku_id}</code></td>
+                <td style="max-width:180px;"><strong>${d.sku_name || '—'}</strong></td>
+                <td><strong style="color:#F87171">${d.requested_qty}</strong></td>
+                <td><strong style="color:#FCD34D">${d.available_qty}</strong></td>
+                <td><strong style="color:#F97316">${d.deficit_qty}</strong></td>
+                <td><div style="font-size:0.82rem">${d.customer_name || '—'}</div><div class="text-sm text-muted">${d.customer_email || ''}</div></td>
+                <td>${statusPill}</td>
+                <td class="text-sm text-muted">${date}</td>
+                <td>${actionBtn}</td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="es-icon">❌</div><h3>Error loading deficits</h3><p>${e.message}</p></div></td></tr>`;
+    } finally {
+        loader.classList.remove('visible');
+    }
+}
+
+function openDeficitModal(id, skuId, skuName, reqQty, availQty, defQty, custName, custEmail) {
+    currentDeficitId = id;
+    document.getElementById('newStockInput').value = reqQty;
+    document.getElementById('deficitModalMeta').innerHTML = `
+        <div class="meta-row"><span>SKU ID</span><span><code style="color:#A5B4FC">${skuId}</code></span></div>
+        <div class="meta-row"><span>Product</span><span>${skuName}</span></div>
+        <div class="meta-row"><span>Requested Qty</span><span style="color:#F87171;font-size:1.1rem">${reqQty}</span></div>
+        <div class="meta-row"><span>Currently Available</span><span style="color:#FCD34D">${availQty}</span></div>
+        <div class="meta-row"><span>Deficit Amount</span><span style="color:#F97316;font-weight:700">${defQty}</span></div>
+        <div class="meta-row"><span>Customer</span><span>${custName} &lt;${custEmail}&gt;</span></div>
+    `;
+    openModal('deficitModal');
+}
+
+document.getElementById('resolveDeficitBtn').onclick = async function() {
+    if (!currentDeficitId) return;
+    const newStock = parseInt(document.getElementById('newStockInput').value);
+    if (isNaN(newStock) || newStock < 0) { showToast('Invalid stock quantity.', 'error'); return; }
+
+    this.disabled = true;
+    this.innerHTML = '<div class="spinner"></div> Resolving…';
+    try {
+        const res = await fetch('/api/deficits/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deficit_id: currentDeficitId, new_stock: newStock, tenant_id: getTenantId() })
+        });
+        const data = await res.json();
+        if (data.status === 'SUCCESS') {
+            showToast('✅ Deficit resolved! Updated quote sent to customer.', 'success');
+        } else {
+            showToast('⚠️ ' + (data.message || 'Partial success.'), 'info');
+        }
+        closeModal('deficitModal');
+        loadDeficits();
+    } catch (e) {
+        showToast('Error resolving deficit: ' + e.message, 'error');
+    } finally {
+        this.disabled = false;
+        this.innerHTML = '✅ Resolve & Email Customer';
+    }
+};
+
+// ========== NEGOTIATIONS ==========
+async function loadNegotiations() {
+    const tbody = document.getElementById('negsTableBody');
+    const loader = document.getElementById('negsLoader');
+    loader.classList.add('visible');
+    try {
+        const res = await fetch(`/api/negotiations/escalated?tenant_id=${getTenantId()}`);
+        const data = await res.json();
+        const negs = data.negotiations || [];
+
+        const negBadge = document.getElementById('negs-badge');
+        negBadge.style.display = negs.length ? 'inline-block' : 'none';
+        negBadge.textContent = negs.length;
+
+        if (negs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="es-icon">✅</div><h3>No escalated negotiations</h3><p>All negotiations have been handled.</p></div></td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        negs.forEach(n => {
+            const disc = n.discount_pct ? Math.round(n.discount_pct * 100) + '%' : '0%';
+            const statusLabel = n.status === 'NEGOTIATION_ESCALATED' ? '<span class="pill red">⬆ Escalated</span>' : '<span class="pill yellow">💬 Negotiating</span>';
+            const date = n.created_at ? n.created_at.split(' ')[0] : '—';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="pill blue">${n.invoice_id}</span></td>
+                <td><div style="font-size:0.85rem;font-weight:600">${n.customer_name || '—'}</div><div class="text-sm text-muted">${n.customer_email || ''}</div></td>
+                <td>${fmt(n.subtotal)}</td>
+                <td><strong style="color:#FCD34D">${disc}</strong></td>
+                <td><strong style="color:#34D399">${fmt(n.grand_total)}</strong></td>
+                <td>${statusLabel}</td>
+                <td class="text-sm text-muted">${date}</td>
+                <td><button class="btn btn-ghost btn-sm" onclick="openChatHistory('${n.invoice_id}', '${(n.customer_name||'').replace(/'/g,"\\'")}')">💬 View Chat</button></td>
+                <td><button class="btn btn-primary btn-sm" onclick="openNegResolve('${n.invoice_id}', '${(n.customer_name||'').replace(/'/g,"\\'")}', ${n.subtotal}, ${n.discount_pct||0})">⚙️ Resolve</button></td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="es-icon">❌</div><h3>Error</h3><p>${e.message}</p></div></td></tr>`;
+    } finally {
+        loader.classList.remove('visible');
+    }
+}
+
+async function openChatHistory(invoiceId, custName) {
+    document.getElementById('chatModalTitle').textContent = `💬 Chat History — ${invoiceId} (${custName})`;
+    const body = document.getElementById('chatModalBody');
+    body.innerHTML = '<div class="empty-state"><div class="es-icon">⏳</div><p>Loading…</p></div>';
+    openModal('chatModal');
+    try {
+        const res = await fetch(`/api/report/data?tenant_id=${getTenantId()}`);
+        const data = await res.json();
+        const logs = (data.logs || {})[invoiceId] || [];
+        if (!logs.length) {
+            body.innerHTML = '<div class="empty-state"><div class="es-icon">💬</div><h3>No chat messages found</h3><p>The conversation log for this quotation is empty.</p></div>';
+            return;
+        }
+        body.innerHTML = '';
+        logs.forEach(log => {
+            const bubble = document.createElement('div');
+            const isCustomer = log.sender === 'customer' || log.sender === 'user';
+            bubble.className = 'chat-bubble ' + (isCustomer ? 'customer' : 'ai');
+            bubble.innerHTML = `<div class="bubble-sender">${isCustomer ? '👤 Customer' : '🤖 AI Bot'}</div>${log.message}<div class="bubble-time">${log.timestamp || ''}</div>`;
+            body.appendChild(bubble);
+        });
+    } catch (e) {
+        body.innerHTML = `<div class="empty-state"><div class="es-icon">❌</div><h3>Error</h3><p>${e.message}</p></div>`;
+    }
+}
+
+function openNegResolve(invId, custName, subtotal, discPct) {
+    currentNegInvoiceId = invId;
+    document.getElementById('negResolveTitle').textContent = `Resolve — ${invId}`;
+    document.getElementById('negDiscountInput').value = Math.round((discPct || 0.1) * 100);
+    document.getElementById('negResolveMeta').innerHTML = `
+        <div class="meta-row"><span>Invoice</span><span><span class="pill blue">${invId}</span></span></div>
+        <div class="meta-row"><span>Customer</span><span>${custName}</span></div>
+        <div class="meta-row"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
+        <div class="meta-row"><span>Customer's Requested Discount</span><span style="color:#FCD34D;font-weight:700">${Math.round(discPct*100)}%</span></div>
+    `;
+    openModal('negResolveModal');
+}
+
+async function submitNegResolution(action) {
+    if (!currentNegInvoiceId) return;
+    const discPct = parseFloat(document.getElementById('negDiscountInput').value) / 100;
+    const btns = document.querySelectorAll('#negResolveModal .btn');
+    btns.forEach(b => { b.disabled = true; });
+
+    try {
+        const res = await fetch('/api/negotiations/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invoice_id: currentNegInvoiceId, action, override_discount_pct: discPct, tenant_id: getTenantId() })
+        });
+        const data = await res.json();
+        if (data.status === 'SUCCESS') {
+            const icon = action === 'approve' ? '✅' : action === 'reject' ? '✗' : '↔';
+            showToast(`${icon} ${data.message}`, 'success');
+        } else {
+            showToast('⚠️ ' + (data.message || 'Partial update.'), 'info');
+        }
+        closeModal('negResolveModal');
+        loadNegotiations();
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    } finally {
+        btns.forEach(b => { b.disabled = false; });
+    }
+}
+
+document.getElementById('negApproveBtn').onclick = () => submitNegResolution('approve');
+document.getElementById('negRejectBtn').onclick = () => submitNegResolution('reject');
+document.getElementById('negCounterBtn').onclick = () => submitNegResolution('counter');
+
+// ========== QUOTES ==========
+async function loadQuotes() {
+    const grid = document.getElementById('quoteGrid');
+    const loader = document.getElementById('quotesLoader');
+    loader.classList.add('visible');
+    try {
+        const res = await fetch(`/api/report/data?tenant_id=${getTenantId()}`);
+        const data = await res.json();
+        allQuotes = data.quotations || [];
+        renderQuoteGrid(allQuotes);
+    } catch (e) {
+        grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="es-icon">❌</div><h3>Error</h3><p>${e.message}</p></div>`;
+    } finally {
+        loader.classList.remove('visible');
+    }
+}
+
+function renderQuoteGrid(quotes) {
+    const grid = document.getElementById('quoteGrid');
+    if (!quotes.length) {
+        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="es-icon">🗂️</div><h3>No quotes yet</h3><p>Process an order from the simulator to generate the first quotation.</p></div>';
+        return;
+    }
+    grid.innerHTML = '';
+    quotes.forEach(q => {
+        const statusMap = {
+            'QUOTE_GENERATED': { cls: 'generated', pill: '<span class="pill blue">Quote Sent</span>' },
+            'QUOTE_UPDATED': { cls: 'generated', pill: '<span class="pill blue">Updated</span>' },
+            'NEGOTIATION_ESCALATED': { cls: 'escalated', pill: '<span class="pill red">Escalated</span>' },
+            'NEGOTIATION_NEGOTIATING': { cls: 'escalated', pill: '<span class="pill yellow">Negotiating</span>' },
+            'NEGOTIATION_APPROVED': { cls: 'approved', pill: '<span class="pill green">Approved</span>' },
+            'NEGOTIATION_REJECTED': { cls: 'rejected', pill: '<span class="pill gray">Rejected</span>' },
+        };
+        const sm = statusMap[q.status] || { cls: 'generated', pill: `<span class="pill gray">${q.status}</span>` };
+        const date = q.created_at ? q.created_at.split(' ')[0] : '—';
+        const discLabel = q.discount_pct > 0 ? `<span class="pill yellow">${Math.round(q.discount_pct*100)}% off</span>` : '';
+
+        const card = document.createElement('div');
+        card.className = `quote-card ${sm.cls}`;
+        card.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.25rem">
+                <h3>${q.invoice_id}</h3>
+                ${sm.pill}
+            </div>
+            <div class="qc-customer">👤 ${q.customer_name || '—'} &nbsp;·&nbsp; ${q.customer_email || ''}</div>
+            <div class="qc-total">${fmt(q.grand_total)}</div>
+            <div class="qc-footer">
+                <span class="qc-date">📅 ${date}</span>
+                <div style="display:flex;gap:0.4rem;align-items:center">${discLabel}</div>
+            </div>`;
+        card.onclick = () => openChatHistory(q.invoice_id, q.customer_name || '');
+        const pdfLink = document.createElement('a');
+        pdfLink.href = `/api/quote/pdf/${q.invoice_id}?tenant_id=${getTenantId()}`;
+        pdfLink.target = '_blank';
+        pdfLink.className = 'btn btn-ghost btn-sm';
+        pdfLink.style.marginTop = '0.75rem';
+        pdfLink.innerHTML = '📄 View PDF';
+        pdfLink.onclick = e => e.stopPropagation();
+        card.appendChild(pdfLink);
+        grid.appendChild(card);
+    });
+}
+
+// Search quotes
+document.getElementById('quoteSearch').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    const filtered = allQuotes.filter(qt =>
+        (qt.invoice_id || '').toLowerCase().includes(q) ||
+        (qt.customer_name || '').toLowerCase().includes(q) ||
+        (qt.customer_email || '').toLowerCase().includes(q)
+    );
+    renderQuoteGrid(filtered);
+});
+
+// ========== LOW STOCK ==========
+async function loadLowStock() {
+    const body = document.getElementById('lowStockBody');
+    try {
+        const res = await fetch(`/api/inventory/low-stock?tenant_id=${getTenantId()}&threshold=5`);
+        const data = await res.json();
+        lowStockData = data.items || [];
+
+        // Update the banner on deficits tab
+        const banner = document.getElementById('lowStockBanner');
+        if (lowStockData.length > 0) {
+            banner.classList.add('visible');
+            document.getElementById('lowStockCount').textContent = lowStockData.length + ' SKU' + (lowStockData.length > 1 ? 's' : '');
+            document.getElementById('lowStockNames').textContent = lowStockData.slice(0, 3).map(s => s.sku_name).join(', ') + (lowStockData.length > 3 ? ' …' : '');
+        } else {
+            banner.classList.remove('visible');
+        }
+
+        if (!lowStockData.length) {
+            body.innerHTML = '<div class="empty-state"><div class="es-icon">✅</div><h3>All Good</h3><p>No SKUs are below the 5-unit threshold.</p></div>';
+            return;
+        }
+
+        body.innerHTML = '';
+        lowStockData.forEach(sku => {
+            const div = document.createElement('div');
+            div.className = 'inventory-card';
+            const isZero = sku.stock === 0;
+            div.innerHTML = `
+                <div class="inv-stock-badge ${isZero ? 'zero' : ''}">
+                    <div class="stock-num">${sku.stock}</div>
+                    <div class="stock-label">units</div>
+                </div>
+                <div style="flex:1">
+                    <div style="font-weight:600;font-size:0.88rem">${sku.sku_name}</div>
+                    <div class="text-sm text-muted" style="margin-top:0.15rem"><code>${sku.sku_id}</code> · ${sku.category}</div>
+                    <div class="text-sm" style="color:#A5B4FC;margin-top:0.2rem">${fmt(sku.price)} / unit</div>
+                </div>
+                ${isZero ? '<span class="pill red">Out of Stock</span>' : '<span class="pill yellow">Low Stock</span>'}`;
+            body.appendChild(div);
+        });
+    } catch (e) {
+        body.innerHTML = `<div class="empty-state"><div class="es-icon">❌</div><h3>Error</h3><p>${e.message}</p></div>`;
+    }
+}
+
+// ========== INIT ==========
+async function init() {
+    await loadTenants();
+    // Background polling for badge counts
+    try {
+        const [defRes, negRes] = await Promise.all([
+            fetch(`/api/deficits?tenant_id=${getTenantId()}`),
+            fetch(`/api/negotiations/escalated?tenant_id=${getTenantId()}`)
+        ]);
+        const defData = await defRes.json();
+        const negData = await negRes.json();
+        const pending = (defData.deficits || []).filter(d => d.status === 'PENDING').length;
+        const negs = negData.count || 0;
+        const defBadge = document.getElementById('deficits-badge');
+        const negBadge = document.getElementById('negs-badge');
+        defBadge.style.display = pending ? 'inline-block' : 'none';
+        defBadge.textContent = pending;
+        negBadge.style.display = negs ? 'inline-block' : 'none';
+        negBadge.textContent = negs;
+    } catch (e) { /* silently fail badge loading */ }
+}
+
+document.getElementById('tenantSelect').addEventListener('change', () => {
+    const active = document.querySelector('.tab-content.active').id.replace('content-', '');
+    if (active === 'deficits') loadDeficits();
+    else if (active === 'negotiations') loadNegotiations();
+    else if (active === 'quotes') { loadQuotes(); loadLowStock(); }
+});
+
+init();
+</script>
 </body>
 </html>
