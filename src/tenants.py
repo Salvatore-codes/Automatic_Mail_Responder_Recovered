@@ -70,24 +70,39 @@ def get_tenant_config(tenant_id):
 def get_tenant_catalog(tenant_id):
     """
     Gets or initializes the cached Catalog instance for a tenant.
+    Detects if the catalog file on disk has changed and reloads it dynamically.
     """
     t_id = sanitize_tenant_id(tenant_id)
-    if t_id not in _CATALOG_CACHE:
-        config = get_tenant_config(t_id)
-        csv_path = config.get("catalog_csv")
-        project_root = os.path.dirname(os.path.dirname(__file__))
+    config = get_tenant_config(t_id)
+    csv_path = config.get("catalog_csv")
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    
+    # Resolve absolute path
+    if not os.path.isabs(csv_path):
+        csv_path = os.path.join(project_root, csv_path)
         
-        # Resolve absolute path
-        if not os.path.isabs(csv_path):
-            csv_path = os.path.join(project_root, csv_path)
-            
-        # Fallback to default catalog if tenant-specific catalog doesn't exist
-        if not os.path.exists(csv_path):
-            csv_path = os.path.join(project_root, "data", "sku_catalog.csv")
-            
-        _CATALOG_CACHE[t_id] = Catalog(csv_path, tenant_id=t_id)
+    # Fallback to default catalog if tenant-specific catalog doesn't exist
+    if not os.path.exists(csv_path):
+        csv_path = os.path.join(project_root, "data", "sku_catalog.csv")
         
-    return _CATALOG_CACHE[t_id]
+    # Get current file modification time
+    mtime = os.path.getmtime(csv_path) if os.path.exists(csv_path) else 0.0
+    
+    if t_id not in _CATALOG_CACHE or _CATALOG_CACHE[t_id]["mtime"] != mtime:
+        print(f"[Catalog Loader] Loading/Reloading catalog for tenant '{t_id}' (mtime changed to {mtime})")
+        catalog = Catalog(csv_path, tenant_id=t_id)
+        # Attempt to load disk-cached vector index if it matches the current CSV hash
+        try:
+            catalog.build_vector_index(client=None)
+        except Exception as e:
+            print(f"[Catalog Loader] Warning: Failed to load cached vector index: {e}")
+            
+        _CATALOG_CACHE[t_id] = {
+            "catalog": catalog,
+            "mtime": mtime
+        }
+        
+    return _CATALOG_CACHE[t_id]["catalog"]
 
 def list_tenants_public():
     """

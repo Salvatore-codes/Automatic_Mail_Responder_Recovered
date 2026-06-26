@@ -4,6 +4,8 @@ import re
 import math
 import json
 import hashlib
+import time
+import random
 from rapidfuzz import process, fuzz
 
 try:
@@ -415,17 +417,32 @@ class Catalog:
             batch = sku_texts[i:i + batch_size]
             batch_num = i // batch_size + 1
             total_batches = (len(sku_texts) + batch_size - 1) // batch_size
-            try:
-                response = client.models.embed_content(
-                    model="gemini-embedding-001",
-                    contents=batch
-                )
+            
+            # Retry loop for rate-limiting
+            max_retries = 3
+            delay = 1.0
+            response = None
+            for attempt in range(max_retries + 1):
+                try:
+                    response = client.models.embed_content(
+                        model="gemini-embedding-001",
+                        contents=batch
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_retries and ("429" in str(e) or "rate" in str(e).lower() or "exhausted" in str(e).lower() or "overloaded" in str(e).lower()):
+                        sleep_time = delay * (0.8 + 0.4 * random.random())
+                        print(f"[Vector Index] API rate limited. Retrying batch {batch_num} in {sleep_time:.2f}s...")
+                        time.sleep(sleep_time)
+                        delay *= 2.0
+                    else:
+                        print(f"[Vector Index] Embedding batch {batch_num} failed: {e}")
+                        return False
+            
+            if response:
                 for emb in response.embeddings:
                     all_embeddings.append(emb.values)
                 print(f"[Vector Index] Embedded batch {batch_num}/{total_batches} ({len(batch)} SKUs)")
-            except Exception as e:
-                print(f"[Vector Index] Embedding batch {batch_num} failed: {e}")
-                return False
         
         self.embedding_matrix = np.array(all_embeddings, dtype=np.float32)
         self.embedding_ids = sku_ids
@@ -463,10 +480,30 @@ class Catalog:
             return syn_match
         
         try:
-            response = client.models.embed_content(
-                model="gemini-embedding-001",
-                contents=query_text
-            )
+            # Retry loop for single query embedding
+            max_retries = 3
+            delay = 1.0
+            response = None
+            for attempt in range(max_retries + 1):
+                try:
+                    response = client.models.embed_content(
+                        model="gemini-embedding-001",
+                        contents=query_text
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_retries and ("429" in str(e) or "rate" in str(e).lower() or "exhausted" in str(e).lower() or "overloaded" in str(e).lower()):
+                        sleep_time = delay * (0.8 + 0.4 * random.random())
+                        print(f"[Vector Match] API rate limited. Retrying query in {sleep_time:.2f}s...")
+                        time.sleep(sleep_time)
+                        delay *= 2.0
+                    else:
+                        print(f"[Vector Match] Query embedding failed: {e}")
+                        return []
+            
+            if response is None:
+                return []
+                
             query_vector = np.array(response.embeddings[0].values, dtype=np.float32)
             
             # Normalize query vector
@@ -498,3 +535,103 @@ class Catalog:
         except Exception as e:
             print(f"[Vector Match] Query embedding failed: {e}")
             return []
+
+    def match_vector_batch(self, queries, client, threshold=0.70, limit=3):
+        """
+        Match a list of product queries against the vector index in a single batched API call.
+        Returns a list of match lists corresponding to each query.
+        Falls back to individual match_vector or empty list if vector index is not available or fails.
+        """
+        if np is None or self.embedding_matrix is None or len(self.embedding_ids) == 0 or not queries:
+            return [[] for _ in queries]
+            
+        # Check synonyms first for each query
+        synonym_matches = [None] * len(queries)
+        uncached_queries = []
+        uncached_indices = []
+        
+        for idx, q in enumerate(queries):
+            syn_match = self.check_synonyms(q)
+            if syn_match:
+                synonym_matches[idx] = syn_match
+            else:
+                uncached_queries.append(q)
+                uncached_indices.append(idx)
+                
+        if not uncached_queries:
+            return synonym_matches
+            
+        try:
+            # Retry loop for batch query embeddings
+            max_retries = 3
+            delay = 1.0
+            response = None
+            for attempt in range(max_retries + 1):
+                try:
+                    response = client.models.embed_content(
+                        model="gemini-embedding-001",
+                        contents=uncached_queries
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_retries and ("429" in str(e) or "rate" in str(e).lower() or "exhausted" in str(e).lower() or "overloaded" in str(e).lower()):
+                        sleep_time = delay * (0.8 + 0.4 * random.random())
+                        print(f"[Vector Match Batch] API rate limited. Retrying batch in {sleep_time:.2f}s...")
+                        time.sleep(sleep_time)
+                        delay *= 2.0
+                    else:
+                        raise e
+            
+            if response is None:
+                raise RuntimeError("No response received from embedding API.")
+                
+            query_vectors = np.array([emb.values for emb in response.embeddings], dtype=np.float32)
+            
+            # Normalize query vectors
+            q_norms = np.linalg.norm(query_vectors, axis=1, keepdims=True)
+            q_norms[q_norms == 0] = 1.0
+            query_vectors = query_vectors / q_norms
+            
+            # Cosine similarity via dot product (both vectors are pre-normalized)
+            # Embedding matrix shape: [num_skus, 3072]
+            # Query vectors shape: [num_queries, 3072]
+            # Resulting similarities shape: [num_queries, num_skus]
+            similarities_matrix = query_vectors @ self.embedding_matrix.T
+            
+            uncached_results = {}
+            for i, idx in enumerate(uncached_indices):
+                similarities = similarities_matrix[i]
+                # Get top-K indices
+                top_indices = np.argsort(similarities)[::-1][:limit]
+                results = []
+                for sku_idx in top_indices:
+                    score = float(similarities[sku_idx]) * 100
+                    if score >= threshold * 100:
+                        sku_id = self.embedding_ids[sku_idx]
+                        sku = next((s for s in self.skus if s['sku_id'] == sku_id), None)
+                        if sku:
+                            results.append({
+                                "sku": sku,
+                                "score": round(score, 1),
+                                "method": "Vector Embedding"
+                            })
+                uncached_results[idx] = results
+                
+            final_results = []
+            for idx in range(len(queries)):
+                if synonym_matches[idx] is not None:
+                    final_results.append(synonym_matches[idx])
+                else:
+                    final_results.append(uncached_results.get(idx, []))
+            return final_results
+            
+        except Exception as e:
+            print(f"[Vector Match Batch] Query embeddings batch failed: {e}. Falling back to individual matching...")
+            # Fallback to individual match_vector for each uncached query
+            final_results = []
+            for idx in range(len(queries)):
+                if synonym_matches[idx] is not None:
+                    final_results.append(synonym_matches[idx])
+                else:
+                    final_results.append(self.match_vector(queries[idx], client, threshold, limit))
+            return final_results

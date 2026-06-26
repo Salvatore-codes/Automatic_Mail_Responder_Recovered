@@ -185,6 +185,75 @@ def run_tests():
     finally:
         src.email_listener.send_master_notification = original_send
         
+    # Test match_vector_batch
+    print("\nRunning match_vector_batch tests...")
+    class MockEmbeddings:
+        def __init__(self, values):
+            self.values = values
+
+    class MockEmbeddingResponse:
+        def __init__(self, embeddings):
+            self.embeddings = embeddings
+
+    class MockModels:
+        def embed_content(self, model, contents):
+            embeddings = []
+            # Treat contents as a list of queries (handles single string or list)
+            queries = [contents] if isinstance(contents, str) else contents
+            for query in queries:
+                vec = [0.0] * 3072
+                if "elbow" in query.lower():
+                    vec[0] = 1.0
+                elif "tape" in query.lower():
+                    vec[1] = 1.0
+                else:
+                    vec[2] = 1.0
+                embeddings.append(MockEmbeddings(vec))
+            return MockEmbeddingResponse(embeddings)
+
+    class MockGeminiClient:
+        def __init__(self):
+            self.models = MockModels()
+
+    import numpy as np
+    catalog_test = Catalog("data/sku_catalog.csv")
+    catalog_test.embedding_ids = ["ELBOW-BRASS-050", "PTFE-TAPE-12"]
+    
+    # embedding_matrix shape [2, 3072]
+    matrix = np.zeros((2, 3072), dtype=np.float32)
+    matrix[0, 0] = 1.0 # matches elbow
+    matrix[1, 1] = 1.0 # matches tape
+    catalog_test.embedding_matrix = matrix
+    
+    client_test = MockGeminiClient()
+    queries = ["1/2 inch brass elbow", "teflon tape"]
+    
+    batch_results = catalog_test.match_vector_batch(queries, client_test, threshold=0.70, limit=2)
+    print("Batch Results:", batch_results)
+    assert len(batch_results) == 2
+    assert batch_results[0][0]["sku"]["sku_id"] == "ELBOW-BRASS-050"
+    assert batch_results[1][0]["sku"]["sku_id"] == "PTFE-TAPE-12"
+    print("match_vector_batch unit assertions passed!")
+
+    # Test dynamic catalog reloading
+    print("\nRunning dynamic catalog reload tests...")
+    from src.tenants import get_tenant_catalog, _CATALOG_CACHE
+    
+    cat1 = get_tenant_catalog("default")
+    assert "default" in _CATALOG_CACHE
+    mtime1 = _CATALOG_CACHE["default"]["mtime"]
+    
+    # Touch catalog file (updating its mtime)
+    csv_path = _CATALOG_CACHE["default"]["catalog"].csv_path
+    os.utime(csv_path, None) # set mtime to current time
+    
+    cat2 = get_tenant_catalog("default")
+    mtime2 = _CATALOG_CACHE["default"]["mtime"]
+    print(f"Mtime 1: {mtime1}, Mtime 2: {mtime2}")
+    assert mtime1 != mtime2
+    assert cat1 is not cat2 # a new instance was loaded!
+    print("Dynamic catalog reloading assertions passed!")
+        
     print("\n\033[92mALL TESTS PASSED SUCCESSFULLY!\033[0m")
 
 if __name__ == "__main__":

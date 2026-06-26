@@ -128,6 +128,14 @@ def run_scenario_free(order_text, catalog, gemini_client=None):
     parsed_items = parse_order_text_rules(order_text)
     matched_lines = []
     
+    # Auto-build vector index if client is available but embeddings are not loaded/built
+    if gemini_client is not None and (not hasattr(catalog, 'embedding_matrix') or catalog.embedding_matrix is None):
+        try:
+            print("[Scenario Free] Lazy building/loading vector index...")
+            catalog.build_vector_index(gemini_client)
+        except Exception as e:
+            print(f"[Scenario Free] Failed to build vector index: {e}")
+            
     # Check if vector matching is available
     use_vector = (
         gemini_client is not None 
@@ -136,7 +144,17 @@ def run_scenario_free(order_text, catalog, gemini_client=None):
         and len(catalog.embedding_ids) > 0
     )
     
-    for item in parsed_items:
+    # Batch query embedding (if vector search is enabled and there are items)
+    batch_vector_candidates = [[] for _ in parsed_items]
+    if use_vector and parsed_items:
+        try:
+            queries = [item['parsed_query'] for item in parsed_items]
+            batch_vector_candidates = catalog.match_vector_batch(queries, gemini_client, threshold=0.70, limit=3)
+        except Exception as e:
+            print(f"[Vector Match Batch] Skipped batch embedding: {e}")
+            batch_vector_candidates = [[] for _ in parsed_items]
+            
+    for idx, item in enumerate(parsed_items):
         query = item['parsed_query']
         qty = item['quantity']
         
@@ -144,13 +162,8 @@ def run_scenario_free(order_text, catalog, gemini_client=None):
         fuzzy_candidates = catalog.match_fuzzy(query, threshold=80, limit=3)
         tfidf_candidates = catalog.match_local_semantic(query, limit=3)
         
-        # Supplementary vector matching (only when available)
-        vector_candidates = []
-        if use_vector:
-            try:
-                vector_candidates = catalog.match_vector(query, gemini_client, threshold=0.70, limit=3)
-            except Exception as e:
-                print(f"[Vector Match] Skipped for '{query}': {e}")
+        # Supplementary vector matching (pre-computed in batch)
+        vector_candidates = batch_vector_candidates[idx]
         
         # Combine ALL candidate sources — best score wins
         combined = {}

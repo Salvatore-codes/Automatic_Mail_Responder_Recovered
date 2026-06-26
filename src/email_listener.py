@@ -512,6 +512,9 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
     from src.tenants import get_tenant_config
     tenant_config = get_tenant_config(tenant_id)
     
+    # Get Gemini client for query batching / vector matching
+    client = _get_gemini_client()
+    
     # Dynamically resolve CRM path from tenant config if configured
     if tenant_config and tenant_config.get("crm_json"):
         tenant_crm = tenant_config.get("crm_json")
@@ -538,7 +541,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         override_qty = extract_global_quantity_override(email_text_only)
         
         # Check if the customer gave additional info based on product in the email text
-        body_lines = run_scenario_free(email_text_only, catalog)
+        body_lines = run_scenario_free(email_text_only, catalog, gemini_client=client)
         body_has_products = any(l["matched_sku_id"] != "UNKNOWN" for l in body_lines)
         
         if not body_has_products and override_qty is None:
@@ -857,7 +860,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             return reply_subject, reply_payload, None, "CONVERSATIONAL_REPLY"
 
     # Default logic: Brand new quotation request
-    matched_lines = run_scenario_free(body_clean, catalog)
+    matched_lines = run_scenario_free(body_clean, catalog, gemini_client=client)
     if override_qty is not None:
         for line in matched_lines:
             if line['matched_sku_id'] != "UNKNOWN":
@@ -1274,6 +1277,31 @@ def fast_blocklist_check(sender, subject, crm_emails):
     return "NEEDS_AI"
 
 
+def call_with_retry(api_func, max_retries=3, initial_delay=1.0, backoff_factor=2.0):
+    """
+    Executes an API function with exponential backoff and jitter for rate-limits or transient errors.
+    """
+    import random
+    import time
+    delay = initial_delay
+    for attempt in range(max_retries + 1):
+        try:
+            return api_func()
+        except Exception as e:
+            err_msg = str(e).lower()
+            # Catch HTTP 429 rate limit or 503/500 overload errors
+            is_rate_limit = "429" in err_msg or "rate" in err_msg or "resource exhausted" in err_msg
+            is_transient = "503" in err_msg or "overloaded" in err_msg or "unavailable" in err_msg or "connection" in err_msg
+            
+            if (is_rate_limit or is_transient) and attempt < max_retries:
+                jitter = random.uniform(0.8, 1.2)
+                sleep_time = delay * jitter
+                print(f"[AI Classifier] API failed: {e}. Retrying in {sleep_time:.2f}s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(sleep_time)
+                delay *= backoff_factor
+            else:
+                raise e
+
 def classify_and_extract(sender, subject, body):
     """
     Tier 2 AI-powered filter. Uses Gemini 2.5 Flash to classify email intent
@@ -1309,10 +1337,13 @@ Classification rules:
 - For PRODUCT_ENQUIRY, extract every product mentioned with its quantity (default to 1 if not specified)
 - Do NOT invent or hallucinate products not mentioned in the email body"""
         
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
+        def _execute_api():
+            return client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            
+        response = call_with_retry(_execute_api)
         
         result_text = response.text.strip()
         # Clean markdown fences if Gemini wraps the response
