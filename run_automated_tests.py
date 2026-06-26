@@ -73,7 +73,7 @@ def run_tests():
             if tape: tape_qty = tape["quantity"]
             
             passed = passed and (elbow is not None and elbow["quantity"] == 10)
-            passed = passed and (tape is not None and tape["quantity"] == 5)
+            passed = passed and (tape is not None and tape["quantity"] == 0)
             
             # Check signature & Rupee symbol in email body
             plain_body = rep_body[0] if isinstance(rep_body, tuple) else rep_body
@@ -109,7 +109,7 @@ def run_tests():
         
         html_body = rep_body[1] if isinstance(rep_body, tuple) else rep_body
         passed = (status == "QUOTE_GENERATED")
-        has_unavailable = ("Currently Unavailable" in html_body)
+        has_unavailable = ("Unavailable Products" in html_body)
         has_in_stock = ("In Stock" in html_body)
         
         passed = passed and has_unavailable
@@ -166,7 +166,7 @@ def run_tests():
                 passed = passed and (elbow_q == 12)
             if "PTFE-TAPE-12" in matched_ids:
                 tape_q = next(i["quantity"] for i in items if i["matched_sku_id"] == "PTFE-TAPE-12")
-                passed = passed and (tape_q == 5)
+                passed = passed and (tape_q == 0)
             if "BOLT-HEX-M8-50" in matched_ids:
                 bolt_q = next(i["quantity"] for i in items if i["matched_sku_id"] == "BOLT-HEX-M8-50")
                 passed = passed and (bolt_q == 50)
@@ -304,9 +304,9 @@ def run_tests():
             passed = passed and not any(item["original_line"] == "1 x Quantum Flux Capacitor" and item["matched_sku_id"] != "UNKNOWN" for item in items)
             
             # Subtotal should only be calculated on matched items:
-            # 10 * 12.5 = 125.0, 5 * 1.2 = 6.0. Subtotal = 131.0
+            # 10 * 12.5 = 125.0, 5 * 1.2 = 6.0. But Tape (stock 0) is excluded, so Subtotal = 125.0
             subtotal_actual = sum(item["unit_price"] * item["quantity"] for item in items if item["matched_sku_id"] != "UNKNOWN")
-            passed = passed and (abs(subtotal_actual - 131.0) < 0.01)
+            passed = passed and (abs(subtotal_actual - 125.0) < 0.01)
             
         log_result(
             "TC-07", "Mixed Known and Unknown Items", passed,

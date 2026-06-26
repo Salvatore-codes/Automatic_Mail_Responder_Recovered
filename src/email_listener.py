@@ -1,6 +1,13 @@
 import os
 import re
 import sys
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
+
 import html
 import time
 import json
@@ -144,7 +151,7 @@ def get_crm_discount(email_addr, crm_path):
             pass
     return 0.0, "Walk-in Retail Client", "+91 90000 00000"
 
-def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None):
+def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None, customer_email=None, customer_phone=None):
     """Formats the reply body with the quote breakdown (both Plain Text and HTML)."""
     exec_name = tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME
     exec_title = tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE
@@ -152,63 +159,103 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     exec_phone = tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE
     exec_email = tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL
 
-    # 1. Plain Text Body
-    body = [
-        f"Dear {customer_name},\n",
-        f"Thank you for reaching out to us. Please find below the pricing for the items you requested (Quotation Ref: #{invoice_id}).\n",
-        "We have gone through your requirements and put together the best available rates for you:\n",
-        "-" * 80,
-        f"{'Item Description':<40} | {'Qty':<4} | {'Price':<6} | {'Total':<7} | {'Stock Status':<12}",
-        "-" * 80
-    ]
-    
+    # Calculate subtotal and unavailable items first
     raw_subtotal = 0.0
+    unavailable_items = []
+    
     for line in matched_lines:
         if line['matched_sku_id'] == "UNKNOWN":
             continue
             
-        sku_display = line['matched_sku_name']
-        if len(skuDisplay := sku_display) > 38:
-            skuDisplay = skuDisplay[:35] + "..."
-            
         qty = line['quantity']
-        price = line['unit_price']
-        total = price * qty
-        raw_subtotal += total
+        deficit = line.get("deficit", 0)
         
-        stock_avail = line.get("stock_avail", 100)
-        if line.get("deficit", 0) > 0:
-            if stock_avail == 0:
-                stock_status = "Currently Unavailable"
-            else:
-                stock_status = f"PARTIAL (Only {stock_avail} Avail)"
-        else:
-            if stock_avail == 0:
-                stock_status = "Currently Unavailable"
-            else:
-                stock_status = "In Stock"
+        # If there's a deficit or it's out of stock
+        if deficit > 0:
+            unavailable_items.append({
+                "name": line['matched_sku_name'],
+                "requested": line.get('original_requested_qty', qty),
+                "available": line.get('stock_avail', 0)
+            })
             
-        body.append(f"{skuDisplay:<40} | {qty:<4} | ₹{price:<5.2f} | ₹{total:<6.2f} | {stock_status:<12}")
+        if qty > 0:
+            price = line['unit_price']
+            total = price * qty
+            raw_subtotal += total
+
+    any_quoted = raw_subtotal > 0.0
+
+    # 1. Plain Text Body
+    body = [
+        f"Dear {customer_name},\n",
+        f"Thank you for reaching out to us. Please find below the pricing for the items you requested (Quotation Ref: #{invoice_id}).\n",
+    ]
+    
+    if customer_email or customer_phone:
+        body.append("Customer Details:")
+        body.append(f"- Name: {customer_name}")
+        if customer_email:
+            body.append(f"- Email: {customer_email}")
+        if customer_phone:
+            body.append(f"- Contact Number: {customer_phone}")
+        body.append("")
         
-    body.append("-" * 80)
-    
-    discount_amt = raw_subtotal * discount_pct
-    net_subtotal = raw_subtotal - discount_amt
-    tax_amt = net_subtotal * 0.18
-    grand_total = net_subtotal + tax_amt
-    
-    body.append(f"{'':<45} Subtotal:         ₹{raw_subtotal:>8.2f}")
-    if discount_pct > 0:
-        body.append(f"{'':<45} Special Discount ({int(discount_pct*100)}%): -₹{discount_amt:>8.2f}")
-        body.append(f"{'':<45} Net Amount:       ₹{net_subtotal:>8.2f}")
-    body.append(f"{'':<45} GST 18%:          ₹{tax_amt:>8.2f}")
-    body.append(f"{'':<45} Total Payable:    ₹{grand_total:>8.2f}")
-    body.append("-" * 80)
-    
-    body.append("\nI have attached a detailed PDF quotation for your reference. It also includes a QR code for quick payment.")
-    has_deficit = any(line.get("deficit", 0) > 0 for line in matched_lines)
-    if has_deficit:
-        body.append("\n⚠️ Note: Some of the items requested have insufficient stock. We have quoted the on-hand (available) quantity. The remaining quantity will be quoted and delivered after the inventory is updated.")
+    if any_quoted:
+        body.extend([
+            "We have gone through your requirements and put together the best available rates for you:\n",
+            "-" * 80,
+            f"{'Item Description':<40} | {'Qty':<4} | {'Price':<6} | {'Total':<7} | {'Stock Status':<12}",
+            "-" * 80
+        ])
+        
+        for line in matched_lines:
+            if line['matched_sku_id'] == "UNKNOWN":
+                continue
+            qty = line['quantity']
+            deficit = line.get("deficit", 0)
+            
+            if qty > 0:
+                sku_display = line['matched_sku_name']
+                if len(skuDisplay := sku_display) > 38:
+                    skuDisplay = skuDisplay[:35] + "..."
+                    
+                price = line['unit_price']
+                total = price * qty
+                
+                if deficit > 0:
+                    stock_status = f"PARTIAL (Only {qty} Avail)"
+                else:
+                    stock_status = "In Stock"
+                    
+                body.append(f"{skuDisplay:<40} | {qty:<4} | ₹{price:<5.2f} | ₹{total:<6.2f} | {stock_status:<12}")
+                
+        body.append("-" * 80)
+        
+        discount_amt = raw_subtotal * discount_pct
+        net_subtotal = raw_subtotal - discount_amt
+        tax_amt = net_subtotal * 0.18
+        grand_total = net_subtotal + tax_amt
+        
+        body.append(f"{'':<45} Subtotal:         ₹{raw_subtotal:>8.2f}")
+        if discount_pct > 0:
+            body.append(f"{'':<45} Special Discount ({int(discount_pct*100)}%): -₹{discount_amt:>8.2f}")
+            body.append(f"{'':<45} Net Amount:       ₹{net_subtotal:>8.2f}")
+        body.append(f"{'':<45} GST 18%:          ₹{tax_amt:>8.2f}")
+        body.append(f"{'':<45} Total Payable:    ₹{grand_total:>8.2f}")
+        body.append("-" * 80)
+        
+        body.append("\nI have attached a detailed PDF quotation for your reference. It also includes a QR code for quick payment.")
+    else:
+        grand_total = 0.0
+        
+    if unavailable_items:
+        body.append("\nUnavailable Products")
+        body.append("=" * 80)
+        for item in unavailable_items:
+            body.append(f"- {item['name']}: Requested {item['requested']} unit(s), but only {item['available']} unit(s) available")
+        body.append("=" * 80)
+        body.append("⚠️ Note: Some of the items requested have insufficient stock and were excluded from the quote. Please let us know if you would like to proceed with the available quantities.")
+        
     body.append("If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help.")
     body.append("\nWarm regards,")
     body.append(exec_name)
@@ -235,64 +282,111 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         "</style></head><body>",
         f"<p>Dear {html.escape(customer_name)},</p>",
         f"<p>Thank you for reaching out to us. Please find below the pricing for the items you requested <b>(Quotation Ref: #{invoice_id})</b>.</p>",
-        "<p>We have gone through your requirements and put together the best available rates for you:</p>",
-        "<table>",
-        "<thead><tr>",
-        "<th>Item Description</th>",
-        "<th style='text-align: center;'>Qty</th>",
-        "<th style='text-align: right;'>Unit Price</th>",
-        "<th style='text-align: right;'>Total</th>",
-        "<th>Availability</th>",
-        "</tr></thead><tbody>"
     ]
     
-    for line in matched_lines:
-        if line['matched_sku_id'] == "UNKNOWN":
-            continue
-        qty = line['quantity']
-        price = line['unit_price']
-        total = price * qty
-        
-        stock_avail = line.get("stock_avail", 100)
-        if line.get("deficit", 0) > 0:
-            if stock_avail == 0:
-                stock_html = "<span style='color:#dc2626; font-weight:600;'>Currently Unavailable</span>"
-            else:
-                stock_html = f"<span style='color:#eab308; font-weight:600;'>PARTIAL (Only {stock_avail} Avail)</span>"
-        else:
-            if stock_avail == 0:
-                stock_html = "<span style='color:#dc2626; font-weight:600;'>Currently Unavailable</span>"
-            else:
-                stock_html = "<span style='color:#16a34a;'>In Stock</span>"
-            
+    if customer_email or customer_phone:
         html_lines.append(
-            f"<tr>"
-            f"<td>{html.escape(line['matched_sku_name'])}</td>"
-            f"<td style='text-align: center;'>{qty}</td>"
-            f"<td style='text-align: right;'>₹{price:.2f}</td>"
-            f"<td style='text-align: right;'>₹{total:.2f}</td>"
-            f"<td>{stock_html}</td>"
-            f"</tr>"
+            "<div style='background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;'>"
+            "  <h3 style='color: #1e293b; margin-top: 0; font-size: 15px; font-weight: 600; margin-bottom: 10px;'>Customer Details</h3>"
+            "  <ul style='list-style: none; padding: 0; margin: 0; font-size: 13px; color: #334155;'>"
+            f"    <li style='margin-bottom: 6px;'><b>Name:</b> {html.escape(customer_name)}</li>"
+        )
+        if customer_email:
+            html_lines.append(f"    <li style='margin-bottom: 6px;'><b>Email:</b> {html.escape(customer_email)}</li>")
+        if customer_phone:
+            html_lines.append(f"    <li style='margin-bottom: 0;'><b>Contact Number:</b> {html.escape(customer_phone)}</li>")
+        html_lines.append(
+            "  </ul>"
+            "</div>"
         )
         
-    html_lines.append("</tbody></table>")
-    
-    html_lines.append("<table class='summary-table'>")
-    html_lines.append(f"<tr><td class='summary-label'>Subtotal:</td><td class='summary-value'>₹{raw_subtotal:.2f}</td></tr>")
-    if discount_pct > 0:
-        html_lines.append(f"<tr><td class='summary-label'>Special Discount ({int(discount_pct*100)}%):</td><td class='summary-value' style='color:#16a34a;'>-₹{discount_amt:.2f}</td></tr>")
-        html_lines.append(f"<tr><td class='summary-label'>Net Amount:</td><td class='summary-value'>₹{net_subtotal:.2f}</td></tr>")
-    html_lines.append(f"<tr><td class='summary-label'>GST (18%):</td><td class='summary-value'>₹{tax_amt:.2f}</td></tr>")
-    html_lines.append(f"<tr class='total-row'><td>Total Payable:</td><td>₹{grand_total:.2f}</td></tr>")
-    html_lines.append("</table>")
-    
-    html_lines.append("<p style='margin-top:20px;'>I have attached a detailed PDF quotation for your reference. It also includes a QR code for quick payment.</p>")
-    if has_deficit:
-        html_lines.append("<p style='color:#ea580c; font-weight:600; margin-top:15px;'>⚠️ Note: Some of the items requested have insufficient stock. We have quoted the on-hand (available) quantity. The remaining quantity will be quoted and delivered after the inventory is updated.</p>")
+    if any_quoted:
+        html_lines.extend([
+            "<p>We have gone through your requirements and put together the best available rates for you:</p>",
+            "<table>",
+            "<thead><tr>",
+            "<th>Item Description</th>",
+            "<th style='text-align: center;'>Qty</th>",
+            "<th style='text-align: right;'>Unit Price</th>",
+            "<th style='text-align: right;'>Total</th>",
+            "<th>Availability</th>",
+            "</tr></thead><tbody>"
+        ])
+        
+        for line in matched_lines:
+            if line['matched_sku_id'] == "UNKNOWN":
+                continue
+            qty = line['quantity']
+            if qty <= 0:
+                continue
+                
+            price = line['unit_price']
+            total = price * qty
+            deficit = line.get("deficit", 0)
+            
+            if deficit > 0:
+                stock_html = f"<span style='color:#eab308; font-weight:600;'>PARTIAL (Only {qty} Avail)</span>"
+            else:
+                stock_html = "<span style='color:#16a34a;'>In Stock</span>"
+                
+            html_lines.append(
+                f"<tr>"
+                f"<td>{html.escape(line['matched_sku_name'])}</td>"
+                f"<td style='text-align: center;'>{qty}</td>"
+                f"<td style='text-align: right;'>₹{price:.2f}</td>"
+                f"<td style='text-align: right;'>₹{total:.2f}</td>"
+                f"<td>{stock_html}</td>"
+                f"</tr>"
+            )
+            
+        html_lines.append("</tbody></table>")
+        
+        discount_amt = raw_subtotal * discount_pct
+        net_subtotal = raw_subtotal - discount_amt
+        tax_amt = net_subtotal * 0.18
+        
+        html_lines.append("<table class='summary-table'>")
+        html_lines.append(f"<tr><td class='summary-label'>Subtotal:</td><td class='summary-value'>₹{raw_subtotal:.2f}</td></tr>")
+        if discount_pct > 0:
+            html_lines.append(f"<tr><td class='summary-label'>Special Discount ({int(discount_pct*100)}%):</td><td class='summary-value' style='color:#16a34a;'>-₹{discount_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr><td class='summary-label'>Net Amount:</td><td class='summary-value'>₹{net_subtotal:.2f}</td></tr>")
+        html_lines.append(f"<tr><td class='summary-label'>GST (18%):</td><td class='summary-value'>₹{tax_amt:.2f}</td></tr>")
+        html_lines.append(f"<tr class='total-row'><td>Total Payable:</td><td>₹{grand_total:.2f}</td></tr>")
+        html_lines.append("</table>")
+        
+        html_lines.append("<p style='margin-top:20px;'>I have attached a detailed PDF quotation for your reference. It also includes a QR code for quick payment.</p>")
+        
+    if unavailable_items:
+        unavailable_html = [
+            "<div style='background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 20px 0;'>",
+            "  <h3 style='color: #991b1b; margin-top: 0; font-size: 15px; font-weight: 600;'>Unavailable Products</h3>",
+            "  <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>",
+            "    <thead>",
+            "      <tr>",
+            "        <th style='background-color: #ef4444; color: white; text-align: left; padding: 8px 10px; font-size: 12px;'>Product Description</th>",
+            "        <th style='background-color: #ef4444; color: white; text-align: center; padding: 8px 10px; width: 120px; font-size: 12px;'>Requested Qty</th>",
+            "        <th style='background-color: #ef4444; color: white; text-align: center; padding: 8px 10px; width: 120px; font-size: 12px;'>Available Qty</th>",
+            "      </tr>",
+            "    </thead>",
+            "    <tbody>"
+        ]
+        for item in unavailable_items:
+            unavailable_html.append(
+                f"<tr>"
+                f"  <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; font-size: 12.5px; color: #7f1d1d;'>{html.escape(item['name'])}</td>"
+                f"  <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; text-align: center; font-weight: 600; color: #b91c1c; font-size: 12.5px;'>{item['requested']}</td>"
+                f"  <td style='padding: 8px 10px; border-bottom: 1px solid #fee2e2; text-align: center; font-weight: 600; color: #b91c1c; font-size: 12.5px;'>{item['available']}</td>"
+                f"</tr>"
+            )
+        unavailable_html.append("    </tbody>")
+        unavailable_html.append("  </table>")
+        unavailable_html.append("  <p style='color:#ea580c; font-weight:600; margin:10px 0 0 0; font-size: 12.5px;'>⚠️ Note: Some of the items requested have insufficient stock and were excluded from the quote. Please let us know if you would like to proceed with the available quantities.</p>")
+        unavailable_html.append("</div>")
+        html_lines.append("\n".join(unavailable_html))
+        
     html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
-    
     html_lines.append("<div class='footer'>")
-    if logo_cid:
+    if logo_cid and any_quoted:
         html_lines.append(f"<img src='cid:{logo_cid}' alt='{bus_name}' style='max-height: 50px; margin-bottom: 12px; display:block;'>")
     html_lines.append(f"Warm regards,<br><b>{exec_name}</b><br>{exec_title} &nbsp;|&nbsp; {bus_name}<br><span style='color:#94a3b8;'>{exec_phone} &nbsp;&bull;&nbsp; {exec_email}</span>")
     html_lines.append("</div></body></html>")
@@ -300,6 +394,7 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     html_text = "\n".join(html_lines)
     
     return (plain_text, html_text), grand_total
+
 
 def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None):
     """Formats a reply body for when no order items could be parsed (both Plain Text and HTML)."""
@@ -455,7 +550,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         email_addr = sender
     
     # Check if this is a thread reply to an existing quotation
-    quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9]+)\]', subject, re.IGNORECASE)
+    quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', subject, re.IGNORECASE)
     
     meta_path = None
     meta = None
@@ -536,26 +631,34 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                     else:
                         pdf_out_path = os.path.join(project_root, "static", "quotes", f"Quote_{existing_invoice_id}.pdf")
                 
-                generate_pdf_quotation(
+                any_quoted = any(line['quantity'] > 0 for line in meta["matched_lines"] if line.get('matched_sku_id') != 'UNKNOWN')
+                if any_quoted:
+                    generate_pdf_quotation(
+                        matched_lines=meta["matched_lines"],
+                        discount_pct=new_discount_pct,
+                        customer_name=meta["customer_name"],
+                        invoice_id=existing_invoice_id,
+                        output_path=pdf_out_path,
+                        catalog=catalog,
+                        customer_phone=meta.get("customer_phone", "—"),
+                        customer_email=meta.get("customer_email"),
+                        upi_id=tenant_config.get("upi_id"),
+                        upi_name=tenant_config.get("upi_name"),
+                        logo_path=tenant_config.get("company_logo_path"),
+                        business_name=tenant_config.get("business_name")
+                    )
+                else:
+                    pdf_out_path = None
+                
+                reply_body, grand_total = build_email_reply_body(
                     matched_lines=meta["matched_lines"],
                     discount_pct=new_discount_pct,
                     customer_name=meta["customer_name"],
                     invoice_id=existing_invoice_id,
-                    output_path=pdf_out_path,
-                    catalog=catalog,
-                    upi_id=tenant_config.get("upi_id"),
-                    upi_name=tenant_config.get("upi_name"),
-                    logo_path=tenant_config.get("company_logo_path"),
-                    business_name=tenant_config.get("business_name")
-                )
-                
-                reply_body, grand_total = build_email_reply_body(
-                    meta["matched_lines"],
-                    new_discount_pct,
-                    meta["customer_name"],
-                    existing_invoice_id,
                     logo_cid="company_logo",
-                    tenant_config=tenant_config
+                    tenant_config=tenant_config,
+                    customer_email=meta.get("customer_email"),
+                    customer_phone=meta.get("customer_phone")
                 )
                 
                 # Log to SQLite
@@ -627,26 +730,35 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                     pdf_out_path = os.path.join(project_root, "static", "quotes", tenant_id, f"Quote_{existing_invoice_id}.pdf")
                 else:
                     pdf_out_path = os.path.join(project_root, "static", "quotes", f"Quote_{existing_invoice_id}.pdf")
+            
+            any_quoted = any(line['quantity'] > 0 for line in matched_lines if line.get('matched_sku_id') != 'UNKNOWN')
+            if any_quoted:
+                generate_pdf_quotation(
+                    matched_lines=matched_lines,
+                    discount_pct=discount_pct,
+                    customer_name=customer_name,
+                    invoice_id=existing_invoice_id,
+                    output_path=pdf_out_path,
+                    catalog=catalog,
+                    customer_phone=customer_phone,
+                    customer_email=email_addr,
+                    upi_id=tenant_config.get("upi_id"),
+                    upi_name=tenant_config.get("upi_name"),
+                    logo_path=tenant_config.get("company_logo_path"),
+                    business_name=tenant_config.get("business_name")
+                )
+            else:
+                pdf_out_path = None
                 
-            generate_pdf_quotation(
+            reply_body, grand_total = build_email_reply_body(
                 matched_lines=matched_lines,
                 discount_pct=discount_pct,
                 customer_name=customer_name,
                 invoice_id=existing_invoice_id,
-                output_path=pdf_out_path,
-                catalog=catalog,
-                upi_id=tenant_config.get("upi_id"),
-                upi_name=tenant_config.get("upi_name"),
-                logo_path=tenant_config.get("company_logo_path"),
-                business_name=tenant_config.get("business_name")
-            )
-            reply_body, grand_total = build_email_reply_body(
-                matched_lines,
-                discount_pct,
-                customer_name,
-                existing_invoice_id,
                 logo_cid="company_logo",
-                tenant_config=tenant_config
+                tenant_config=tenant_config,
+                customer_email=email_addr,
+                customer_phone=customer_phone
             )
             
             # Log to SQLite
@@ -774,37 +886,43 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
     )
     
     if has_valid_matches:
-        if mode == "mock":
-            if tenant_id and tenant_id != "default":
-                pdf_out_path = os.path.join(project_root, "mock_outbox", tenant_id, f"Quote_{invoice_id}.pdf")
+        any_quoted = any(line['quantity'] > 0 for line in matched_lines if line.get('matched_sku_id') != 'UNKNOWN')
+        pdf_out_path = None
+        if any_quoted:
+            if mode == "mock":
+                if tenant_id and tenant_id != "default":
+                    pdf_out_path = os.path.join(project_root, "mock_outbox", tenant_id, f"Quote_{invoice_id}.pdf")
+                else:
+                    pdf_out_path = os.path.join(project_root, "mock_outbox", f"Quote_{invoice_id}.pdf")
             else:
-                pdf_out_path = os.path.join(project_root, "mock_outbox", f"Quote_{invoice_id}.pdf")
-        else:
-            if tenant_id and tenant_id != "default":
-                pdf_out_path = os.path.join(project_root, "static", "quotes", tenant_id, f"Quote_{invoice_id}.pdf")
-            else:
-                pdf_out_path = os.path.join(project_root, "static", "quotes", f"Quote_{invoice_id}.pdf")
-            
-        generate_pdf_quotation(
+                if tenant_id and tenant_id != "default":
+                    pdf_out_path = os.path.join(project_root, "static", "quotes", tenant_id, f"Quote_{invoice_id}.pdf")
+                else:
+                    pdf_out_path = os.path.join(project_root, "static", "quotes", f"Quote_{invoice_id}.pdf")
+                
+            generate_pdf_quotation(
+                matched_lines=matched_lines,
+                discount_pct=discount_pct,
+                customer_name=customer_name,
+                invoice_id=invoice_id,
+                output_path=pdf_out_path,
+                catalog=catalog,
+                customer_phone=customer_phone,
+                upi_id=tenant_config.get("upi_id"),
+                upi_name=tenant_config.get("upi_name"),
+                logo_path=tenant_config.get("company_logo_path"),
+                business_name=tenant_config.get("business_name"),
+                customer_email=email_addr
+            )
+        reply_body, grand_total = build_email_reply_body(
             matched_lines=matched_lines,
             discount_pct=discount_pct,
             customer_name=customer_name,
             invoice_id=invoice_id,
-            output_path=pdf_out_path,
-            catalog=catalog,
-            customer_phone=customer_phone,
-            upi_id=tenant_config.get("upi_id"),
-            upi_name=tenant_config.get("upi_name"),
-            logo_path=tenant_config.get("company_logo_path"),
-            business_name=tenant_config.get("business_name")
-        )
-        reply_body, grand_total = build_email_reply_body(
-            matched_lines,
-            discount_pct,
-            customer_name,
-            invoice_id,
             logo_cid="company_logo",
-            tenant_config=tenant_config
+            tenant_config=tenant_config,
+            customer_email=email_addr,
+            customer_phone=customer_phone
         )
         
         # Log to SQLite
@@ -1064,6 +1182,162 @@ def extract_text_from_attachments(msg):
     return "\n\n".join(extracted_texts)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# AI-Powered Email Classification (Tier 1 + Tier 2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_gemini_client_cache = {}
+
+def _get_gemini_client():
+    """Returns a cached Gemini client instance, or None if API key is unavailable."""
+    if "client" in _gemini_client_cache:
+        return _gemini_client_cache["client"]
+    
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key or api_key.strip() == "" or api_key.startswith("your_"):
+        _gemini_client_cache["client"] = None
+        return None
+    
+    try:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        _gemini_client_cache["client"] = client
+        return client
+    except Exception as e:
+        print(f"[AI Classifier] Failed to initialize Gemini client: {e}")
+        _gemini_client_cache["client"] = None
+        return None
+
+
+def fast_blocklist_check(sender, subject, crm_emails):
+    """
+    Tier 1 fast pre-filter. Checks blocklists and CRM match without any API calls.
+    Returns: "REJECT", "ACCEPT_CRM", "ACCEPT_THREAD", or "NEEDS_AI"
+    """
+    sender_lower = sender.lower().strip()
+    subject_lower = subject.lower().strip()
+    
+    # Extract email address from sender
+    from email.utils import parseaddr
+    _, email_addr = parseaddr(sender)
+    email_addr_lower = (email_addr or sender).lower().strip()
+    
+    # 1. Blocklist check for automated/promotional senders (unless registered in CRM)
+    if email_addr_lower not in crm_emails and sender_lower not in crm_emails:
+        system_sender_keywords = [
+            "mailer-daemon", "daemon", "postmaster", "bounce", "noreply", "no-reply", 
+            "donotreply", "do-not-reply", "newsletter", "notification", "alert", 
+            "support", "marketing", "promo", "digest", "feedback", "updates", "news", 
+            "community", "info@", "hello@", "welcome@", "billing@", "invoice@", "receipt@",
+            "delivery@", "shipping@", "track@", "status@"
+        ]
+        if any(kw in sender_lower for kw in system_sender_keywords):
+            print(f"[Blocklist] REJECT: Sender {sender} matched automated/system email blocklist.")
+            return "REJECT"
+            
+        system_display_names = [
+            "subsystem", "daemon", "service", "system", "mindvalley", "apollo", 
+            "odoo", "github", "gitlab", "google", "microsoft", "zoom", "slack", 
+            "linkedin", "facebook", "twitter", "instagram", "amazon", "paypal", 
+            "stripe"
+        ]
+        display_name = ""
+        if "<" in sender:
+            display_name = sender.split("<")[0].lower().strip()
+        else:
+            display_name = sender_lower
+        display_name = display_name.replace('"', '').replace("'", "").strip()
+        if any(kw in display_name for kw in system_display_names):
+            print(f"[Blocklist] REJECT: Display name '{display_name}' matched automated/system blocklist.")
+            return "REJECT"
+
+        system_subject_keywords = [
+            "delivery status", "undeliverable", "returned mail", "bounce", "failure notice", 
+            "out of office", "auto-reply", "auto reply", "vacation", "spam", "unsubscribed", 
+            "newsletter", "digest", "invoice paid", "payment receipt", "receipt for", 
+            "welcome to", "verification code", "otp", "security alert", "password reset"
+        ]
+        if any(kw in subject_lower for kw in system_subject_keywords):
+            print(f"[Blocklist] REJECT: Subject '{subject}' matched automated/bounce subject blocklist.")
+            return "REJECT"
+
+    # 2. Check if sender is a registered CRM client
+    if email_addr_lower in crm_emails or sender_lower in crm_emails:
+        print(f"[Blocklist] ACCEPT_CRM: Sender {sender} is a registered CRM client.")
+        return "ACCEPT_CRM"
+        
+    # 3. Check if subject has Quotation ID reference
+    if "quotation #" in subject_lower or "quote #" in subject_lower:
+        print(f"[Blocklist] ACCEPT_THREAD: Subject refers to an active quotation reference.")
+        return "ACCEPT_THREAD"
+    
+    return "NEEDS_AI"
+
+
+def classify_and_extract(sender, subject, body):
+    """
+    Tier 2 AI-powered filter. Uses Gemini 2.5 Flash to classify email intent
+    and extract product items in a single API call.
+    
+    Returns: dict with keys 'intent', 'items', 'confidence'
+             or None if API is unavailable (signals caller to fall back to rule-based).
+    """
+    client = _get_gemini_client()
+    if not client:
+        return None  # Fallback signal
+    
+    try:
+        prompt = f"""You are an email classifier for a hardware and industrial supplies company.
+Analyze the following email and determine if it is a genuine product enquiry or purchase request.
+
+Email From: {sender}
+Email Subject: {subject}
+Email Body:
+---
+{body[:3000]}
+---
+
+Respond with ONLY a valid JSON object (no markdown, no code fences, no explanation):
+{{"intent": "<PRODUCT_ENQUIRY|NEGOTIATION|CONVERSATION|IRRELEVANT>", "items": [{{"product": "<product name as written by customer>", "quantity": <number>}}], "confidence": <0.0 to 1.0>}}
+
+Classification rules:
+- "PRODUCT_ENQUIRY": Customer is requesting pricing, quotation, or availability of specific products
+- "NEGOTIATION": Customer is negotiating price or discount on an existing quotation
+- "CONVERSATION": Customer is replying to an existing conversation or confirming an order
+- "IRRELEVANT": Newsletter, spam, out-of-office, promotional, job application, personal chat, or any non-purchase-related email
+- For IRRELEVANT emails, set items to an empty list []
+- For PRODUCT_ENQUIRY, extract every product mentioned with its quantity (default to 1 if not specified)
+- Do NOT invent or hallucinate products not mentioned in the email body"""
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        
+        result_text = response.text.strip()
+        # Clean markdown fences if Gemini wraps the response
+        if result_text.startswith("```"):
+            result_text = re.sub(r'^```(?:json)?\s*', '', result_text)
+            result_text = re.sub(r'\s*```$', '', result_text)
+        
+        result = json.loads(result_text)
+        
+        # Validate required structure
+        if "intent" not in result:
+            return None
+        if "items" not in result:
+            result["items"] = []
+        if "confidence" not in result:
+            result["confidence"] = 0.5
+            
+        print(f"[AI Classifier] Intent: {result['intent']}, Items: {len(result['items'])}, Confidence: {result['confidence']:.2f}")
+        return result
+        
+    except Exception as e:
+        print(f"[AI Classifier] Gemini classification failed: {e}. Falling back to rule-based filter.")
+        return None
+
+
 def is_email_relevant(sender, subject, body, catalog, crm_emails, attachment_text="", email_has_attachments=False):
     """
     Checks if an incoming email is relevant to Trofeo Hardware.
@@ -1276,17 +1550,20 @@ def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True):
                     stock_avail = int(sku_item.get("stock", 0))
                 except Exception:
                     stock_avail = 100
-                req_qty = line["quantity"]
+                
+                # Retrieve or initialize the original requested quantity
+                if "original_requested_qty" not in line:
+                    line["original_requested_qty"] = line["quantity"]
+                
+                req_qty = line["original_requested_qty"]
                 line["stock_avail"] = stock_avail
+                
                 if req_qty > stock_avail:
-                    line["original_requested_qty"] = req_qty
-                    if cap_by_stock:
-                        line["quantity"] = stock_avail
-                        line["deficit"] = req_qty - stock_avail
-                        deficit_lines.append(line)
-                    else:
-                        line["deficit"] = 0
+                    line["quantity"] = 0 # Exclude from quotation entirely since requested qty exceeds stock
+                    line["deficit"] = req_qty - stock_avail
+                    deficit_lines.append(line)
                 else:
+                    line["quantity"] = req_qty
                     line["deficit"] = 0
             else:
                 line["stock_avail"] = 100
@@ -1294,6 +1571,7 @@ def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True):
         else:
             line["deficit"] = 0
     return deficit_lines
+
 
 def send_deficit_purchase_order_alert(smtp_server, smtp_port, email_user, email_pass, master_email, customer_name, customer_email, customer_phone, original_subject, deficit_lines):
     """Sends an email notification to the Master when customer requests quantities exceeding available stock."""
@@ -1370,12 +1648,29 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
             try:
                 sender, subject, body = parse_mock_email(file_path)
                 
-                # Apply unified relevance check
-                if not is_email_relevant(sender, subject, body, catalog, crm_emails):
+                # Tier 1: Fast blocklist check (0ms, no API)
+                blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
+                if blocklist_result == "REJECT":
                     print(f"[Email Filter] Skipped irrelevant mock email from {sender} (Subject: {subject})")
                     if os.path.exists(file_path):
                         os.remove(file_path)
                     continue
+                
+                # Tier 2: AI classification for unknown senders (only when Tier 1 says NEEDS_AI)
+                if blocklist_result == "NEEDS_AI":
+                    ai_result = classify_and_extract(sender, subject, body)
+                    if ai_result and ai_result.get("intent") == "IRRELEVANT":
+                        print(f"[AI Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) — Confidence: {ai_result.get('confidence', 0):.2f}")
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        continue
+                    elif ai_result is None:
+                        # API unavailable — fall back to existing rule-based filter
+                        if not is_email_relevant(sender, subject, body, catalog, crm_emails):
+                            print(f"[Email Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) [rule-based fallback]")
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                            continue
                 
                 print(f"\n[Processing Mock Email] From: {sender} | Subject: {subject}")
                 
@@ -1667,15 +1962,36 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     # Quick check: does this email have any attachments?
                     email_has_attach = has_attachments(msg)
 
-                    # Fast pre-filter: skip emails with no relevant signals at all
-                    if not is_email_relevant(sender, subject, body, catalog, crm_emails,
-                                             attachment_text="", email_has_attachments=email_has_attach):
+                    # Tier 1: Fast blocklist check (0ms, no API)
+                    blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
+                    if blocklist_result == "REJECT":
                         print(f"[Email Filter] Skipped irrelevant email from {sender} (Subject: {subject})")
                         mail.store(m_id, '+FLAGS', '\\Seen')
                         if msg_id:
                             from src.database_sqlite import log_processed_message
                             log_processed_message(msg_id, "IRRELEVANT", tenant_id=tenant_id)
                         continue
+                    
+                    # Tier 2: AI classification for unknown senders
+                    if blocklist_result == "NEEDS_AI":
+                        ai_result = classify_and_extract(sender, subject, body)
+                        if ai_result and ai_result.get("intent") == "IRRELEVANT":
+                            print(f"[AI Filter] Skipped irrelevant email from {sender} (Subject: {subject}) — Confidence: {ai_result.get('confidence', 0):.2f}")
+                            mail.store(m_id, '+FLAGS', '\\Seen')
+                            if msg_id:
+                                from src.database_sqlite import log_processed_message
+                                log_processed_message(msg_id, "IRRELEVANT", tenant_id=tenant_id)
+                            continue
+                        elif ai_result is None:
+                            # API unavailable — fall back to existing rule-based filter
+                            if not is_email_relevant(sender, subject, body, catalog, crm_emails,
+                                                     attachment_text="", email_has_attachments=email_has_attach):
+                                print(f"[Email Filter] Skipped irrelevant email from {sender} (Subject: {subject}) [rule-based fallback]")
+                                mail.store(m_id, '+FLAGS', '\\Seen')
+                                if msg_id:
+                                    from src.database_sqlite import log_processed_message
+                                    log_processed_message(msg_id, "IRRELEVANT", tenant_id=tenant_id)
+                                continue
 
                     # Extract text from attachments
                     attachment_text = extract_text_from_attachments(msg)
@@ -1818,7 +2134,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     mail.store(m_id, '+FLAGS', '\\Seen')
                     if msg_id:
                         inv_id = "UNPARSED"
-                        quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9]+)\]', reply_subject, re.IGNORECASE)
+                        quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)
                         if quote_id_match:
                             inv_id = quote_id_match.group(1)
                         from src.database_sqlite import log_processed_message

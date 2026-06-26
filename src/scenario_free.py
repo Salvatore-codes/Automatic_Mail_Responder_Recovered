@@ -113,37 +113,63 @@ def parse_order_text_rules(text):
     return extracted_items
 
 
-def run_scenario_free(order_text, catalog):
+def run_scenario_free(order_text, catalog, gemini_client=None):
     """
     Runs the complete Scenario A pipeline:
     1. Parse raw text into search queries and quantities.
     2. Run fuzzy string similarity & TF-IDF search on the catalog.
-    3. Secondary description-matching pass for low-confidence candidates.
-    4. Generate the best match for each line.
+    3. (Optional) Run vector embedding search if available.
+    4. Combine all candidates and generate the best match for each line.
+    
+    When gemini_client is provided and catalog has a built vector index,
+    vector embedding matches are combined with fuzzy/TF-IDF candidates.
+    Without a client, the function works exactly as before.
     """
     parsed_items = parse_order_text_rules(order_text)
     matched_lines = []
+    
+    # Check if vector matching is available
+    use_vector = (
+        gemini_client is not None 
+        and hasattr(catalog, 'embedding_matrix') 
+        and catalog.embedding_matrix is not None
+        and len(catalog.embedding_ids) > 0
+    )
     
     for item in parsed_items:
         query = item['parsed_query']
         qty = item['quantity']
         
+        # Existing matching methods (always run — backward compatible)
         fuzzy_candidates = catalog.match_fuzzy(query, threshold=80, limit=3)
         tfidf_candidates = catalog.match_local_semantic(query, limit=3)
         
+        # Supplementary vector matching (only when available)
+        vector_candidates = []
+        if use_vector:
+            try:
+                vector_candidates = catalog.match_vector(query, gemini_client, threshold=0.70, limit=3)
+            except Exception as e:
+                print(f"[Vector Match] Skipped for '{query}': {e}")
+        
+        # Combine ALL candidate sources — best score wins
         combined = {}
-        for cand in fuzzy_candidates + tfidf_candidates:
+        for cand in vector_candidates + fuzzy_candidates + tfidf_candidates:
             sku_id = cand['sku']['sku_id']
             score = cand['score']
             if sku_id in combined:
                 combined[sku_id]['score'] = max(combined[sku_id]['score'], score)
+                # Prefer the method name of the higher-scoring source
+                if score > combined[sku_id]['score']:
+                    combined[sku_id]['method'] = cand.get('method', 'Unknown')
             else:
-                combined[sku_id] = {'sku': cand['sku'], 'score': score}
+                combined[sku_id] = {'sku': cand['sku'], 'score': score, 'method': cand.get('method', 'Unknown')}
                 
         sorted_candidates = sorted(combined.values(), key=lambda x: x['score'], reverse=True)
         
         if sorted_candidates and sorted_candidates[0]['score'] >= 80.0:
             best = sorted_candidates[0]
+            match_method = best.get('method', 'Semantic/Fuzzy')
             matched_lines.append({
                 "original_line": item['original_line'],
                 "parsed_query": query,
@@ -152,7 +178,7 @@ def run_scenario_free(order_text, catalog):
                 "matched_sku_name": best['sku']['sku_name'],
                 "unit_price": best['sku']['price'],
                 "confidence": best['score'],
-                "match_method": "Semantic/Fuzzy"
+                "match_method": match_method
             })
         else:
             matched_lines.append({

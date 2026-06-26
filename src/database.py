@@ -3,7 +3,13 @@ import os
 import re
 import math
 import json
+import hashlib
 from rapidfuzz import process, fuzz
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 # A lightweight pure-Python TF-IDF system for local semantic-like matching
 def normalize_dimensions(text):
@@ -128,6 +134,10 @@ class Catalog:
         self.sku_vectors = [self.tfidf.get_tfidf_vector(tokenize(text)) for text in sku_texts]
         
         self.gemini_embeddings = {}
+        
+        # Vector embedding index (built lazily via build_vector_index)
+        self.embedding_matrix = None
+        self.embedding_ids = []
         
     def load_catalog(self):
         if not os.path.exists(self.csv_path):
@@ -304,7 +314,7 @@ class Catalog:
             sku_texts = [f"Name: {sku['sku_name']}. Description: {sku['description']}." for sku in self.skus]
             try:
                 response = client.models.embed_content(
-                    model="text-embedding-004",
+                    model="gemini-embedding-001",
                     contents=sku_texts
                 )
                 for idx, emb in enumerate(response.embeddings):
@@ -315,7 +325,7 @@ class Catalog:
 
         try:
             query_resp = client.models.embed_content(
-                model="text-embedding-004",
+                model="gemini-embedding-001",
                 contents=query
             )
             query_vector = query_resp.embeddings[0].values
@@ -342,3 +352,149 @@ class Catalog:
             
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:limit]
+
+    def build_vector_index(self, client=None):
+        """
+        Build or load cached vector embeddings for all SKUs using Gemini gemini-embedding-001.
+        Embeddings are cached to disk and only rebuilt when the catalog CSV changes.
+        Returns True if index is ready, False otherwise.
+        """
+        if np is None:
+            print("[Vector Index] numpy not installed. Vector matching disabled.")
+            return False
+            
+        cache_dir = os.path.dirname(self.csv_path)
+        embeddings_path = os.path.join(cache_dir, "sku_embeddings.npy")
+        ids_path = os.path.join(cache_dir, "sku_embedding_ids.json")
+        catalog_hash_path = os.path.join(cache_dir, "sku_catalog_hash.txt")
+        
+        # Compute hash of current catalog to detect changes
+        with open(self.csv_path, 'rb') as f:
+            current_hash = hashlib.md5(f.read()).hexdigest()
+        
+        # Check if cache is valid
+        cache_valid = False
+        if (os.path.exists(embeddings_path) and os.path.exists(ids_path) 
+                and os.path.exists(catalog_hash_path)):
+            try:
+                with open(catalog_hash_path, 'r') as f:
+                    cached_hash = f.read().strip()
+                if cached_hash == current_hash:
+                    cache_valid = True
+            except Exception:
+                pass
+        
+        if cache_valid:
+            try:
+                print("[Vector Index] Loading cached embeddings from disk...")
+                self.embedding_matrix = np.load(embeddings_path)
+                with open(ids_path, 'r', encoding='utf-8') as f:
+                    self.embedding_ids = json.load(f)
+                print(f"[Vector Index] Loaded {len(self.embedding_ids)} SKU embeddings from cache.")
+                return True
+            except Exception as e:
+                print(f"[Vector Index] Cache load failed: {e}. Rebuilding...")
+                cache_valid = False
+        
+        # Build fresh embeddings — requires Gemini client
+        if not client:
+            print("[Vector Index] No Gemini client available. Vector matching disabled.")
+            return False
+        
+        print(f"[Vector Index] Building embeddings for {len(self.skus)} SKUs...")
+        sku_texts = [
+            f"{sku['sku_name']} {sku.get('description', '')} {sku.get('category', '')}"
+            for sku in self.skus
+        ]
+        sku_ids = [sku['sku_id'] for sku in self.skus]
+        
+        all_embeddings = []
+        batch_size = 100
+        
+        for i in range(0, len(sku_texts), batch_size):
+            batch = sku_texts[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(sku_texts) + batch_size - 1) // batch_size
+            try:
+                response = client.models.embed_content(
+                    model="gemini-embedding-001",
+                    contents=batch
+                )
+                for emb in response.embeddings:
+                    all_embeddings.append(emb.values)
+                print(f"[Vector Index] Embedded batch {batch_num}/{total_batches} ({len(batch)} SKUs)")
+            except Exception as e:
+                print(f"[Vector Index] Embedding batch {batch_num} failed: {e}")
+                return False
+        
+        self.embedding_matrix = np.array(all_embeddings, dtype=np.float32)
+        self.embedding_ids = sku_ids
+        
+        # Pre-normalize for fast cosine similarity (dot product on normalized vectors)
+        norms = np.linalg.norm(self.embedding_matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        self.embedding_matrix = self.embedding_matrix / norms
+        
+        # Save cache to disk
+        try:
+            np.save(embeddings_path, self.embedding_matrix)
+            with open(ids_path, 'w', encoding='utf-8') as f:
+                json.dump(sku_ids, f)
+            with open(catalog_hash_path, 'w') as f:
+                f.write(current_hash)
+            print(f"[Vector Index] Built and cached {len(sku_ids)} SKU embeddings to disk.")
+        except Exception as e:
+            print(f"[Vector Index] Warning: Failed to save cache: {e}")
+        
+        return True
+
+    def match_vector(self, query_text, client, threshold=0.70, limit=3):
+        """
+        Match a product query against the vector index using cosine similarity.
+        Returns list of matches in the same format as match_fuzzy/match_local_semantic.
+        Falls back to empty list if vector index is not available.
+        """
+        if np is None or self.embedding_matrix is None or len(self.embedding_ids) == 0:
+            return []
+        
+        # First check synonyms (instant exact match)
+        syn_match = self.check_synonyms(query_text)
+        if syn_match:
+            return syn_match
+        
+        try:
+            response = client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=query_text
+            )
+            query_vector = np.array(response.embeddings[0].values, dtype=np.float32)
+            
+            # Normalize query vector
+            q_norm = np.linalg.norm(query_vector)
+            if q_norm > 0:
+                query_vector = query_vector / q_norm
+            
+            # Cosine similarity via dot product (both vectors are pre-normalized)
+            similarities = self.embedding_matrix @ query_vector
+            
+            # Get top-K indices
+            top_indices = np.argsort(similarities)[::-1][:limit]
+            
+            results = []
+            for idx in top_indices:
+                score = float(similarities[idx]) * 100  # Convert to 0-100 scale
+                if score >= threshold * 100:
+                    sku_id = self.embedding_ids[idx]
+                    sku = next((s for s in self.skus if s['sku_id'] == sku_id), None)
+                    if sku:
+                        results.append({
+                            "sku": sku,
+                            "score": round(score, 1),
+                            "method": "Vector Embedding"
+                        })
+            
+            return results
+            
+        except Exception as e:
+            print(f"[Vector Match] Query embedding failed: {e}")
+            return []

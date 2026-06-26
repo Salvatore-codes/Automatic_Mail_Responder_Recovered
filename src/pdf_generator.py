@@ -115,7 +115,7 @@ def find_company_logo(project_root):
                 
     return None
 
-def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_id, output_path, catalog=None, customer_phone="—", upi_id=None, upi_name=None, logo_path=None, business_name=None):
+def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_id, output_path, catalog=None, customer_phone="—", upi_id=None, upi_name=None, logo_path=None, business_name=None, customer_email=None):
     # 1. Create Directories if they don't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
@@ -130,9 +130,12 @@ def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_i
         if sku_id == "UNKNOWN":
             continue
         qty = line['quantity']
+        if qty <= 0:
+            continue
         price = line['unit_price']
         line_total = price * qty
         raw_subtotal += line_total
+
         
         # Determine category & MTO status
         cat = "General"
@@ -402,6 +405,7 @@ def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_i
         "discount_pct": discount_pct,
         "customer_name": customer_name,
         "customer_phone": customer_phone,
+        "customer_email": customer_email,
         "invoice_id": invoice_id,
         "chat_history": chat_history
     }
