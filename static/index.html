@@ -790,6 +790,9 @@
             <button class="nav-tab" id="tab-quotes" onclick="switchTab('quotes')">
                 🗂️ Quote Repository
             </button>
+            <button class="nav-tab" id="tab-inventory" onclick="switchTab('inventory')">
+                🏭 Full Inventory
+            </button>
         </div>
         <div class="nav-controls">
             <select class="tenant-selector" id="tenantSelect">
@@ -1069,6 +1072,45 @@
         </div>
     </div>
 
+    <!-- ===================== TAB 5: FULL INVENTORY ===================== -->
+    <div class="tab-content" id="content-inventory">
+        <div class="card-glass shadow-lg p-6">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+                <div>
+                    <h2><span class="icon">🏭</span> Full Catalog Inventory</h2>
+                    <p class="text-sm text-muted mt-1">View and update stock levels for all products in the catalog.</p>
+                </div>
+                <div style="display:flex;gap:0.75rem;align-items:center">
+                    <input type="text" id="inventorySearchInput" class="form-control form-control-sm" placeholder="Search catalog SKUs or names…" style="width:250px;padding:0.4rem 0.75rem;font-size:0.82rem">
+                    <button class="btn btn-ghost btn-sm" onclick="loadFullInventory()">🔄 Refresh</button>
+                </div>
+            </div>
+            
+            <div style="position:relative">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width:50px">#</th>
+                                <th style="width:150px">SKU ID</th>
+                                <th>Product Name</th>
+                                <th style="width:150px">Category</th>
+                                <th style="width:120px">Price</th>
+                                <th style="width:120px">Stock Level</th>
+                                <th style="width:120px">Status</th>
+                                <th style="width:120px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody">
+                            <tr><td colspan="8"><div class="empty-state"><div class="es-icon">🏭</div><h3>Loading inventory catalog…</h3></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="loader-overlay" id="inventoryLoader"><div class="big-spinner"></div><p style="font-family:var(--font-display)">Loading catalog…</p></div>
+            </div>
+        </div>
+    </div>
+
 </div><!-- end app-shell -->
 
 <!-- ===== MODALS ===== -->
@@ -1211,6 +1253,7 @@ function switchTab(tab) {
     if (tab === 'deficits') loadDeficits();
     if (tab === 'negotiations') loadNegotiations();
     if (tab === 'quotes') { loadQuotes(); loadLowStock(); }
+    if (tab === 'inventory') loadFullInventory();
 }
 
 // ========== UTILS ==========
@@ -1935,9 +1978,81 @@ async function loadLowStock() {
     }
 }
 
+// ========== FULL INVENTORY ==========
+let fullInventoryData = [];
+async function loadFullInventory() {
+    const tbody = document.getElementById('inventoryTableBody');
+    const loader = document.getElementById('inventoryLoader');
+    loader.classList.add('visible');
+    try {
+        const res = await fetch(`/api/inventory/catalog?tenant_id=${getTenantId()}`);
+        const data = await res.json();
+        fullInventoryData = data.items || [];
+        renderInventoryTable(fullInventoryData);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="es-icon">❌</div><h3>Error loading inventory</h3><p>${e.message}</p></div></td></tr>`;
+    } finally {
+        loader.classList.remove('visible');
+    }
+}
+
+function renderInventoryTable(items) {
+    const tbody = document.getElementById('inventoryTableBody');
+    tbody.innerHTML = '';
+    
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="es-icon">🏭</div><h3>No matching products</h3><p>Try searching for a different SKU ID or name.</p></div></td></tr>';
+        return;
+    }
+    
+    items.forEach((sku, idx) => {
+        const isZero = sku.stock === 0;
+        const isLow = sku.stock <= 5;
+        
+        let statusPill = '';
+        if (isZero) {
+            statusPill = '<span class="pill red">Out of Stock</span>';
+        } else if (isLow) {
+            statusPill = '<span class="pill yellow">Low Stock</span>';
+        } else {
+            statusPill = '<span class="pill green">In Stock</span>';
+        }
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="text-sm text-muted">${idx + 1}</td>
+            <td><code style="color:#A5B4FC">${sku.sku_id}</code></td>
+            <td><strong>${sku.sku_name}</strong></td>
+            <td><span class="text-sm text-muted">${sku.category}</span></td>
+            <td>${fmt(sku.price)}</td>
+            <td><strong style="color:${isZero ? '#F87171' : isLow ? '#FCD34D' : '#34D399'}">${sku.stock} units</strong></td>
+            <td>${statusPill}</td>
+            <td>
+                <button class="btn btn-primary btn-sm" onclick="openInventoryUpdateModal('${sku.sku_id}', '${sku.sku_name.replace(/'/g, "\\'")}', ${sku.stock})">✏️ Update Stock</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
 // ========== INIT ==========
 async function init() {
     await loadTenants();
+    
+    // Bind search input for full inventory
+    document.getElementById('inventorySearchInput').oninput = function() {
+        const query = this.value.toLowerCase().trim();
+        if (!query) {
+            renderInventoryTable(fullInventoryData);
+            return;
+        }
+        const filtered = fullInventoryData.filter(sku => 
+            sku.sku_id.toLowerCase().includes(query) || 
+            sku.sku_name.toLowerCase().includes(query) ||
+            sku.category.toLowerCase().includes(query)
+        );
+        renderInventoryTable(filtered);
+    };
     // Background polling for badge counts
     try {
         const [defRes, negRes] = await Promise.all([
@@ -1962,6 +2077,7 @@ document.getElementById('tenantSelect').addEventListener('change', () => {
     if (active === 'deficits') loadDeficits();
     else if (active === 'negotiations') loadNegotiations();
     else if (active === 'quotes') { loadQuotes(); loadLowStock(); }
+    else if (active === 'inventory') loadFullInventory();
 });
 
 init();

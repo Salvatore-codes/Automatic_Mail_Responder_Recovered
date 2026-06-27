@@ -779,6 +779,27 @@ async def get_low_stock(tenant_id: str = "default", threshold: int = 5):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/inventory/catalog")
+async def get_full_catalog(tenant_id: str = "default"):
+    """Returns all SKUs in the catalog."""
+    try:
+        from src.tenants import get_tenant_catalog
+        catalog = get_tenant_catalog(tenant_id)
+        items = [
+            {
+                "sku_id": sku["sku_id"],
+                "sku_name": sku.get("sku_name", "—"),
+                "category": sku.get("category", "—"),
+                "stock": int(sku.get("stock", 0)),
+                "price": float(sku.get("price", 0))
+            }
+            for sku in catalog.skus
+        ]
+        items.sort(key=lambda x: x["sku_id"])
+        return {"count": len(items), "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/report")
 async def get_report():
     from fastapi.responses import FileResponse
