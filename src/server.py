@@ -829,6 +829,10 @@ async def get_report():
 
 @app.get("/")
 async def get_index():
-    # Serves static dashboard index by default
+    # Serves static dashboard index by default, with cache-control to prevent caching
     from fastapi.responses import FileResponse
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    response = FileResponse(os.path.join(static_dir, "index.html"))
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
