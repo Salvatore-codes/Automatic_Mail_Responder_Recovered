@@ -151,7 +151,7 @@ def get_crm_discount(email_addr, crm_path):
             pass
     return 0.0, "Walk-in Retail Client", "+91 90000 00000"
 
-def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None, customer_email=None, customer_phone=None):
+def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None, customer_email=None, customer_phone=None, system_efficiency=None):
     """Formats the reply body with the quote breakdown (both Plain Text and HTML)."""
     exec_name = tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME
     exec_title = tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE
@@ -262,6 +262,14 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     body.append(f"{exec_title} | {bus_name}")
     body.append(exec_phone)
     
+    if system_efficiency:
+        body.append("\n" + "=" * 40)
+        body.append("System Efficiency Metadata:")
+        body.append(f"- Mail Received: {system_efficiency['received_time']}")
+        body.append(f"- Response Generated: {system_efficiency['generated_time']}")
+        body.append(f"- Processing Latency: {system_efficiency['latency']:.2f} seconds")
+        body.append("=" * 40)
+
     plain_text = "\n".join(body)
     
     # 2. HTML Body
@@ -389,6 +397,17 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     if logo_cid and any_quoted:
         html_lines.append(f"<img src='cid:{logo_cid}' alt='{bus_name}' style='max-height: 50px; margin-bottom: 12px; display:block;'>")
     html_lines.append(f"Warm regards,<br><b>{exec_name}</b><br>{exec_title} &nbsp;|&nbsp; {bus_name}<br><span style='color:#94a3b8;'>{exec_phone} &nbsp;&bull;&nbsp; {exec_email}</span>")
+    
+    if system_efficiency:
+        html_lines.append(
+            f"<div style='margin-top: 24px; padding: 12px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 11px; color: #475569;'>"
+            f"  <b style='color: #1e293b;'>System Efficiency Metadata:</b><br>"
+            f"  &bull; Mail Received: {html.escape(system_efficiency['received_time'])}<br>"
+            f"  &bull; Response Generated: {html.escape(system_efficiency['generated_time'])}<br>"
+            f"  &bull; Processing Latency: {system_efficiency['latency']:.2f} seconds"
+            f"</div>"
+        )
+        
     html_lines.append("</div></body></html>")
     
     html_text = "\n".join(html_lines)
@@ -396,7 +415,7 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     return (plain_text, html_text), grand_total
 
 
-def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None):
+def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None, system_efficiency=None):
     """Formats a reply body for when no order items could be parsed (both Plain Text and HTML)."""
     exec_name = tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME
     exec_title = tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE
@@ -418,6 +437,14 @@ def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None):
         f"{exec_title} | {bus_name}",
         exec_phone
     ]
+    if system_efficiency:
+        body.append("\n" + "=" * 40)
+        body.append("System Efficiency Metadata:")
+        body.append(f"- Mail Received: {system_efficiency['received_time']}")
+        body.append(f"- Response Generated: {system_efficiency['generated_time']}")
+        body.append(f"- Processing Latency: {system_efficiency['latency']:.2f} seconds")
+        body.append("=" * 40)
+        
     plain_text = "\n".join(body)
     
     # HTML
@@ -441,6 +468,17 @@ def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None):
     if logo_cid:
         html_lines.append(f"<img src='cid:{logo_cid}' alt='{bus_name}' style='max-height: 50px; margin-bottom: 12px; display:block;'>")
     html_lines.append(f"Warm regards,<br><b>{exec_name}</b><br>{exec_title} &nbsp;|&nbsp; {bus_name}<br><span style='color:#94a3b8;'>{exec_phone} &nbsp;&bull;&nbsp; {exec_email}</span>")
+    
+    if system_efficiency:
+        html_lines.append(
+            f"<div style='margin-top: 24px; padding: 12px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 11px; color: #475569;'>"
+            f"  <b style='color: #1e293b;'>System Efficiency Metadata:</b><br>"
+            f"  &bull; Mail Received: {html.escape(system_efficiency['received_time'])}<br>"
+            f"  &bull; Response Generated: {html.escape(system_efficiency['generated_time'])}<br>"
+            f"  &bull; Processing Latency: {system_efficiency['latency']:.2f} seconds"
+            f"</div>"
+        )
+        
     html_lines.append("</div></body></html>")
     
     html_text = "\n".join(html_lines)
@@ -509,6 +547,13 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
     manages CRM discounts, handles price negotiations, and returns the response.
     Returns: (reply_subject, reply_body_tuple, pdf_path, status)
     """
+    import time
+    from datetime import datetime, timedelta
+    start_time = time.time()
+    # Mail received time is recorded when system starts ingestion/processing
+    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    received_time_str = now_ist.strftime('%Y-%m-%d %H:%M:%S IST')
+
     from src.tenants import get_tenant_config
     tenant_config = get_tenant_config(tenant_id)
     
@@ -653,6 +698,15 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 else:
                     pdf_out_path = None
                 
+                duration = time.time() - start_time
+                now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+                generated_time_str = now_ist.strftime('%Y-%m-%d %H:%M:%S IST')
+                system_efficiency = {
+                    "received_time": received_time_str,
+                    "generated_time": generated_time_str,
+                    "latency": duration
+                }
+
                 reply_body, grand_total = build_email_reply_body(
                     matched_lines=meta["matched_lines"],
                     discount_pct=new_discount_pct,
@@ -661,7 +715,8 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                     logo_cid="company_logo",
                     tenant_config=tenant_config,
                     customer_email=meta.get("customer_email"),
-                    customer_phone=meta.get("customer_phone")
+                    customer_phone=meta.get("customer_phone"),
+                    system_efficiency=system_efficiency
                 )
                 
                 # Log to SQLite
@@ -678,7 +733,30 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 full_reply_html = f"<html><body><p>{reply_text.replace('\n', '<br>')}</p>{reply_body[1].replace('<html><body>', '').replace('</body></html>', '')}</body></html>"
                 reply_payload = (full_reply_plain, full_reply_html)
             else:
-                reply_payload = (reply_text, f"<html><body><p>{reply_text.replace('\n', '<br>')}</p></body></html>")
+                duration = time.time() - start_time
+                now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+                generated_time_str = now_ist.strftime('%Y-%m-%d %H:%M:%S IST')
+                
+                efficiency_plain = (
+                    f"\n\n{'=' * 40}\n"
+                    f"System Efficiency Metadata:\n"
+                    f"- Mail Received: {received_time_str}\n"
+                    f"- Response Generated: {generated_time_str}\n"
+                    f"- Processing Latency: {duration:.2f} seconds\n"
+                    f"{'=' * 40}"
+                )
+                efficiency_html = (
+                    f"<div style='margin-top: 24px; padding: 12px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 11px; color: #475569;'>"
+                    f"  <b style='color: #1e293b;'>System Efficiency Metadata:</b><br>"
+                    f"  &bull; Mail Received: {received_time_str}<br>"
+                    f"  &bull; Response Generated: {generated_time_str}<br>"
+                    f"  &bull; Processing Latency: {duration:.2f} seconds"
+                    f"</div>"
+                )
+                
+                full_reply_plain = reply_text + efficiency_plain
+                full_reply_html = f"<html><body><p>{reply_text.replace('\n', '<br>')}</p>{efficiency_html}</body></html>"
+                reply_payload = (full_reply_plain, full_reply_html)
                 
                 # Log to SQLite
                 try:
@@ -763,6 +841,15 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             else:
                 pdf_out_path = None
                 
+            duration = time.time() - start_time
+            now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            generated_time_str = now_ist.strftime('%Y-%m-%d %H:%M:%S IST')
+            system_efficiency = {
+                "received_time": received_time_str,
+                "generated_time": generated_time_str,
+                "latency": duration
+            }
+
             reply_body, grand_total = build_email_reply_body(
                 matched_lines=matched_lines,
                 discount_pct=discount_pct,
@@ -771,7 +858,8 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 logo_cid="company_logo",
                 tenant_config=tenant_config,
                 customer_email=email_addr,
-                customer_phone=customer_phone
+                customer_phone=customer_phone,
+                system_efficiency=system_efficiency
             )
             
             # Log to SQLite
@@ -944,6 +1032,15 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 business_name=tenant_config.get("business_name"),
                 customer_email=email_addr
             )
+        duration = time.time() - start_time
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        generated_time_str = now_ist.strftime('%Y-%m-%d %H:%M:%S IST')
+        system_efficiency = {
+            "received_time": received_time_str,
+            "generated_time": generated_time_str,
+            "latency": duration
+        }
+
         reply_body, grand_total = build_email_reply_body(
             matched_lines=matched_lines,
             discount_pct=discount_pct,
@@ -952,7 +1049,8 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             logo_cid="company_logo",
             tenant_config=tenant_config,
             customer_email=email_addr,
-            customer_phone=customer_phone
+            customer_phone=customer_phone,
+            system_efficiency=system_efficiency
         )
         
         # Log to SQLite
@@ -1000,7 +1098,21 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         reply_subject = clean_reply_subject(subject, invoice_id=invoice_id)
         return reply_subject, reply_body, pdf_out_path, "QUOTE_GENERATED"
     else:
-        reply_body = build_empty_reply_body(customer_name, logo_cid="company_logo", tenant_config=tenant_config)
+        duration = time.time() - start_time
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        generated_time_str = now_ist.strftime('%Y-%m-%d %H:%M:%S IST')
+        system_efficiency = {
+            "received_time": received_time_str,
+            "generated_time": generated_time_str,
+            "latency": duration
+        }
+        
+        reply_body = build_empty_reply_body(
+            customer_name,
+            logo_cid="company_logo",
+            tenant_config=tenant_config,
+            system_efficiency=system_efficiency
+        )
         reply_subject = clean_reply_subject(subject, is_unparsed=True)
         return reply_subject, reply_body, None, "UNPARSED_NOTICE"
 
