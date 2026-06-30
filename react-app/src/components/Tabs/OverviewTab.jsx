@@ -190,14 +190,10 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
     return tB - tA;
   });
 
-  // 1. New Mail Column Data: Active client incoming queries from the stream (unprocessed/pending review/unmatched/negotiating)
+  // 1. New Mail Column Data: Active client incoming queries (unprocessed/pending review)
   const newMails = sortedStream.filter(item => 
     item.customer_email !== "System / Marketing" && 
-    item.status !== "Auto-Filtered" && 
-    item.status !== "QUOTE_GENERATED" && 
-    item.status !== "QUOTE_UPDATED" && 
-    item.status !== "NEGOTIATION_APPROVED" && 
-    item.status !== "NEGOTIATION_REJECTED"
+    item.status === "Pending Review"
   );
 
   // 2. Responded Column Data: Auto-quotes, completed items, and auto-filtered items
@@ -205,14 +201,17 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
     item.status === "Auto-Filtered" || 
     item.status === "QUOTE_GENERATED" || 
     item.status === "QUOTE_UPDATED" || 
-    item.status === "NEGOTIATION_APPROVED" || 
+    item.status === "NEGOTIATION_APPROVED"
+  );
+
+  // 3. Rejected Column Data: Rejected quotes
+  const rejectedMails = sortedStream.filter(item => 
     item.status === "NEGOTIATION_REJECTED"
   );
 
-  // 3. Pending Column Data: Combined list of deficits, escalated negotiations, and unmatched items
+  // 4. Pending Deficits & Unmatched Items List
   const pendingItemsList = [
     ...deficits.map(d => ({ ...d, type: 'deficit', key: `def-${d.id}` })),
-    ...negotiations.map(n => ({ ...n, type: 'negotiation', key: `neg-${n.invoice_id}` })),
     ...unmatched.map(u => ({ ...u, type: 'unmatched', key: `unm-${u.id}` }))
   ];
 
@@ -237,6 +236,27 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
       (item.description || '').toLowerCase().includes(term) ||
       (item.invoice_id || '').toLowerCase().includes(term) ||
       (item.status || '').toLowerCase().includes(term)
+    );
+  });
+
+  const filteredNegotiations = negotiations.filter(item => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (item.customer_name || '').toLowerCase().includes(term) ||
+      (item.customer_email || '').toLowerCase().includes(term) ||
+      (item.invoice_id || '').toLowerCase().includes(term)
+    );
+  });
+
+  const filteredRejectedMails = rejectedMails.filter(item => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (item.customer_name || '').toLowerCase().includes(term) ||
+      (item.customer_email || '').toLowerCase().includes(term) ||
+      (item.description || '').toLowerCase().includes(term) ||
+      (item.invoice_id || '').toLowerCase().includes(term)
     );
   });
 
@@ -318,6 +338,38 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
       });
     });
 
+    // Add Reply Mails (active negotiations)
+    filteredNegotiations.forEach(item => {
+      items.push({
+        id: `neg-${item.invoice_id}`,
+        timestamp: item.created_at,
+        type: 'negotiation',
+        customer_name: item.customer_name,
+        customer_email: `Invoice ID: ${item.invoice_id}`,
+        details: `Requested Discount: ${Math.round(item.discount_pct * 100)}% (Excl: ₹${(item.subtotal * (1 - (item.discount_pct || 0))).toLocaleString('en-IN', { maximumFractionDigits: 2 })} | Incl: ₹${item.grand_total.toLocaleString('en-IN')})`,
+        status: 'Reply (Negotiating)',
+        statusType: 'purple',
+        invoice_id: item.invoice_id,
+        rawItem: item
+      });
+    });
+
+    // Add Rejected Mails
+    filteredRejectedMails.forEach(item => {
+      items.push({
+        id: item.message_id || `reject-${item.invoice_id}-${item.timestamp}`,
+        timestamp: item.timestamp,
+        type: 'rejected_mail',
+        customer_name: item.customer_name,
+        customer_email: item.customer_email,
+        details: `Employee Rejected Quotation ${item.invoice_id}`,
+        status: 'Rejected',
+        statusType: 'red',
+        invoice_id: item.invoice_id,
+        rawItem: item
+      });
+    });
+
     // Add Pending items
     filteredPendingItemsList.forEach(item => {
       if (item.type === 'deficit') {
@@ -330,19 +382,6 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
           details: `Stock Shortage: ${item.sku_name} (Shortage: ${item.deficit_qty} units)`,
           status: 'Stock Shortage',
           statusType: 'red',
-          invoice_id: item.invoice_id,
-          rawItem: item
-        });
-      } else if (item.type === 'negotiation') {
-        items.push({
-          id: item.key || `neg-${item.invoice_id}`,
-          timestamp: item.created_at,
-          type: 'negotiation',
-          customer_name: item.customer_name,
-          customer_email: `Invoice ID: ${item.invoice_id}`,
-          details: `Requested Discount: ${Math.round(item.discount_pct * 100)}% (Excl: ₹${(item.subtotal * (1 - (item.discount_pct || 0))).toLocaleString('en-IN', { maximumFractionDigits: 2 })} | Incl: ₹${item.grand_total.toLocaleString('en-IN')})`,
-          status: 'Escalated',
-          statusType: 'yellow',
           invoice_id: item.invoice_id,
           rawItem: item
         });
@@ -1108,8 +1147,89 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
               )}
             </div>
           </div>
+                  {/* COLUMN 3: REPLY */}
+          <div className="kanban-column">
+            <div className="kanban-column-header">
+              <span className="kanban-column-title">
+                <MessageSquare size={15} style={{ color: '#8B5CF6' }} /> Reply
+              </span>
+              <span className="kanban-column-badge purple" style={{ background: '#8B5CF6', color: '#FFF' }}>
+                {filteredNegotiations.length}
+              </span>
+            </div>
 
-          {/* COLUMN 3: PENDING APPROVAL */}
+            <div className="kanban-cards-container">
+              {filteredNegotiations.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748B', fontSize: '0.75rem' }}>
+                  No customer replies match the criteria.
+                </div>
+              ) : (
+                filteredNegotiations.map((item) => (
+                  <div key={`neg-${item.invoice_id}`} className="kanban-card negotiation" onClick={() => handleCardClick(item.invoice_id)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span style={{ color: '#8B5CF6', fontWeight: '700', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <MessageSquare size={10} /> Reply (Discount Request)
+                      </span>
+                      <span style={{ fontSize: '0.6rem', color: '#6D28D9', fontWeight: '600', background: '#F5F3FF', padding: '0.05rem 0.35rem', borderRadius: '4px' }}>{item.status === 'NEGOTIATION_ESCALATED' ? 'Escalated' : 'Negotiating'}</span>
+                    </div>
+                    <span className="card-title">{item.customer_name}</span>
+                    <div className="card-description">
+                      Requested: <span style={{ color: '#8B5CF6', fontWeight: '700' }}>{Math.round(item.discount_pct * 100)}%</span> (Excl: ₹{(item.subtotal * (1 - (item.discount_pct || 0))).toLocaleString('en-IN', { maximumFractionDigits: 2 })} | Incl: ₹{item.grand_total.toLocaleString('en-IN')})
+                    </div>
+                    <div className="card-footer">
+                      <span className="card-footer-text">Inv: {item.invoice_id}</span>
+                      <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); navigateToTab ? navigateToTab('negotiations', item.invoice_id) : setActiveTab('negotiations'); }} style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', color: '#8B5CF6', background: '#FFFFFF', border: '1px solid #C084FC' }} title="Navigate to the Price Negotiations Desk to decide on this discount request.">
+                        Decide <ArrowRight size={10} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* COLUMN 4: REJECTED */}
+          <div className="kanban-column">
+            <div className="kanban-column-header">
+              <span className="kanban-column-title">
+                <AlertTriangle size={15} style={{ color: '#EF4444' }} /> Rejected Quote
+              </span>
+              <span className="kanban-column-badge red" style={{ background: '#EF4444', color: '#FFF' }}>
+                {filteredRejectedMails.length}
+              </span>
+            </div>
+
+            <div className="kanban-cards-container">
+              {filteredRejectedMails.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748B', fontSize: '0.75rem' }}>
+                  No rejected quotes match the criteria.
+                </div>
+              ) : (
+                filteredRejectedMails.map((item, idx) => (
+                  <div key={item.message_id || idx} className="kanban-card deficit" onClick={() => handleCardClick(item.invoice_id)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span style={{ color: '#EF4444', fontWeight: '700', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <AlertTriangle size={10} /> Rejected Quote
+                      </span>
+                      <span style={{ fontSize: '0.6rem', color: '#DC2626', fontWeight: '600', background: '#FEF2F2', padding: '0.05rem 0.35rem', borderRadius: '4px' }}>Rejected</span>
+                    </div>
+                    <span className="card-title">{item.customer_name}</span>
+                    <div className="card-description" style={{ fontSize: '0.72rem', color: '#475569' }}>
+                      Employee rejected the discount request on Quote {item.invoice_id}.
+                    </div>
+                    <div className="card-footer">
+                      <span className="card-footer-text">Inv: {item.invoice_id}</span>
+                      <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); openQuoteComparison ? openQuoteComparison(item.invoice_id, item.customer_name) : (navigateToTab ? navigateToTab('quotes', item.invoice_id) : setActiveTab('quotes')); }} style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', color: '#EF4444', background: '#FFFFFF', border: '1px solid #FCA5A5' }} title="View details of this rejected transaction.">
+                        View Quote <ExternalLink size={10} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* COLUMN 5: PENDING APPROVAL */}
           <div className="kanban-column">
             <div className="kanban-column-header">
               <span className="kanban-column-title">
@@ -1144,27 +1264,6 @@ export default function OverviewTab({ tenantId, showToast, setActiveTab, navigat
                           <span className="card-footer-text">Inv: {item.invoice_id}</span>
                           <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); navigateToTab ? navigateToTab('deficits', item.invoice_id) : setActiveTab('deficits'); }} style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', color: '#EF4444', background: '#FFFFFF', border: '1px solid #FCA5A5' }} title="Navigate to the Deficits tab to resolve this item shortage by matching alternative products.">
                             Resolve <ArrowRight size={10} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  } else if (item.type === 'negotiation') {
-                    return (
-                      <div key={item.key} className="kanban-card negotiation" onClick={() => handleCardClick(item.invoice_id)}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <span style={{ color: '#2563EB', fontWeight: '700', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <MessageSquare size={10} /> Negotiation
-                          </span>
-                          <span style={{ fontSize: '0.6rem', color: '#475569', fontWeight: '500' }}>Escalated</span>
-                        </div>
-                        <span className="card-title">{item.customer_name}</span>
-                        <div className="card-description">
-                          Requested: <span style={{ color: '#2563EB', fontWeight: '700' }}>{Math.round(item.discount_pct * 100)}%</span> (Excl: ₹{(item.subtotal * (1 - (item.discount_pct || 0))).toLocaleString('en-IN', { maximumFractionDigits: 2 })} | Incl: ₹{item.grand_total.toLocaleString('en-IN')})
-                        </div>
-                        <div className="card-footer">
-                          <span className="card-footer-text">Inv: {item.invoice_id}</span>
-                          <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); navigateToTab ? navigateToTab('negotiations', item.invoice_id) : setActiveTab('negotiations'); }} style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', color: '#3B82F6', background: '#FFFFFF', border: '1px solid #BFDBFE' }} title="Navigate to the Price Negotiations Desk to accept, counter-offer, or reject the discount request.">
-                            Decide <ArrowRight size={10} />
                           </button>
                         </div>
                       </div>
