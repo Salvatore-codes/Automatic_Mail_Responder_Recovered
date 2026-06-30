@@ -122,7 +122,10 @@ export default function InventoryTab({ tenantId, showToast, openInventoryModal }
                       <td><code>{sku.sku_id}</code></td>
                       <td><strong>{sku.sku_name}</strong></td>
                       <td><span className="text-sm text-muted">{sku.category}</span></td>
-                      <td>{fmt(sku.price)}</td>
+                      <td>
+                        <div style={{ fontWeight: '600', color: '#0F172A' }}>{fmt(sku.price)}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>Incl: {fmt(sku.price * 1.18)}</div>
+                      </td>
                       <td>
                         <strong style={{ color: isZero ? '#F87171' : isLow ? '#FCD34D' : '#34D399' }}>
                           {sku.stock} units

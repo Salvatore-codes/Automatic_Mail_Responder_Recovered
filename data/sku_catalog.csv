@@ -1,6 +1,6 @@
 sku_id,sku_name,description,price,category,stock
 ELBOW-BRASS-050,Brass Threaded Elbow Fitting 1/2 Inch,High quality 1/2 inch brass elbow joint for water/gas pipe connections,12.5,Plumbing,150
-PTFE-TAPE-12,PTFE Teflon Seal Tape 12mm,Teflon thread seal tape 12mm x 10m for plumbing connections,1.2,Plumbing,0
+PTFE-TAPE-12,PTFE Teflon Seal Tape 12mm,Teflon thread seal tape 12mm x 10m for plumbing connections,1.2,Plumbing,10
 BOLT-HEX-M8-50,Hex Head Bolt M8 x 50mm,Zinc plated steel hex head bolts M8 size 50mm length,0.45,Fasteners,1000
 NUT-HEX-M8,Hex Nut M8 Zinc Plated,Standard M8 hexagonal steel nut zinc plated,0.1,Fasteners,800
 WASHER-FLAT-M8,Flat Washer M8 Zinc Plated,Standard flat steel washer for M8 bolts,0.05,Fasteners,1200
@@ -11,7 +11,7 @@ VALVE-BALL-BR-075,Brass Ball Valve 3/4 Inch Female,Heavy duty full port brass ba
 SWITCH-WALL-1G,1-Gang Wall Switch 10A White,Single gang 10 Amp wall light switch plates white classic design,3.2,Electrical,75
 WIRE-COPPER-14-50,Copper Wire 14 AWG Solid 50ft,Solid core insulated copper electrical wire 14 gauge 50 feet,22.5,Electrical,8
 SCREW-WOOD-4-20,Wood Screw Flat Head #4 x 3/4 Inch,Phillips flat head wood screws steel pack of 100,4.5,Fasteners,300
-SCREW-WOOD-8-40,Wood Screw Flat Head #8 x 1.5 Inch,Phillips flat head wood screws steel pack of 50,5.8,Fasteners,0
+SCREW-WOOD-8-40,Wood Screw Flat Head #8 x 1.5 Inch,Phillips flat head wood screws steel pack of 50,5.8,Fasteners,10
 TAPE-ELEC-BLK,Electrical Tape Black 20m,Professional grade PVC electrical insulation tape black color,1.5,Electrical,100
 PLIER-COMB-8,Combination Pliers 8 Inch,Heavy duty insulated combination wire cutter and pliers 8 inch,12.5,Tools,15
 WRENCH-ADJ-10,Adjustable Wrench 10 Inch,Carbon steel adjustable crescent wrench 10 inch length,14.99,Tools,8
@@ -21,7 +21,7 @@ GLUE-WOOD-500,PVA Wood Glue 500ml,High strength weather resistant D3 wood adhesi
 PAINT-WALL-WHT-5L,Emulsion Wall Paint White 5L,Interior emulsion wall paint matt finish brilliant white 5 Liters,29.99,Paint,30
 BRUSH-PAINT-2,Paint Brush 2 Inch Basic,Synthetic bristle paint brush 2 inch for general painting,2.5,Paint,150
 SANDPAPER-120,Sandpaper Sheets 120 Grit Medium,Medium grit dry silicon carbide sandpaper sheets pack of 10,3.5,Paint,200
-HACKSAW-STEEL-12,Steel Hacksaw Frame 12 Inch,Heavy duty steel frame hacksaw with 12 inch carbon steel blade,11.2,Tools,5
+HACKSAW-STEEL-12,Steel Hacksaw Frame 12 Inch,Heavy duty steel frame hacksaw with 12 inch carbon steel blade,11.2,Tools,10
 GLOVE-WORK-L,Leather Work Gloves Size L,Heavy duty cowhide leather safety work gloves for construction,6.99,Tools,22
 DRILL-BIT-SET-15,Masonry & Metal Drill Bit Set 15pc,Multi-purpose twist drill bit set 1.5mm to 10mm 15 pieces,18.5,Tools,10
 SILICONE-CLR-300,Silicone Sealant Clear 300ml,Waterproof clear acetoxy silicone sealant cartridge 300ml,5.4,Chemicals,60
@@ -38,7 +38,7 @@ SEAL-THREAD-ANA,Anaerobic Thread Sealant 50ml,Medium strength liquid thread lock
 GLUE-SUPER-3G,Super Glue Liquid 3g Pack of 3,Instant cyanoacrylate super glue liquid tubes 3g,2.99,Chemicals,80
 SCREWDRIVER-PH2,Screwdriver Phillips PH2 x 100mm,Magnetic tip Phillips head screwdriver size PH2 length 100mm,4.8,Tools,30
 SCREWDRIVER-SL6,Screwdriver Slotted 6mm x 100mm,Magnetic tip flathead/slotted screwdriver 6mm width 100mm,4.8,Tools,30
-BOX-TOOL-19,Plastic Tool Box 19 Inch,Heavy duty tool storage organizer box with removable tray 19 inch,19.99,Tools,6
+BOX-TOOL-19,Plastic Tool Box 19 Inch,Heavy duty tool storage organizer box with removable tray 19 inch,19.99,Tools,0
 PAINT-METAL-BLK-1L,Gloss Metal Paint Black 1L,Anti-rust protective gloss paint for metal surfaces black 1 Liter,16.5,Paint,10
 ROLLER-PAINT-9,Paint Roller Set 9 Inch,Includes paint tray 9 inch roller frame and 2 medium pile sleeves,8.5,Paint,20
 SOLVENT-THIN-1L,Mineral Spirits Paint Thinner 1L,Paint solvent and cleaning spirits for oil-based paints 1 Liter,5.5,Paint,25
@@ -59,6 +59,6 @@ GASKET-RUBBER-050,Rubber Gasket Washers 1/2 Inch,Black rubber sealing washers fo
 STAPLE-GUN-HD,Heavy Duty Staple Tacker Gun,Manual steel staple gun tracker for upholstery and wood crafts,16.8,Tools,5
 STAPLES-10MM,Staples for Gun 10mm Pack 1000,Steel wire staples 10mm leg length compatible with staple gun,2.5,Tools,50
 KNIFE-UTILITY-RET,Retractable Utility Knife,Zinc alloy body retractable box cutter safety utility knife,4.2,Tools,30
-BLADES-KNIFE-10,Utility Knife Spare Blades 10pc,Heavy duty carbon steel utility knife replacement blades pack of 10,1.99,Tools,100
+BLADES-KNIFE-10,Utility Knife Spare Blades 10pc,Heavy duty carbon steel utility knife replacement blades pack of 10,1.99,Tools,120
 GREASE-LITH-400G,White Lithium Grease Cartridge 400g,Multi-purpose lithium lubricating grease for bearings and gears,7.5,Chemicals,20
 STRAP-RATCHET-2pc,Ratchet Tie Down Straps 2pc,Heavy duty load cargo straps with metal ratchet J-hooks 4m x 25mm,12.99,Fasteners,15

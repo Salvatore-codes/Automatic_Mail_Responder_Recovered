@@ -8,9 +8,41 @@ try:
 except AttributeError:
     pass
 
-from dotenv import load_dotenv
+class TeeLogger(object):
+    def __init__(self, log_file_path, stream):
+        self.log_file = open(log_file_path, "a", encoding="utf-8", buffering=1)
+        self.stream = stream
 
-# Load configurations
+    def write(self, message):
+        self.stream.write(message)
+        self.log_file.write(message)
+
+    def flush(self):
+        self.stream.flush()
+        self.log_file.flush()
+
+# Truncate logs if size > 5MB
+project_root = os.path.dirname(os.path.abspath(__file__))
+log_dir = os.path.join(project_root, "data")
+os.makedirs(log_dir, exist_ok=True)
+log_file_path = os.path.join(log_dir, "email_listener.log")
+
+if os.path.exists(log_file_path) and os.path.getsize(log_file_path) > 5 * 1024 * 1024:
+    try:
+        with open(log_file_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.writelines(lines[-1000:])
+    except Exception:
+        try:
+            os.remove(log_file_path)
+        except Exception:
+            pass
+
+sys.stdout = TeeLogger(log_file_path, sys.stdout)
+sys.stderr = TeeLogger(log_file_path, sys.stderr)
+
+from dotenv import load_dotenv
 load_dotenv()
 
 from src.tenants import load_tenants, get_tenant_catalog

@@ -52,6 +52,8 @@ class PDFRequest(BaseModel):
     discount_pct: float
     customer_name: str
     invoice_id: str
+    source: str = "custom"
+    original_text: str = ""
     tenant_id: str = "default"
 
 class NegotiateRequest(BaseModel):
@@ -70,6 +72,9 @@ class NegotiationResolveRequest(BaseModel):
     action: str  # "approve", "reject", or "counter"
     override_discount_pct: float = 0.0  # used only for "approve" or "counter"
     tenant_id: str = "default"
+    item_discount_mode: str = "order"  # "order", "item_pct", or "item_rate"
+    target_sku_id: str = ""
+    item_discount_value: float = 0.0
 
 class InventoryUpdateRequest(BaseModel):
     sku_id: str
@@ -235,7 +240,7 @@ async def generate_quote_pdf(req: PDFRequest):
         
         # Log to SQLite Database
         try:
-            from src.database_sqlite import log_quotation, log_quotation_item
+            from src.database_sqlite import log_quotation, log_quotation_item, log_chat_msg
             raw_subtotal = sum(i["quantity"] * i["unit_price"] for i in req.matched_lines if i["matched_sku_id"] != "UNKNOWN")
             discount_amt = raw_subtotal * req.discount_pct
             net_subtotal = raw_subtotal - discount_amt
@@ -252,6 +257,7 @@ async def generate_quote_pdf(req: PDFRequest):
                 tax_amt=tax_amt,
                 grand_total=grand_total,
                 status="QUOTE_GENERATED",
+                source=req.source,
                 tenant_id=req.tenant_id
             )
             for item in req.matched_lines:
@@ -265,6 +271,22 @@ async def generate_quote_pdf(req: PDFRequest):
                         line_total=item["quantity"] * item["unit_price"],
                         tenant_id=req.tenant_id
                     )
+            
+            # Log chat messages for View Request comparison
+            if req.original_text:
+                try:
+                    log_chat_msg(req.invoice_id, "CUSTOMER", req.original_text, tenant_id=req.tenant_id)
+                    
+                    item_lines = []
+                    for line in req.matched_lines:
+                        if line.get("matched_sku_id") != "UNKNOWN" and line.get("quantity", 0) > 0:
+                            item_lines.append(f"- {line['matched_sku_name']} (Qty: {line['quantity']}, Price: ₹{line['unit_price']})")
+                    items_str = "\n".join(item_lines)
+                    bot_msg = f"Dear {req.customer_name},\n\nThank you for your enquiry. We have generated your quotation {req.invoice_id} as requested:\n\n{items_str}\n\nTotal (Excl. Tax): ₹{raw_subtotal - discount_amt:.2f}\nTotal (Incl. 18% GST): ₹{grand_total:.2f}\n\nPlease find the PDF attached to this mail.\n\nBest Regards,\nTrofeo Automation Tool"
+                    
+                    log_chat_msg(req.invoice_id, "BOT", bot_msg, tenant_id=req.tenant_id)
+                except Exception as _ce:
+                    print(f"[Warning] Chat logging failed in generate_quote_pdf: {_ce}")
         except Exception as e:
             print(f"[Warning] SQLite logging failed: {e}")
         return {"pdf_url": f"/api/quote/pdf/{req.invoice_id}?tenant_id={req.tenant_id}"}
@@ -648,9 +670,9 @@ async def resolve_negotiation_endpoint(req: NegotiationResolveRequest):
             return {"status": "SUCCESS", "message": f"Negotiation for {invoice_id} rejected and customer notified."}
 
         # For approve or counter, apply the override discount
-        discount_pct = req.override_discount_pct
-        new_status = "NEGOTIATION_APPROVED" if req.action in ["approve", "counter"] else "NEGOTIATION_APPROVED"
-        update_quotation_status(invoice_id, new_status, discount_pct=discount_pct, tenant_id=req.tenant_id)
+        discount_pct = 0.0
+        if req.action in ["approve", "counter"] and req.item_discount_mode == "order":
+            discount_pct = req.override_discount_pct
 
         # Load meta to get matched_lines
         meta_filename = f"Quote_{invoice_id}_meta.json"
@@ -676,7 +698,66 @@ async def resolve_negotiation_endpoint(req: NegotiationResolveRequest):
             return {"status": "PARTIAL", "message": "Status updated but meta file not found — PDF not regenerated."}
 
         matched_lines = meta.get("matched_lines", [])
+
+        # Apply specific item discount or rate override if requested
+        if req.action in ["approve", "counter"] and req.item_discount_mode in ["item_pct", "item_rate"]:
+            target_sku = req.target_sku_id
+            discount_val = req.item_discount_value
+            for line in matched_lines:
+                if line.get("matched_sku_id") == target_sku:
+                    if req.item_discount_mode == "item_pct":
+                        item_disc_pct = discount_val / 100.0 if discount_val > 1.0 else discount_val
+                        sku_profile = next((s for s in catalog.skus if s["sku_id"] == target_sku), None)
+                        base_price = sku_profile["price"] if sku_profile else line.get("unit_price", 0.0)
+                        line["unit_price"] = base_price * (1.0 - item_disc_pct)
+                    elif req.item_discount_mode == "item_rate":
+                        line["unit_price"] = discount_val
+            
+            # Save updated matched lines back into meta
+            meta["matched_lines"] = matched_lines
+
+        # Recalculate totals based on the possibly updated items
         quoted_lines = [l for l in matched_lines if l.get("quantity", 0) > 0 and l.get("matched_sku_id") != "UNKNOWN"]
+        raw_subtotal = sum(i["quantity"] * i["unit_price"] for i in quoted_lines)
+        discount_amt = raw_subtotal * discount_pct
+        net_subtotal = raw_subtotal - discount_amt
+        tax_amt = net_subtotal * 0.18
+        grand_total = net_subtotal + tax_amt
+
+        # Update SQL Database
+        conn = get_connection(req.tenant_id)
+        cursor = conn.cursor()
+        new_status = "NEGOTIATION_APPROVED"
+        cursor.execute("""
+            UPDATE quotations
+            SET status = ?, subtotal = ?, discount_pct = ?, tax_amt = ?, grand_total = ?
+            WHERE invoice_id = ?
+        """, (new_status, raw_subtotal, discount_pct, tax_amt, grand_total, invoice_id))
+        
+        # Also update quotation_items in database
+        for line in quoted_lines:
+            sku_id = line["matched_sku_id"]
+            qty = line["quantity"]
+            u_price = line["unit_price"]
+            l_total = qty * u_price
+            cursor.execute("""
+                UPDATE quotation_items
+                SET unit_price = ?, line_total = ?
+                WHERE invoice_id = ? AND sku_id = ?
+            """, (u_price, l_total, invoice_id, sku_id))
+            
+        conn.commit()
+        conn.close()
+
+        # Write updated meta dictionary back to disk
+        for p in meta_paths:
+            if os.path.exists(p):
+                try:
+                    with open(p, 'w', encoding='utf-8') as f:
+                        json.dump(meta, f, indent=2)
+                except Exception:
+                    pass
+
         customer_name = meta.get("customer_name", quotation.get("customer_name", "Valued Customer"))
         customer_phone = meta.get("customer_phone", quotation.get("customer_phone", "—"))
         customer_email = meta.get("customer_email", quotation.get("customer_email", ""))
@@ -721,8 +802,15 @@ async def resolve_negotiation_endpoint(req: NegotiationResolveRequest):
                 plain_body = reply_body
                 html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
 
-            disc_label = f"{round(discount_pct * 100, 1)}%" if discount_pct > 0 else "standard pricing"
-            reply_subject = f"[Quotation #{invoice_id}] Updated Quote with {disc_label} Discount"
+            disc_label = ""
+            if req.item_discount_mode == "order":
+                disc_label = f"{round(discount_pct * 100, 1)}% order"
+            elif req.item_discount_mode == "item_pct":
+                disc_label = f"item discount"
+            elif req.item_discount_mode == "item_rate":
+                disc_label = f"special item price"
+
+            reply_subject = f"[Quotation #{invoice_id}] Updated Quote with {disc_label}"
             send_quotation_email_to_customer(
                 tenant_id=req.tenant_id,
                 customer_email=customer_email,
@@ -818,6 +906,210 @@ async def get_inventory_update_logs(tenant_id: str = "default"):
         from src.database_sqlite import get_inventory_logs
         logs = get_inventory_logs(tenant_id)
         return {"count": len(logs), "logs": logs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/service/status")
+async def get_email_listener_status(tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_service_status
+        status_info = get_service_status(tenant_id=tenant_id)
+        return status_info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/service/logs")
+async def get_service_logs(tenant_id: str = "default", limit: int = 150):
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_file = os.path.join(project_root, "data", "email_listener.log")
+        
+        if not os.path.exists(log_file):
+            return {"logs": ["No logs found. Email listener has not generated any logs yet."]}
+            
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+            
+        t_id = tenant_id.strip()
+        if t_id and t_id != "default" and t_id != "all":
+            filtered = []
+            for line in lines:
+                if "tenant" not in line.lower() or t_id.lower() in line.lower():
+                    filtered.append(line.strip())
+            return {"logs": filtered[-limit:]}
+        else:
+            return {"logs": [line.strip() for line in lines[-limit:]]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/quote/details/{invoice_id}")
+async def get_quote_details(invoice_id: str, tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_connection
+        conn = get_connection(tenant_id)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM quotations WHERE invoice_id = ?", (invoice_id,))
+        quote_row = cursor.fetchone()
+        if not quote_row:
+            raise HTTPException(status_code=404, detail="Quotation not found")
+        quote = dict(quote_row)
+        
+        cursor.execute("SELECT * FROM quotation_items WHERE invoice_id = ?", (invoice_id,))
+        items = [dict(row) for row in cursor.fetchall()]
+        
+        cursor.execute("SELECT * FROM chat_logs WHERE invoice_id = ? ORDER BY timestamp ASC", (invoice_id,))
+        logs = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return {
+            "quotation": quote,
+            "items": items,
+            "logs": logs
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/overview/analytics")
+async def get_overview_analytics(tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_connection
+        conn = get_connection(tenant_id)
+        cursor = conn.cursor()
+        
+        # 1. Total processed (excluding SELF_SENT and IRRELEVANT)
+        cursor.execute("SELECT COUNT(*) FROM processed_messages WHERE invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')")
+        total_received = cursor.fetchone()[0]
+        
+        # 2. Irrelevant / Auto-filtered (Not counted in relevant sales metrics)
+        auto_filtered = 0
+        
+        # 3. Quotations counts by status
+        cursor.execute("SELECT status, COUNT(*) as c FROM quotations GROUP BY status")
+        quote_counts = {row['status']: row['c'] for row in cursor.fetchall()}
+        
+        # Auto-responded quotes (QUOTE_GENERATED, QUOTE_UPDATED, NEGOTIATION_APPROVED, NEGOTIATION_REJECTED)
+        auto_responded_quotes = (
+            quote_counts.get("QUOTE_GENERATED", 0) +
+            quote_counts.get("QUOTE_UPDATED", 0) +
+            quote_counts.get("NEGOTIATION_APPROVED", 0) +
+            quote_counts.get("NEGOTIATION_REJECTED", 0)
+        )
+        
+        auto_responded = auto_responded_quotes
+        
+        # 4. Pending items
+        # A. Escalated negotiations
+        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, discount_pct FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING')")
+        escalated_negs = [dict(row) for row in cursor.fetchall()]
+        
+        # B. Pending deficits
+        cursor.execute("SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email FROM deficits WHERE status = 'PENDING'")
+        pending_deficits = [dict(row) for row in cursor.fetchall()]
+        
+        # C. Unmatched items
+        cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items")
+        unmatched_items = [dict(row) for row in cursor.fetchall()]
+        
+        pending_approval_count = len(escalated_negs) + len(pending_deficits) + len(unmatched_items)
+        
+        # Overwrite total_received if it's less than the sum (in case of legacy/synced db rows)
+        calculated_total = auto_responded + pending_approval_count
+        if calculated_total > total_received:
+            total_received = calculated_total
+            
+        # Efficiencies
+        tool_efficiency = round((auto_responded / max(total_received, 1)) * 100, 1)
+        human_intervention = round((pending_approval_count / max(total_received, 1)) * 100, 1)
+        
+        # 5. Fetch recent email/response log stream (excluding SELF_SENT and IRRELEVANT)
+        cursor.execute("""
+            SELECT pm.message_id, pm.invoice_id, pm.processed_at, 
+                   q.customer_email as q_email, q.customer_name as q_name, q.status as q_status,
+                   u.customer_email as u_email, u.customer_name as u_name
+            FROM processed_messages pm
+            LEFT JOIN quotations q ON pm.invoice_id = q.invoice_id
+            LEFT JOIN unmatched_items u ON pm.message_id = 'UNMATCHED_' || u.id
+            WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')
+            ORDER BY pm.processed_at DESC LIMIT 100
+        """)
+        raw_stream = cursor.fetchall()
+        
+        log_stream = []
+        for row in raw_stream:
+            inv_id = row['invoice_id']
+            processed_at = row['processed_at']
+            
+            # Map type and status
+            if inv_id == 'IRRELEVANT':
+                email = "System / Marketing"
+                name = "Spam / Auto-filtered"
+                status = "Auto-Filtered"
+                desc = "Spam, newsletter or irrelevant enquiry"
+            elif inv_id.startswith('QTN-'):
+                email = row['q_email'] or "Customer"
+                name = row['q_name'] or "Unknown"
+                status = row['q_status'] or "Processed"
+                desc = f"Quotation {inv_id} Generated"
+            elif 'UNMATCHED' in inv_id:
+                email = row['u_email'] or "Customer"
+                name = row['u_name'] or "Unknown"
+                status = "UNMATCHED"
+                desc = "Items not found in catalog (requires manual review)"
+            else:
+                email = row['q_email'] or row['u_email'] or "Customer"
+                name = row['q_name'] or row['u_name'] or "Unknown"
+                status = "Pending Review"
+                desc = f"Status: {inv_id}"
+                
+            log_stream.append({
+                "message_id": row['message_id'],
+                "invoice_id": inv_id,
+                "timestamp": processed_at,
+                "customer_email": email,
+                "customer_name": name,
+                "status": status,
+                "description": desc
+            })
+            
+        # Fallback: if log_stream is empty, fill it from quotations and unmatched items
+        if not log_stream:
+            # Load from quotations
+            cursor.execute("SELECT invoice_id, customer_email, customer_name, status, created_at FROM quotations ORDER BY created_at DESC LIMIT 10")
+            for row in cursor.fetchall():
+                log_stream.append({
+                    "message_id": f"QTN_{row['invoice_id']}",
+                    "invoice_id": row['invoice_id'],
+                    "timestamp": row['created_at'],
+                    "customer_email": row['customer_email'],
+                    "customer_name": row['customer_name'],
+                    "status": row['status'],
+                    "description": f"Quotation {row['invoice_id']} status is {row['status']}"
+                })
+            # Sort by timestamp
+            log_stream.sort(key=lambda x: x['timestamp'], reverse=True)
+            log_stream = log_stream[:15]
+            
+        conn.close()
+        
+        return {
+            "metrics": {
+                "total_received": total_received,
+                "auto_responded": auto_responded,
+                "pending_approval": pending_approval_count,
+                "tool_efficiency_pct": tool_efficiency,
+                "human_intervention_pct": human_intervention
+            },
+            "recent_stream": log_stream,
+            "pending_items": {
+                "negotiations": escalated_negs,
+                "deficits": pending_deficits,
+                "unmatched": unmatched_items
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

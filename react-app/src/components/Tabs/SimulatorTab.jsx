@@ -5,11 +5,20 @@ import { Line } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-export default function SimulatorTab({ tenantId, showToast, refreshBadges }) {
+export default function SimulatorTab({ tenantId, showToast, refreshBadges, invoiceFilter, setInvoiceFilter }) {
   const [inputText, setInputText] = useState('');
   const [engine, setEngine] = useState('A');
   const [custEmail, setCustEmail] = useState('rajarajanodooimplementers@gmail.com');
   const [inputType, setInputType] = useState('email');
+
+  useEffect(() => {
+    if (invoiceFilter && invoiceFilter.includes('@')) {
+      setCustEmail(invoiceFilter);
+      if (setInvoiceFilter) {
+        setInvoiceFilter('');
+      }
+    }
+  }, [invoiceFilter]);
   
   // Simulation results state
   const [loading, setLoading] = useState(false);
@@ -143,7 +152,9 @@ export default function SimulatorTab({ tenantId, showToast, refreshBadges }) {
           discount_pct: discountPct,
           customer_name: customerName,
           invoice_id: invoiceId,
-          tenant_id: tenantId
+          tenant_id: tenantId,
+          source: inputType,
+          original_text: inputText
         })
       });
       const data = await res.json();

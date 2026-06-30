@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package, CheckCircle2, Store, Users, AlertTriangle, RotateCw } from 'lucide-react';
 
-export default function DeficitsTab({ tenantId, showToast, refreshBadges }) {
+export default function DeficitsTab({ tenantId, showToast, refreshBadges, invoiceFilter, setInvoiceFilter }) {
   const [deficits, setDeficits] = useState([]);
   const [lowStockData, setLowStockData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -128,6 +128,17 @@ export default function DeficitsTab({ tenantId, showToast, refreshBadges }) {
         </div>
       </div>
 
+      {invoiceFilter && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FEF2F2', border: '1px solid #FCA5A5', padding: '0.75rem 1.25rem', borderRadius: '12px', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+          <span style={{ color: '#991B1B', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <AlertTriangle size={15} style={{ color: '#EF4444' }} /> Showing only deficits for Invoice: <strong>{invoiceFilter}</strong>
+          </span>
+          <button className="btn btn-sm" onClick={() => setInvoiceFilter('')} style={{ color: '#991B1B', background: '#FFFFFF', border: '1px solid #FCA5A5', fontSize: '0.75rem', padding: '0.2rem 0.6rem', cursor: 'pointer' }}>
+            Show All Deficits
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="section-card" style={{ position: 'relative' }}>
         <div className="section-header">
@@ -174,8 +185,18 @@ export default function DeficitsTab({ tenantId, showToast, refreshBadges }) {
                     </div>
                   </td>
                 </tr>
+              ) : deficits.filter(d => !invoiceFilter || d.invoice_id === invoiceFilter).length === 0 ? (
+                <tr>
+                  <td colSpan="11">
+                    <div className="empty-state">
+                      <div className="es-icon"><CheckCircle2 style={{ color: '#10B981', opacity: 0.35 }} /></div>
+                      <h3>No deficits match filter</h3>
+                      <p>All deficits for invoice {invoiceFilter} have been resolved.</p>
+                    </div>
+                  </td>
+                </tr>
               ) : (
-                deficits.map((d, idx) => {
+                deficits.filter(d => !invoiceFilter || d.invoice_id === invoiceFilter).map((d, idx) => {
                   const date = d.created_at ? d.created_at.split(' ')[0] : '—';
                   const isPending = d.status === 'PENDING';
                   return (

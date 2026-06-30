@@ -805,6 +805,14 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                             line_total=item["quantity"] * item["unit_price"],
                             tenant_id=tenant_id
                         )
+                # Log the customer email and bot reply for the View Request modal
+                from src.database_sqlite import log_chat_msg
+                try:
+                    log_chat_msg(existing_invoice_id, "CUSTOMER", body_clean, tenant_id=tenant_id)
+                    plain_reply = reply_body[0] if isinstance(reply_body, tuple) else str(reply_body)
+                    log_chat_msg(existing_invoice_id, "BOT", plain_reply, tenant_id=tenant_id)
+                except Exception as _ce:
+                    print(f"[Warning] chat_log insert failed: {_ce}")
             except Exception as e:
                 print(f"[Warning] SQLite logging failed: {e}")
                 
@@ -978,6 +986,14 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                         line_total=item["quantity"] * item["unit_price"],
                         tenant_id=tenant_id
                     )
+                # Log the customer email and bot reply for the View Request modal
+                from src.database_sqlite import log_chat_msg
+                try:
+                    log_chat_msg(invoice_id, "CUSTOMER", body_clean, tenant_id=tenant_id)
+                    plain_reply = reply_body[0] if isinstance(reply_body, tuple) else str(reply_body)
+                    log_chat_msg(invoice_id, "BOT", plain_reply, tenant_id=tenant_id)
+                except Exception as _ce:
+                    print(f"[Warning] chat_log insert failed: {_ce}")
         except Exception as e:
             print(f"[Warning] SQLite logging failed: {e}")
             
@@ -1294,6 +1310,40 @@ def fast_blocklist_check(sender, subject, crm_emails):
         return "ACCEPT_THREAD"
     
     return "NEEDS_AI"
+
+
+def is_subject_relevant(subject, sender, crm_emails):
+    """
+    Checks if an incoming email subject or sender suggests it is a quote request
+    or thread reply, avoiding calling Gemini on completely irrelevant emails.
+    """
+    subject_lower = subject.lower().strip()
+    sender_lower = sender.lower().strip()
+    
+    # 1. Thread replies are always relevant
+    if "quotation #" in subject_lower or "quote #" in subject_lower or "[quotation" in subject_lower:
+        return True
+        
+    # 2. Registered CRM clients are always relevant
+    if sender_lower in crm_emails:
+        return True
+        
+    # 3. Subject keyword matching (whole word boundary checks)
+    keywords = [
+        "quote", "quotation", "enquiry", "enquiries", "inquiry", "inquiries", 
+        "pricing", "need", "needed", "material", "materials", "mtl", "mtls", 
+        "rfq", "purchase", "order", "price", "prices", "request", "hardware", 
+        "fastener", "fasteners", "match", "estimate", "estimating", "invoice",
+        "requisition", "req", "items", "slip", "rfp"
+    ]
+    if any(re.search(r'\b' + re.escape(kw) + r'\b', subject_lower) for kw in keywords):
+        return True
+        
+    # Substring checks for compound tokens
+    if any(kw in subject_lower for kw in ["quote", "enquiry", "inquiry", "rfq", "pricing", "mtl"]):
+        return True
+        
+    return False
 
 
 def call_with_retry(api_func, max_retries=3, initial_delay=1.0, backoff_factor=2.0):
@@ -1809,6 +1859,11 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
     crm_emails = load_crm_emails(crm_path)
     
     if mode == "mock":
+        try:
+            from src.database_sqlite import update_service_status
+            update_service_status("CONNECTED", tenant_id=tenant_id)
+        except Exception:
+            pass
         if tenant_id and tenant_id != "default":
             inbox_dir = os.path.join(project_root, "mock_inbox", tenant_id)
             outbox_dir = os.path.join(project_root, "mock_outbox", tenant_id)
@@ -1820,6 +1875,11 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
         
         files = [f for f in os.listdir(inbox_dir) if f.endswith(".txt")]
         if not files:
+            try:
+                from src.database_sqlite import update_service_status
+                update_service_status("IDLE", tenant_id=tenant_id)
+            except Exception:
+                pass
             return
             
         print(f"[Email Listener] Found {len(files)} new enquiry files in mock_inbox/{tenant_id or ''}.")
@@ -1838,6 +1898,12 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 
                 # Tier 2: AI classification for unknown senders (only when Tier 1 says NEEDS_AI)
                 if blocklist_result == "NEEDS_AI":
+                    # Fast relevance check on subject before using AI API
+                    if not is_subject_relevant(subject, sender, crm_emails):
+                        print(f"[Email Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) [Fast Subject Check]")
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        continue
                     ai_result = classify_and_extract(sender, subject, body)
                     if ai_result and ai_result.get("intent") == "IRRELEVANT":
                         print(f"[AI Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) — Confidence: {ai_result.get('confidence', 0):.2f}")
@@ -2050,7 +2116,12 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
             finally:
                 if os.path.exists(file_path):
                     os.remove(file_path)
-                    
+        try:
+            from src.database_sqlite import update_service_status
+            update_service_status("IDLE", tenant_id=tenant_id)
+        except Exception:
+            pass
+            
     else:
         # Live IMAP/SMTP Pipeline
         imap_server = tenant_config.get("imap_server", "imap.gmail.com")
@@ -2075,6 +2146,11 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
         try:
             mail = imaplib.IMAP4_SSL(imap_server, imap_port)
             mail.login(email_user, email_pass)
+            try:
+                from src.database_sqlite import update_service_status
+                update_service_status("CONNECTED", tenant_id=tenant_id)
+            except Exception:
+                pass
             mail.select("inbox")
             
             status, messages = mail.search(None, 'ALL')
@@ -2114,14 +2190,18 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         if is_message_processed(msg_id, tenant_id=tenant_id):
                             continue
                             
-                    # Prevent infinite loop by skipping emails sent by ourselves
+                    # Prevent infinite loop by skipping emails sent by ourselves, unless it's a test enquiry (subject doesn't start with '[')
                     if email_user and sender.lower() == email_user.lower():
-                        print(f"[Email Listener] Ignored email from ourselves ({sender}) to prevent loop.")
-                        mail.store(m_id, '+FLAGS', '\\Seen')
-                        if msg_id:
-                            from src.database_sqlite import log_processed_message
-                            log_processed_message(msg_id, "SELF_SENT", tenant_id=tenant_id)
-                        continue
+                        subj_clean = subject.strip()
+                        if subj_clean.startswith('[') or 'quotation' in subj_clean.lower() or 'notification' in subj_clean.lower() or 'action required' in subj_clean.lower():
+                            print(f"[Email Listener] Ignored email from ourselves ({sender}) with subject '{subject}' to prevent loop.")
+                            mail.store(m_id, '+FLAGS', '\\Seen')
+                            if msg_id:
+                                from src.database_sqlite import log_processed_message
+                                log_processed_message(msg_id, "SELF_SENT", tenant_id=tenant_id)
+                            continue
+                        else:
+                            print(f"[Email Listener] Processing self-sent test email: Subject='{subject}'")
                     
                     res, msg_data = mail.fetch(m_id, '(RFC822)')
                     if res != "OK" or not msg_data or not msg_data[0]:
@@ -2142,6 +2222,19 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     # Quick check: does this email have any attachments?
                     email_has_attach = has_attachments(msg)
 
+                    # Extract text from attachments first to include it in the classification and parsing
+                    attachment_text = ""
+                    clean_attach_text = ""
+                    if email_has_attach:
+                        attachment_text = extract_text_from_attachments(msg)
+                        clean_attach_text = "" if not attachment_text else "\n".join(
+                            line for line in attachment_text.splitlines()
+                            if not line.startswith("[ATTACHMENT_FAILED:")
+                        ).strip()
+                        if clean_attach_text:
+                            print(f"[Attachment] Successfully extracted text from attachments. Merging with body.")
+                            body = (body + "\n\n" + clean_attach_text).strip()
+
                     # Tier 1: Fast blocklist check (0ms, no API)
                     blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
                     if blocklist_result == "REJECT":
@@ -2154,6 +2247,14 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     
                     # Tier 2: AI classification for unknown senders
                     if blocklist_result == "NEEDS_AI":
+                        # Fast relevance check on subject before using AI API
+                        if not is_subject_relevant(subject, sender, crm_emails):
+                            print(f"[Email Filter] Skipped irrelevant email subject from {sender} (Subject: {subject}) [Fast Subject Check]")
+                            mail.store(m_id, '+FLAGS', '\\Seen')
+                            if msg_id:
+                                from src.database_sqlite import log_processed_message
+                                log_processed_message(msg_id, "IRRELEVANT", tenant_id=tenant_id)
+                            continue
                         ai_result = classify_and_extract(sender, subject, body)
                         if ai_result and ai_result.get("intent") == "IRRELEVANT":
                             print(f"[AI Filter] Skipped irrelevant email from {sender} (Subject: {subject}) — Confidence: {ai_result.get('confidence', 0):.2f}")
@@ -2165,24 +2266,13 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         elif ai_result is None:
                             # API unavailable — fall back to existing rule-based filter
                             if not is_email_relevant(sender, subject, body, catalog, crm_emails,
-                                                     attachment_text="", email_has_attachments=email_has_attach):
+                                                     attachment_text=clean_attach_text, email_has_attachments=email_has_attach):
                                 print(f"[Email Filter] Skipped irrelevant email from {sender} (Subject: {subject}) [rule-based fallback]")
                                 mail.store(m_id, '+FLAGS', '\\Seen')
                                 if msg_id:
                                     from src.database_sqlite import log_processed_message
                                     log_processed_message(msg_id, "IRRELEVANT", tenant_id=tenant_id)
                                 continue
-
-                    # Extract text from attachments
-                    attachment_text = extract_text_from_attachments(msg)
-                    clean_attach_text = "" if not attachment_text else "\n".join(
-                        line for line in attachment_text.splitlines()
-                        if not line.startswith("[ATTACHMENT_FAILED:")
-                    ).strip()
-
-                    if clean_attach_text:
-                        print(f"[Attachment] Successfully extracted text from attachments. Merging with body.")
-                        body = (body + "\n\n" + clean_attach_text).strip()
 
                     if not body.strip():
                         print(f"[Email Filter] Email from {sender} has no parseable text content.")
@@ -2450,6 +2540,11 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     
             # Now, enter native IMAP IDLE to wait for new emails (real-time push)
             print(f"[Email Listener] Entering IDLE state to wait for real-time emails for {tenant_id}...")
+            try:
+                from src.database_sqlite import update_service_status
+                update_service_status("IDLE", tenant_id=tenant_id)
+            except Exception:
+                pass
             import select
             
             # Send IDLE command
@@ -2475,3 +2570,12 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
             
         except Exception as e:
             print(f"[Email Listener Error] Live processing crashed for tenant {tenant_id}: {e}")
+            try:
+                from src.database_sqlite import update_service_status
+                err_msg = str(e)
+                status = "ERROR"
+                if "authenticate" in err_msg.lower() or "login" in err_msg.lower() or "credentials" in err_msg.lower() or isinstance(e, imaplib.IMAP4.error):
+                    status = "AUTH_FAILED"
+                update_service_status(status, error_message=err_msg, tenant_id=tenant_id)
+            except Exception:
+                pass

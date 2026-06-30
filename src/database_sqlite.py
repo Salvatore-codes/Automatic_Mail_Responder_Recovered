@@ -54,6 +54,7 @@ def init_db_conn(conn):
         tax_amt REAL,
         grand_total REAL,
         status TEXT,
+        source TEXT DEFAULT 'email',
         created_at TEXT
     )
     """)
@@ -61,6 +62,13 @@ def init_db_conn(conn):
     # Check if customer_phone column exists (backward compatibility for existing DBs)
     try:
         cursor.execute("ALTER TABLE quotations ADD COLUMN customer_phone TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
+    # Check if source column exists (backward compatibility for existing DBs)
+    try:
+        cursor.execute("ALTER TABLE quotations ADD COLUMN source TEXT DEFAULT 'email'")
     except sqlite3.OperationalError:
         # Column already exists
         pass
@@ -161,6 +169,16 @@ def init_db_conn(conn):
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
+    # 9. Service status table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS service_status (
+        service_name TEXT PRIMARY KEY,
+        status TEXT,
+        last_seen TIMESTAMP,
+        error_message TEXT
+    )
+    """)
     
     conn.commit()
 
@@ -168,15 +186,15 @@ def init_db(tenant_id=None):
     conn = get_connection(tenant_id)
     conn.close()
 
-def log_quotation(invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, tenant_id=None):
+def log_quotation(invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source='email', tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     cursor.execute("""
-    INSERT OR REPLACE INTO quotations (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, now_str))
+    INSERT OR REPLACE INTO quotations (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, now_str))
     
     conn.commit()
     conn.close()
@@ -414,12 +432,39 @@ def get_inventory_logs(tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT id, sku_id, sku_name, old_stock, new_stock, updated_at
-    FROM inventory_logs
-    ORDER BY updated_at DESC
-    LIMIT 100
+        SELECT id, sku_id, sku_name, old_stock, new_stock, updated_at
+        FROM inventory_logs
+        ORDER BY updated_at DESC
+        LIMIT 100
     """)
     rows = cursor.fetchall()
     items = [dict(row) for row in rows]
     conn.close()
     return items
+
+
+def update_service_status(status, error_message=None, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("""
+        INSERT OR REPLACE INTO service_status (service_name, status, last_seen, error_message)
+        VALUES (?, ?, ?, ?)
+    """, ("email_listener", status, now_str, error_message))
+    conn.commit()
+    conn.close()
+
+
+def get_service_status(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT status, last_seen, error_message FROM service_status WHERE service_name = ?", ("email_listener",))
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return {"status": "UNKNOWN", "last_seen": None, "error_message": None}
