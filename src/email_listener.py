@@ -1360,7 +1360,7 @@ def get_graph_token_delegated(tenant_id, client_id, client_secret):
             return None
             
         token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-        redirect_uri = "http://localhost:8000/api/outlook/callback"
+        redirect_uri = "http://localhost:8080/api/outlook/callback"
         
         data = {
             "client_id": client_id,

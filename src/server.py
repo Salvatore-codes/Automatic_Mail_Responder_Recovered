@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import time
 import json
 import random
@@ -1133,7 +1135,7 @@ def outlook_login(tenant_id: str = "default"):
         raise HTTPException(status_code=400, detail="Outlook configuration is missing for this tenant.")
     
     scopes = "offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send"
-    redirect_uri = "http://localhost:8000/api/outlook/callback"
+    redirect_uri = "http://localhost:8080/api/outlook/callback"
     
     params = {
         "client_id": outlook_client_id,
@@ -1172,7 +1174,7 @@ def outlook_callback(code: str = None, error: str = None, error_description: str
     outlook_client_secret = tenant_config.get("outlook_client_secret")
     
     token_url = f"https://login.microsoftonline.com/{outlook_tenant_id}/oauth2/v2.0/token"
-    redirect_uri = "http://localhost:8000/api/outlook/callback"
+    redirect_uri = "http://localhost:8080/api/outlook/callback"
     
     data = {
         "client_id": outlook_client_id,

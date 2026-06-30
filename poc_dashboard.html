@@ -16,6 +16,7 @@
             --bg-dark: #090D1A;
             --bg-card: #12182B;
             --bg-input: #1B233D;
+            --bg-sidebar: #0F1521;
             --accent-blue: #3B82F6;
             --accent-indigo: #6366F1;
             --accent-purple: #8B5CF6;
@@ -30,6 +31,10 @@
             --glass-bg: rgba(18, 24, 43, 0.7);
             --glass-border: rgba(99, 102, 241, 0.15);
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --sidebar-bg: rgba(15, 21, 33, 0.8);
+            --sidebar-border: rgba(99, 102, 241, 0.2);
+            --sidebar-accent: #3B82F6;
+            --sidebar-title: #E2E8F0;
         }
 
         * {
@@ -87,6 +92,49 @@
             color: var(--text-secondary);
         }
 
+        /* Sidebar Menu - Email Integration Section */
+        .sidebar-menu {
+            background: var(--sidebar-bg);
+            border: 1px solid var(--sidebar-border);
+            border-left: 4px solid var(--sidebar-accent);
+            padding: 1.5rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 25px rgba(0, 0, 0, 0.25);
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-menu::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--sidebar-accent), var(--accent-blue), var(--accent-purple));
+            opacity: 0.8;
+        }
+
+        .sidebar-menu:hover {
+            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+            transform: translateY(-3px);
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+
+        .sidebar-menu h2 {
+            font-family: var(--font-display);
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--sidebar-title);
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
         .badge-live {
             background-color: rgba(16, 185, 129, 0.15);
             border: 1px solid rgba(16, 185, 129, 0.3);
@@ -121,7 +169,7 @@
         /* Layout Grid */
         .main-grid {
             display: grid;
-            grid-template-columns: 420px 1fr;
+            grid-template-columns: 380px 1fr;
             gap: 1.5rem;
         }
 
@@ -642,44 +690,43 @@
         <!-- Main Grid -->
         <div class="main-grid">
             
-            <!-- Left Side Inputs -->
-            <div class="card">
-                <h2>Enquiry Ingestion</h2>
+            <!-- Left Side Sidebar -->
+            <div class="sidebar-menu">
+                <h2>📧 Email Integration</h2>
                 
                 <div class="form-group">
-                    <label>Order Enquiry Text</label>
-                    <textarea id="orderInput" placeholder="Paste your raw, messy customer order email or WhatsApp chat list here..."></textarea>
+                    <label>IMAP Server</label>
+                    <input type="text" id="imapServer" placeholder="imap.office365.com" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.75rem; border-radius: 10px; width: 100%; margin-bottom: 0.75rem;">
                 </div>
                 
                 <div class="form-group">
-                    <label>Quick Presets</label>
-                    <div class="preset-buttons">
-                        <button class="btn-preset" id="loadEmail">Email Enquiry</button>
-                        <button class="btn-preset" id="loadWhatsApp">WhatsApp Chat</button>
-                        <button class="btn-preset" id="clearBtn">Clear</button>
-                    </div>
+                    <label>SMTP Server</label>
+                    <input type="text" id="smtpServer" placeholder="smtp.office365.com" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.75rem; border-radius: 10px; width: 100%; margin-bottom: 0.75rem;">
                 </div>
 
                 <div class="form-group">
-                    <label>CRM Client Account (Profiles)</label>
-                    <select id="crmSelect">
-                        <option value="retail">walkin_retail@guest.com (Standard pricing)</option>
-                        <option value="wholesale">john.carpenter@localshop.com (Wholesale: 10% off)</option>
-                        <option value="contractor">apex_builders@contractor.com (Contractor: 15% off)</option>
-                    </select>
+                    <label>Email Credentials</label>
+                    <input type="text" id="emailUser" placeholder="your_email@outlook.com" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.75rem; border-radius: 10px; width: 100%; margin-bottom: 0.75rem;">
+                    <input type="password" id="emailPass" placeholder="your_password" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.75rem; border-radius: 10px; width: 100%; margin-bottom: 0.75rem;">
                 </div>
 
                 <div class="form-group">
-                    <label>Matching Engine Pipeline</label>
+                    <label>Connection Type</label>
                     <div class="toggle-group">
-                        <button class="toggle-btn active" id="engineA">Scenario A (Free / Fuzzy)</button>
-                        <button class="toggle-btn" id="engineB">Scenario B (Paid / AI)</button>
+                        <button class="toggle-btn active" id="useImap">IMAP Only</button>
+                        <button class="toggle-btn" id="useBoth">IMAP + SMTP</button>
                     </div>
                 </div>
                 
-                <button class="btn-process" id="processBtn">
-                    <span>⚡ Process Ingestion</span>
+                <button class="btn-process" id="testEmailBtn" style="margin-bottom: 0.75rem;">
+                    <span>🧪 Test Email Connection</span>
                 </button>
+                
+                <div class="hitl-alert" id="emailStatusAlert" style="display: none; margin-top: 1rem;">
+                    <h4>📧 Email Connection Status</h4>
+                    <span id="emailStatusText">Waiting for connection test...</span>
+                </div>
+            </div>
                 
                 <!-- Ingestion Loader -->
                 <div class="loader-overlay" id="loader">
@@ -803,9 +850,9 @@
         </div>
     </div>
 
-    <!-- Live Simulator Script -->
+    <!-- Email Testing Script -->
     <script>
-        // --- 1. Mock Databases ---
+        // --- 0. Email Testing Functionality ---
         const MOCK_SKUS = [
             { id: "ELBOW-BRASS-050", name: "Brass Threaded Elbow Fitting 1/2 Inch", desc: "1/2 inch brass elbow joint NPT", price: 12.50, stock: 150 },
             { id: "PTFE-TAPE-12", name: "PTFE Teflon Seal Tape 12mm", desc: "Teflon thread seal tape 12mm x 10m", price: 1.20, stock: 0 },
