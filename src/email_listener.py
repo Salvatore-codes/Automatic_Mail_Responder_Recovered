@@ -1332,6 +1332,402 @@ def extract_text_from_attachments(msg):
     return "\n\n".join(extracted_texts)
 
 
+import urllib.request
+import urllib.parse
+import json
+
+def get_graph_token(tenant_id, client_id, client_secret):
+    url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "https://graph.microsoft.com/.default"
+    }
+    encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(url, data=encoded_data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            return res_data.get("access_token")
+    except Exception as e:
+        print(f"[Outlook Auth] Error acquiring token: {e}")
+        return None
+
+def fetch_outlook_messages(access_token, email_user):
+    # Fetch newest 30 messages from Inbox that are unread
+    url = f"https://graph.microsoft.com/v1.0/users/{email_user}/mailFolders/inbox/messages?$filter=isRead eq false&$orderby=receivedDateTime desc&$top=30"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json"
+    })
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            return res_data.get("value", [])
+    except Exception as e:
+        print(f"[Outlook Mail] Error fetching messages: {e}")
+        return []
+
+def fetch_outlook_attachments(access_token, email_user, message_id):
+    url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{message_id}/attachments"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json"
+    })
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            return res_data.get("value", [])
+    except Exception as e:
+        print(f"[Outlook Mail] Error fetching attachments: {e}")
+        return []
+
+def send_outlook_mail(access_token, email_user, to_email, subject, html_body, pdf_path=None, logo_path=None):
+    url = f"https://graph.microsoft.com/v1.0/users/{email_user}/sendMail"
+    
+    to_recipients = [{"emailAddress": {"address": to_email}}]
+    attachments = []
+    
+    # Attach Logo if exists and referenced
+    if logo_path and os.path.exists(logo_path):
+        try:
+            with open(logo_path, "rb") as f:
+                logo_bytes = base64.b64encode(f.read()).decode("utf-8")
+            attachments.append({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": os.path.basename(logo_path),
+                "contentType": "image/png",
+                "contentId": "company_logo",
+                "isInline": True,
+                "contentBytes": logo_bytes
+            })
+        except Exception as le:
+            print(f"[Outlook Send] Warning: Failed to attach logo: {le}")
+            
+    # Attach PDF Quote if exists
+    if pdf_path and os.path.exists(pdf_path):
+        try:
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = base64.b64encode(f.read()).decode("utf-8")
+            attachments.append({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": os.path.basename(pdf_path),
+                "contentType": "application/pdf",
+                "contentBytes": pdf_bytes
+            })
+        except Exception as pe:
+            print(f"[Outlook Send] Warning: Failed to attach PDF: {pe}")
+            
+    payload = {
+        "message": {
+            "subject": subject,
+            "body": {
+                "contentType": "HTML",
+                "content": html_body
+            },
+            "toRecipients": to_recipients,
+            "attachments": attachments
+        }
+    }
+    
+    req_body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=req_body, headers={
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    })
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            return True
+    except Exception as e:
+        print(f"[Outlook Send] Error sending email via Graph: {e}")
+        if hasattr(e, "read"):
+            try:
+                print(e.read().decode("utf-8"))
+            except Exception:
+                pass
+        return False
+
+def mark_outlook_message_read(access_token, email_user, message_id):
+    url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages/{message_id}"
+    req_body = json.dumps({"isRead": True}).encode("utf-8")
+    req = urllib.request.Request(url, data=req_body, headers={
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }, method="PATCH")
+    try:
+        with urllib.request.urlopen(req) as response:
+            return True
+    except Exception as e:
+        print(f"[Outlook Mail] Error marking message {message_id} as read: {e}")
+        return False
+
+def extract_outlook_attachment_text(payload, filename, content_type):
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key or api_key.startswith("your_"):
+        print("[Attachment] GEMINI_API_KEY not configured. Cannot extract attachment content.")
+        return ""
+
+    gemini_native_mimes = {
+        "application/pdf": ".pdf",
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/tiff": ".tiff",
+        "image/bmp": ".bmp",
+    }
+    
+    docx_mimes = {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/docx": ".docx",
+        "application/x-docx": ".docx"
+    }
+
+    ext = ""
+    if filename:
+        _, file_ext = os.path.splitext(filename)
+        ext = file_ext.lower()
+    else:
+        if content_type in gemini_native_mimes:
+            ext = gemini_native_mimes[content_type]
+        elif content_type in docx_mimes:
+            ext = ".docx"
+        elif content_type.startswith("text/"):
+            ext = ".txt"
+
+    is_supported = (
+        content_type in gemini_native_mimes or
+        content_type in docx_mimes or
+        (content_type and content_type.startswith("text/")) or
+        (filename and filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp", ".docx", ".txt", ".rtf", ".html", ".xml", ".csv")))
+    )
+
+    if not is_supported or not payload:
+        return ""
+
+    display_filename = filename or f"attachment{ext}"
+    print(f"[Attachment] Processing Outlook attachment: '{display_filename}' ({content_type}).")
+
+    is_native_gemini = content_type in gemini_native_mimes or ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"]
+    
+    extracted = ""
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+        client = genai.Client(api_key=api_key)
+        
+        prompt = (
+            "You are a purchasing document analyser. Extract ALL product names, item descriptions, "
+            "SKU codes, part numbers, quantities, and specifications mentioned in this document. "
+            "Return them as a plain numbered list. Do NOT add any extra commentary or headings — "
+            "just list each line item or product request exactly as written. "
+            "If you cannot find any product items, reply with the single word: NONE."
+        )
+
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                if is_native_gemini:
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[
+                            genai_types.Part.from_bytes(
+                                data=payload,
+                                mime_type=content_type if content_type in gemini_native_mimes else "application/pdf"
+                            ),
+                            prompt
+                        ]
+                    )
+                    extracted = response.text.strip() if response.text else ""
+                else:
+                    raw_text = ""
+                    if content_type in docx_mimes or ext == ".docx":
+                        raw_text = extract_text_from_docx(payload)
+                    else:
+                        try:
+                            raw_text = payload.decode('utf-8', errors='ignore')
+                        except Exception:
+                            raw_text = payload.decode('latin-1', errors='ignore')
+                    
+                    if not raw_text.strip():
+                        return ""
+                        
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[
+                            f"Document Content:\n{raw_text}\n\n{prompt}"
+                        ]
+                    )
+                    extracted = response.text.strip() if response.text else ""
+                break
+            except Exception as re:
+                print(f"[Attachment] Transient error on attempt {attempt}: {re}")
+                if attempt == max_retries:
+                    raise re
+                time.sleep(1)
+
+        if extracted and extracted != "NONE":
+            return extracted
+    except Exception as e:
+        print(f"[Attachment] Error analyzing Outlook attachment {display_filename}: {e}")
+        
+    return ""
+
+def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, project_root):
+    outlook_tenant_id = tenant_config.get("outlook_tenant_id")
+    outlook_client_id = tenant_config.get("outlook_client_id")
+    outlook_client_secret = tenant_config.get("outlook_client_secret")
+    email_user = tenant_config.get("email_user")
+
+    if not outlook_tenant_id or not outlook_client_id or not outlook_client_secret or not email_user:
+        print(f"[Outlook Listener] Error: Missing Outlook configuration for tenant {tenant_id}")
+        return
+
+    token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret)
+    if not token:
+        try:
+            from src.database_sqlite import update_service_status
+            update_service_status("AUTH_FAILED", error_message="Failed to acquire Azure AD Graph token", tenant_id=tenant_id)
+        except Exception:
+            pass
+        return
+
+    try:
+        from src.database_sqlite import update_service_status
+        update_service_status("CONNECTED", tenant_id=tenant_id)
+    except Exception:
+        pass
+
+    messages = fetch_outlook_messages(token, email_user)
+    if not messages:
+        try:
+            update_service_status("IDLE", tenant_id=tenant_id)
+        except Exception:
+            pass
+        return
+
+    print(f"[Outlook Listener] Found {len(messages)} recent unread emails in Outlook inbox for {tenant_id}. Checking them.")
+
+    for msg in messages:
+        msg_id = msg.get("id")
+        internet_msg_id = msg.get("internetMessageId")
+        
+        if internet_msg_id:
+            from src.database_sqlite import is_message_processed
+            if is_message_processed(internet_msg_id, tenant_id=tenant_id):
+                continue
+
+        sender_email = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+        sender_name = msg.get("from", {}).get("emailAddress", {}).get("name", sender_email)
+        subject = msg.get("subject", "Order Enquiry")
+
+        if sender_email.lower() == email_user.lower():
+            subj_clean = subject.strip()
+            if subj_clean.startswith('[') or 'quotation' in subj_clean.lower() or 'notification' in subj_clean.lower() or 'action required' in subj_clean.lower():
+                print(f"[Outlook Listener] Ignored email from ourselves ({sender_email}) to prevent loop.")
+                if internet_msg_id:
+                    from src.database_sqlite import log_processed_message
+                    log_processed_message(internet_msg_id, "SELF_SENT", tenant_id=tenant_id)
+                continue
+
+        body_content = msg.get("body", {}).get("content", "")
+        is_html = msg.get("body", {}).get("contentType", "").lower() == "html"
+        body = body_content
+        if is_html:
+            import html as py_html
+            body_text = re.sub('<[^<]+?>', '', body_content)
+            body_text = py_html.unescape(body_text)
+            body = body_text.strip()
+
+        has_attach = msg.get("hasAttachments", False)
+        attachment_text = ""
+        clean_attach_text = ""
+        
+        if has_attach:
+            attachments = fetch_outlook_attachments(token, email_user, msg_id)
+            for att in attachments:
+                name = att.get("name", "")
+                content_bytes_b64 = att.get("contentBytes", "")
+                content_type = att.get("contentType", "")
+                if content_bytes_b64:
+                    try:
+                        file_data = base64.b64decode(content_bytes_b64)
+                        text = extract_outlook_attachment_text(file_data, name, content_type)
+                        if text:
+                            attachment_text += f"\n[Attachment: {name}]\n{text}\n"
+                    except Exception as ae:
+                        print(f"[Outlook Attachment] Warning: Failed to parse attachment {name}: {ae}")
+
+            clean_attach_text = "" if not attachment_text else "\n".join(
+                line for line in attachment_text.splitlines()
+                if not line.startswith("[ATTACHMENT_FAILED:")
+            ).strip()
+            if clean_attach_text:
+                print(f"[Attachment] Successfully extracted text from Outlook attachments. Merging with body.")
+                body = (body + "\n\n" + clean_attach_text).strip()
+
+        blocklist_result = fast_blocklist_check(sender_email, subject, crm_emails)
+        if blocklist_result == "REJECT":
+            print(f"[Outlook Filter] Skipped irrelevant email from {sender_email} (Subject: {subject})")
+            if internet_msg_id:
+                from src.database_sqlite import log_processed_message
+                log_processed_message(internet_msg_id, "IRRELEVANT", tenant_id=tenant_id)
+            mark_outlook_message_read(token, email_user, msg_id)
+            continue
+
+        if blocklist_result == "NEEDS_AI":
+            if not is_subject_relevant(subject, sender_email, crm_emails):
+                print(f"[Outlook Filter] Skipped irrelevant subject from {sender_email} (Subject: {subject})")
+                if internet_msg_id:
+                    from src.database_sqlite import log_processed_message
+                    log_processed_message(internet_msg_id, "IRRELEVANT", tenant_id=tenant_id)
+                mark_outlook_message_read(token, email_user, msg_id)
+                continue
+            
+            ai_result = classify_and_extract(sender_email, subject, body)
+            if ai_result and ai_result.get("intent") == "IRRELEVANT":
+                print(f"[AI Filter] Skipped irrelevant email from {sender_email} (Subject: {subject})")
+                if internet_msg_id:
+                    from src.database_sqlite import log_processed_message
+                    log_processed_message(internet_msg_id, "IRRELEVANT", tenant_id=tenant_id)
+                mark_outlook_message_read(token, email_user, msg_id)
+                continue
+
+        # Ingestion Mode is LIVE
+        reply_subject, reply_body_tuple, pdf_path, status = process_incoming_email(
+            sender_email, subject, body, catalog, crm_path, "live", project_root, tenant_id=tenant_id
+        )
+
+        if isinstance(reply_body_tuple, tuple):
+            plain_body, html_body = reply_body_tuple
+        else:
+            plain_body = reply_body_tuple
+            html_body = f"<html><body><p>{plain_body.replace('\n', '<br>')}</p></body></html>"
+
+        sent = send_outlook_mail(
+            token, email_user, sender_email, reply_subject, html_body,
+            pdf_path=pdf_path, logo_path=tenant_config.get("company_logo_path")
+        )
+
+        if sent:
+            print(f"[Outlook Mailer] Successfully sent reply to {sender_email} (Subject: {reply_subject})")
+            if internet_msg_id:
+                from src.database_sqlite import log_processed_message
+                log_processed_message(internet_msg_id, status, tenant_id=tenant_id)
+        else:
+            print(f"[Outlook Mailer] Error sending reply to {sender_email}")
+
+        mark_outlook_message_read(token, email_user, msg_id)
+
+    try:
+        update_service_status("IDLE", tenant_id=tenant_id)
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # AI-Powered Email Classification (Tier 1 + Tier 2)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1970,6 +2366,10 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
             
     crm_emails = load_crm_emails(crm_path)
     
+    if mode == "live" and tenant_config and tenant_config.get("outlook_client_secret"):
+        poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, project_root)
+        return
+        
     if mode == "mock":
         try:
             from src.database_sqlite import update_service_status
