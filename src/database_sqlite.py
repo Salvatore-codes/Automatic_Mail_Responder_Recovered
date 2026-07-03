@@ -493,3 +493,28 @@ def get_service_status(tenant_id=None):
     finally:
         conn.close()
     return {"status": "UNKNOWN", "last_seen": None, "error_message": None}
+
+
+def get_latest_message_id(invoice_id, tenant_id=None):
+    """Retrieves the latest processed Message-ID for a given invoice_id."""
+    if not invoice_id:
+        return None
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    clean_id = invoice_id
+    if clean_id.startswith("CUSTOMER_REPLIED:"):
+        clean_id = clean_id.split(":", 1)[1]
+    try:
+        cursor.execute("""
+            SELECT message_id FROM processed_messages 
+            WHERE invoice_id = ? OR invoice_id = ? OR invoice_id = ?
+            ORDER BY processed_at DESC LIMIT 1
+        """, (clean_id, f"CUSTOMER_REPLIED:{clean_id}", f"CUSTOMER_REPLIED:{clean_id}"))
+        row = cursor.fetchone()
+        return row["message_id"] if row else None
+    except Exception as e:
+        print(f"[Warning] SQLite Message-ID lookup failed: {e}")
+        return None
+    finally:
+        conn.close()
+

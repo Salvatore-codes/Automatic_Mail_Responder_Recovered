@@ -1057,7 +1057,7 @@ async def get_overview_analytics(tenant_id: str = "default"):
             received_at = row['received_at'] or processed_at
             
             # Map type and status
-            if inv_id == 'IRRELEVANT':
+            if inv_id == 'IRRELEVANT' or inv_id == 'EMPTY_BODY':
                 email = "System / Marketing"
                 name = "Spam / Auto-filtered"
                 status = "Auto-Filtered"
@@ -1077,8 +1077,33 @@ async def get_overview_analytics(tenant_id: str = "default"):
             elif 'UNMATCHED' in inv_id:
                 email = row['u_email'] or "Customer"
                 name = row['u_name'] or "Customer"
-                status = "UNMATCHED"
-                desc = "Items not found in catalog (requires manual review)"
+                # If original_body indicates human agent request → Pending
+                try:
+                    _body_check = (row['u_email'] or '') + inv_id
+                    # Fetch from DB to check HUMAN AGENT REQUESTED tag
+                    if 'UNMATCHED_' in inv_id:
+                        _uid = inv_id.replace('UNMATCHED_', '')
+                        _urow = cursor.execute(
+                            "SELECT original_body FROM unmatched_items WHERE id = ?",
+                            (_uid,)
+                        ).fetchone()
+                        if _urow and 'HUMAN AGENT REQUESTED' in (_urow[0] or ''):
+                            status = "PENDING_HUMAN"
+                            desc = "Customer requested human assistance"
+                        else:
+                            status = "PENDING_HUMAN"
+                            desc = "Items not found in catalog (requires manual review)"
+                    else:
+                        status = "PENDING_HUMAN"
+                        desc = "Pending manual review"
+                except Exception:
+                    status = "PENDING_HUMAN"
+                    desc = "Pending manual review"
+            elif inv_id == 'NEW':
+                email = row['q_email'] or row['u_email'] or "Customer"
+                name = row['q_name'] or row['u_name'] or "Incoming Mail"
+                status = "Pending Review"
+                desc = "New enquiry received"
             elif inv_id in ('UNPARSED_NOTICE', 'QUOTE_GENERATED', 'QUOTE_UPDATED', 'UNPARSED'):
                 # Legacy/bad data rows where status was stored as invoice_id - skip them
                 continue

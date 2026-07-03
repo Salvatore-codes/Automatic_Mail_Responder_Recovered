@@ -1811,50 +1811,51 @@
                 return tB - tA;
               });
 
-              // 1. New Mail Column: New/just-arrived emails not yet fully processed
-              //    Shows items that arrived but don't yet have a quote or category
-              this.newMails = sortedStream.filter(item => 
-                item.customer_email !== "System / Marketing" && 
-                (
-                  item.status === "Pending Review" ||
-                  item.status === "UNMATCHED" ||
-                  item.status === "UNPARSED"
-                )
+              // 1. New Mail Column: Emails that just arrived, not yet responded
+              this.newMails = sortedStream.filter(item =>
+                item.customer_email !== "System / Marketing" &&
+                item.status === "Pending Review"
               );
 
               // 2. Responded Column: Auto-quoted and completed items (automated quote sent)
-              this.respondedMails = sortedStream.filter(item => 
-                item.status === "Auto-Filtered" || 
-                item.status === "QUOTE_GENERATED" || 
-                item.status === "QUOTE_UPDATED" || 
+              this.respondedMails = sortedStream.filter(item =>
+                item.status === "Auto-Filtered" ||
+                item.status === "QUOTE_GENERATED" ||
+                item.status === "QUOTE_UPDATED" ||
                 item.status === "NEGOTIATION_APPROVED"
               );
 
-              // 3. Reply Column: Emails that are customer replies to existing quotes
-              //    Detected when subject contains RE: with a quotation reference
+              // 3. Reply Column: Customer replies to existing quotes or active negotiation
               this.repliedMails = sortedStream.filter(item =>
                 item.customer_email !== "System / Marketing" &&
                 (
                   item.status === "CUSTOMER_REPLIED" ||
-                  item.status === "NEGOTIATION_NEGOTIATING" ||
-                  item.invoice_id && item.invoice_id.startsWith('QTN-') &&
-                    item.description && item.description.toLowerCase().includes('re:')
+                  item.status === "NEGOTIATION_NEGOTIATING"
                 )
               );
 
               // 4. Rejected: Rejected quotes
-              this.rejectedMails = sortedStream.filter(item => 
+              this.rejectedMails = sortedStream.filter(item =>
                 item.status === "NEGOTIATION_REJECTED"
               );
 
-              // 5. Negotiations: escalated/negotiating items from pending_items
+              // 5. Pending Column: Human-requested, unmatched, escalated negotiations, stock deficits
+              // Combine from stream (PENDING_HUMAN) + pending_items from DB
+              const pendingFromStream = sortedStream.filter(item =>
+                item.status === "PENDING_HUMAN"
+              );
               this.negotiations = negotiations;
-
-              // 6. Deficits: pending stock deficits
               this.pendingDeficits = deficits;
-
-              // 7. Unmatched: pending unmatched items
-              this.pendingUnmatched = unmatched;
+              // Merge stream-based human requests into unmatched display list
+              const humanRequestsAsUnmatched = pendingFromStream.map(item => ({
+                id: item.message_id,
+                customer_email: item.customer_email,
+                customer_name: item.customer_name,
+                original_body: item.description,
+                source: "email",
+                created_at: item.timestamp
+              }));
+              this.pendingUnmatched = [...humanRequestsAsUnmatched, ...unmatched];
 
               // Feeds: Today / Yesterday mails
               const todayStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });

@@ -73,21 +73,32 @@ def parse_mock_email(file_path):
     # Regex extract headers
     from_match = re.search(r'^From:\s*(.+)$', content, re.MULTILINE | re.IGNORECASE)
     sub_match = re.search(r'^Subject:\s*(.+)$', content, re.MULTILINE | re.IGNORECASE)
+    msg_id_match = re.search(r'^Message-ID:\s*(.+)$', content, re.MULTILINE | re.IGNORECASE)
     body_start = re.search(r'^Body:\s*$', content, re.MULTILINE | re.IGNORECASE)
     
     sender = from_match.group(1).strip() if from_match else "walkin_retail@guest.com"
     subject = sub_match.group(1).strip() if sub_match else "Order Enquiry"
     
+    # Generate unique Message-ID if missing from header
+    if msg_id_match:
+        msg_id = msg_id_match.group(1).strip()
+    else:
+        # Fallback to generated ID
+        import hashlib
+        file_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+        msg_id = f"<mock_{file_hash}@trofeo.local>"
+        
     body = ""
     if body_start:
         body = content[body_start.end():].strip()
     else:
         # Fallback: everything after headers
         lines = content.split('\n')
-        body_lines = [l for l in lines if not (l.lower().startswith("from:") or l.lower().startswith("subject:"))]
+        body_lines = [l for l in lines if not (l.lower().startswith("from:") or l.lower().startswith("subject:") or l.lower().startswith("message-id:"))]
         body = "\n".join(body_lines).strip()
         
-    return sender, subject, body
+    return sender, subject, body, msg_id
+
 
 def strip_email_history(body_text):
     """Strips reply history, signatures, and trailing quoted text from email body."""
@@ -196,9 +207,17 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     flag_emoji = "🤖" if _is_ai else "🧑"
 
     # ---- 1. Plain Text covering note ----
-    body = [f"[ {flag_emoji} {flag_label} ]", "", f"Dear {customer_name},", ""]
+    # Note: start with Dear {name} — AI badge appended after signature
+    body = [f"Dear {customer_name},", ""]
     if any_quoted:
-        body.append(f"Thank you for your enquiry. Please find your detailed quotation (Ref: #{invoice_id}) attached as a PDF. It includes item-wise pricing and a QR code for quick payment.")
+        body.append(f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF.")
+        # Price summary line with ₹
+        if discount_pct > 0:
+            body.append("")
+            body.append(f"Summary: Subtotal ₹{raw_subtotal:.2f} | Special Discount ({int(discount_pct*100)}%) -₹{discount_amt:.2f} | GST 18% ₹{tax_amt:.2f} | Total Payable ₹{grand_total:.2f}")
+        else:
+            body.append("")
+            body.append(f"Summary: Subtotal ₹{raw_subtotal:.2f} | GST 18% ₹{tax_amt:.2f} | Total Payable ₹{grand_total:.2f}")
     else:
         body.append(f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.")
     if unavailable_items:
@@ -220,13 +239,24 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         body.append(f"- Response Generated: {system_efficiency['generated_time']}")
         body.append(f"- Processing Latency: {system_efficiency['latency']:.2f} seconds")
         body.append("=" * 40)
+    # AI badge at end of plain text (HTML keeps it at top)
+    body.append("")
+    body.append(f"[ {flag_emoji} {flag_label} ]")
     plain_text = "\n".join(body)
 
-    # ---- 2. HTML covering note (no red block) ----
+    # ---- 2. HTML covering note with inline summary ----
     html_lines = [
         "<html><head><style>",
         "body { font-family: Arial, 'Helvetica Neue', sans-serif; color: #334155; line-height: 1.6; margin: 0; padding: 24px; font-size: 14px; }",
         ".note { color: #64748b; font-size: 13px; margin: 16px 0; }",
+        ".summary-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }",
+        ".summary-table td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; }",
+        ".summary-table .label { color: #64748b; }",
+        ".summary-table .amount { text-align: right; font-family: monospace; }",
+        ".summary-table .total-row td { font-weight: 700; color: #1e293b; border-top: 2px solid #334155; border-bottom: none; }",
+        ".stock-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }",
+        ".in-stock { background:#dcfce7; color:#166534; }",
+        ".out-stock { background:#fee2e2; color:#991b1b; }",
         ".footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 18px; color: #64748b; font-size: 13px; }",
         ".footer b { color: #1e293b; }",
         "</style></head><body>",
@@ -237,15 +267,27 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         f"<p>Dear {html.escape(customer_name)},</p>",
     ]
     if any_quoted:
-        html_lines.append(f"<p>Thank you for your enquiry. Please find your detailed quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF. It includes item-wise pricing and a QR code for quick payment.</p>")
+        html_lines.append(f"<p>Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF.</p>")
+        # ── Inline pricing summary table ──
+        html_lines.append("<table class='summary-table'>")
+        if discount_pct > 0:
+            html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
+            html_lines.append(f"<tr><td class='label'>Special Discount ({int(discount_pct*100)}%)</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+        else:
+            html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
+            html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+        html_lines.append(f"<tr class='total-row'><td>Total Payable</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
+        html_lines.append("</table>")
+        # ── Stock availability summary ──
+        in_stock_count = sum(1 for l in matched_lines if l['matched_sku_id'] != 'UNKNOWN' and l.get('deficit', 0) == 0 and l['quantity'] > 0)
+        if in_stock_count > 0:
+            html_lines.append(f"<p><span class='stock-pill in-stock'>✓ In Stock</span> {in_stock_count} item(s) available and included in the quotation.</p>")
+        if unavailable_items:
+            names_esc = html.escape(", ".join(unavailable_names))
+            html_lines.append(f"<p><span class='stock-pill out-stock'>✗ Unavailable Products</span> {len(unavailable_items)} item(s) currently out of stock and not included: {names_esc}.</p>")
     else:
         html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
-    if unavailable_items:
-        names = html.escape(", ".join(unavailable_names))
-        html_lines.append(
-            f"<p class='note'>Note: {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation "
-            f"({names}). Reply to this email if you would like them back-ordered.</p>"
-        )
     html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
     html_lines.append("<div class='footer'>")
     if logo_cid and any_quoted:
@@ -340,6 +382,17 @@ def is_negotiation_msg(text):
     negotiation_keywords = ["discount", "off", "cheaper", "reduce", "less", "negotiat", "rate", "%", "deal", "better", "lower", "offer"]
     text_lower = text.lower()
     return any(kw in text_lower for kw in negotiation_keywords)
+
+def is_human_request(text):
+    """Checks if the text contains requests for human related action."""
+    keywords = [
+        "human", "salesperson", "sales executive", "representative", "agent", 
+        "call me", "manager", "support staff", "operator", "talk to someone", 
+        "person", "contact me back", "phone me", "speak to", "real assistant"
+    ]
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in keywords)
+
 
 def extract_requested_discount(text):
     """Extracts requested discount percentage from message body using regex patterns."""
@@ -756,7 +809,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 print(f"[Warning] SQLite logging failed: {e}")
                 
             reply_subject = clean_reply_subject(subject, invoice_id=existing_invoice_id)
-            return reply_subject, reply_body, pdf_out_path, "QUOTE_UPDATED", existing_invoice_id
+            return reply_subject, reply_body, pdf_out_path, "QUOTE_UPDATED"
 
         else:
             # Handle general conversational enquiry
@@ -947,7 +1000,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             print(f"[Warning] SQLite logging failed: {e}")
             
         reply_subject = clean_reply_subject(subject, invoice_id=invoice_id)
-        return reply_subject, reply_body, pdf_out_path, "QUOTE_GENERATED", invoice_id
+        return reply_subject, reply_body, pdf_out_path, "QUOTE_GENERATED"
     else:
         duration = time.time() - start_time
         now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
@@ -965,7 +1018,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             system_efficiency=system_efficiency
         )
         reply_subject = clean_reply_subject(subject, is_unparsed=True)
-        return reply_subject, reply_body, None, "UNPARSED_NOTICE", None
+        return reply_subject, reply_body, None, "UNPARSED_NOTICE"
 
 def load_crm_emails(crm_path):
     """Loads email addresses of registered customers from CRM."""
@@ -1693,58 +1746,6 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
         blocklist_result = fast_blocklist_check(sender_email, subject, crm_emails)
         if blocklist_result == "REJECT":
             print(f"[Outlook Filter] Skipped irrelevant email from {sender_email} (Subject: {subject})")
-
-        # ── Customer Reply Detection ─────────────────────────────────────────
-        # If subject is RE: and references a known quotation, treat as a customer
-        # reply and move to the CUSTOMER_REPLIED stage on the dashboard.
-        subj_lower = subject.lower().strip()
-        is_reply_subject = subj_lower.startswith("re:")
-        # Resolve which quotation this reply belongs to: prefer a QTN tag in the
-        # subject, otherwise fall back to this sender's most recent quotation.
-        # (Subject keywords alone are unreliable now that threaded replies keep
-        # the customer's original subject wording, which may not contain "quote".)
-        qtn_match = re.search(r'QTN-\d+', subject, re.IGNORECASE)
-        sender_qtn = None
-        if is_reply_subject and not qtn_match and sender_email:
-            try:
-                from src.database_sqlite import get_connection
-                _rc = get_connection(tenant_id)
-                _row = _rc.execute(
-                    "SELECT invoice_id FROM quotations WHERE customer_email = ? ORDER BY rowid DESC LIMIT 1",
-                    (sender_email,)
-                ).fetchone()
-                if _row:
-                    sender_qtn = _row[0]
-            except Exception as _e:
-                print(f"[Reply Detector] sender-quote lookup failed: {_e}")
-
-        is_customer_reply = is_reply_subject and (
-            ("quotation" in subj_lower or "qtn-" in subj_lower or "quote" in subj_lower)
-            or sender_qtn is not None
-        )
-        if is_customer_reply and blocklist_result != "REJECT":
-            qtn_ref = qtn_match.group(0).upper() if qtn_match else (sender_qtn or "REPLIED")
-            print(f"[Reply Detector] Customer reply detected from {sender_email} referencing {qtn_ref}")
-            if internet_msg_id:
-                from src.database_sqlite import log_processed_message
-                log_processed_message(internet_msg_id, f"CUSTOMER_REPLIED:{qtn_ref}", received_at=received_at, tenant_id=tenant_id)
-            # Log the reply text into the conversation so it appears in the
-            # quote's timeline (chat_logs is what the timeline modal reads).
-            if qtn_ref and qtn_ref != "REPLIED":
-                try:
-                    from src.database_sqlite import log_chat_msg
-                    _reply = body or ""
-                    _cut = re.search(r'On\s+.+?\bwrote:', _reply, re.DOTALL)
-                    if _cut:
-                        _reply = _reply[:_cut.start()]
-                    log_chat_msg(qtn_ref, "customer", _reply.strip() or "(customer replied)", tenant_id=tenant_id)
-                except Exception as _e:
-                    print(f"[Reply Detector] failed to log reply to timeline: {_e}")
-            mark_outlook_message_read(token, email_user, msg_id)
-            continue
-        # ────────────────────────────────────────────────────────────────────
-
-        if blocklist_result == "REJECT":
             if internet_msg_id:
                 from src.database_sqlite import log_processed_message
                 log_processed_message(internet_msg_id, "IRRELEVANT", received_at=received_at, tenant_id=tenant_id)
@@ -1769,22 +1770,98 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 mark_outlook_message_read(token, email_user, msg_id)
                 continue
 
-        # Ingestion Mode is LIVE
-        result = process_incoming_email(
-            sender_email, subject, body, catalog, crm_path, "live", project_root, tenant_id=tenant_id
-        )
-        # Unpack: reply_subject, reply_body, pdf_path, status, invoice_id
-        if len(result) == 5:
-            reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result
-        else:
-            reply_subject, reply_body_tuple, pdf_path, status = result
-            proc_invoice_id = None
+        # ── Customer Reply Detection ─────────────────────────────────────────
+        subj_lower = subject.lower().strip()
+        is_reply_subject = subj_lower.startswith("re:")
+        qtn_match = re.search(r'QTN-\d+', subject, re.IGNORECASE)
+        sender_qtn = None
+        if is_reply_subject and not qtn_match and sender_email:
+            try:
+                from src.database_sqlite import get_connection
+                _rc = get_connection(tenant_id)
+                _row = _rc.execute(
+                    "SELECT invoice_id FROM quotations WHERE customer_email = ? ORDER BY rowid DESC LIMIT 1",
+                    (sender_email,)
+                ).fetchone()
+                if _row:
+                    sender_qtn = _row[0]
+            except Exception as _e:
+                print(f"[Reply Detector] sender-quote lookup failed: {_e}")
 
-        if isinstance(reply_body_tuple, tuple):
-            plain_body, html_body = reply_body_tuple
+        is_customer_reply = is_reply_subject and (
+            ("quotation" in subj_lower or "qtn-" in subj_lower or "quote" in subj_lower)
+            or sender_qtn is not None
+        )
+        qtn_ref = None
+        if is_customer_reply:
+            qtn_ref = qtn_match.group(0).upper() if qtn_match else (sender_qtn or "REPLIED")
+
+        # ── Immediate DB Logging (Stage tracking) ──────────────────────────────
+        if internet_msg_id:
+            from src.database_sqlite import log_processed_message
+            if is_customer_reply:
+                log_processed_message(internet_msg_id, f"CUSTOMER_REPLIED:{qtn_ref}", received_at=received_at, tenant_id=tenant_id)
+            else:
+                log_processed_message(internet_msg_id, "NEW", received_at=received_at, tenant_id=tenant_id)
+
+        # Log timeline comment if customer reply
+        if is_customer_reply and qtn_ref and qtn_ref != "REPLIED":
+            try:
+                from src.database_sqlite import log_chat_msg
+                _reply = body or ""
+                _cut = re.search(r'On\s+.+?\bwrote:', _reply, re.DOTALL)
+                if _cut:
+                    _reply = _reply[:_cut.start()]
+                log_chat_msg(qtn_ref, "customer", _reply.strip() or "(customer replied)", tenant_id=tenant_id)
+            except Exception as _e:
+                print(f"[Reply Detector] failed to log reply to timeline: {_e}")
+
+        # ── Human Request Checking & Routing ───────────────────────────────
+        is_human = is_human_request(body)
+        if is_human:
+            print(f"[Human Request] Customer requested human agent. Routing to Pending.")
+            try:
+                from src.database_sqlite import log_unmatched_item
+                u_id = log_unmatched_item(
+                    customer_email=sender_email,
+                    customer_name=sender_name,
+                    original_body=f"HUMAN AGENT REQUESTED:\n{body}",
+                    source="live_email",
+                    tenant_id=tenant_id
+                )
+                proc_invoice_id = f"UNMATCHED_{u_id}"
+            except Exception as ue:
+                print(f"[Warning] Failed to log human request unmatched item: {ue}")
+                proc_invoice_id = "UNMATCHED"
+            
+            reply_subject = clean_reply_subject(subject, is_unparsed=True)
+            reply_body = (
+                f"Dear {sender_name},\n\n"
+                f"Thank you for contacting us. We have received your request and forwarded it "
+                f"to a sales representative. A team member will contact you shortly to assist you.\n\n"
+                f"Regards,\n"
+                f"{tenant_config.get('business_name', 'Trofeo Hardware')} Sales Team"
+            )
+            plain_body = reply_body
+            html_body = f"<html><body><p>{reply_body.replace(chr(10), '<br>')}</p></body></html>"
+            pdf_path = None
+            status = "UNPARSED_NOTICE"
         else:
-            plain_body = reply_body_tuple
-            html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
+            # Ingestion Mode is LIVE
+            result = process_incoming_email(
+                sender_email, subject, body, catalog, crm_path, "live", project_root, tenant_id=tenant_id
+            )
+            if len(result) == 5:
+                reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result
+            else:
+                reply_subject, reply_body_tuple, pdf_path, status = result
+                proc_invoice_id = None
+
+            if isinstance(reply_body_tuple, tuple):
+                plain_body, html_body = reply_body_tuple
+            else:
+                plain_body = reply_body_tuple
+                html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
 
         sent = send_outlook_mail(
             token, email_user, sender_email, reply_subject, html_body,
@@ -1796,8 +1873,12 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
             print(f"[Outlook Mailer] Successfully sent reply to {sender_email} (Subject: {reply_subject})")
             if internet_msg_id:
                 from src.database_sqlite import log_processed_message
-                # Log with the actual invoice_id (e.g. QTN-00001), NOT the status string
-                log_invoice_ref = proc_invoice_id or status
+                if is_customer_reply:
+                    log_invoice_ref = f"CUSTOMER_REPLIED:{qtn_ref}"
+                elif status == "UNPARSED_NOTICE":
+                    log_invoice_ref = proc_invoice_id or "UNMATCHED"
+                else:
+                    log_invoice_ref = proc_invoice_id or status
                 log_processed_message(internet_msg_id, log_invoice_ref, received_at=received_at, tenant_id=tenant_id)
         else:
             print(f"[Outlook Mailer] Error sending reply to {sender_email}")
@@ -2335,6 +2416,27 @@ def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, p
     outlook_client_id = tenant_config.get("outlook_client_id")
     outlook_client_secret = tenant_config.get("outlook_client_secret")
     
+    # ── Auto-resolve reply_to_msg_id if not explicitly passed ──────────────
+    if not reply_to_msg_id:
+        extracted_inv_id = None
+        if pdf_path:
+            basename = os.path.basename(pdf_path)
+            inv_match = re.search(r'Quote_([A-Za-z0-9\-]+)\.pdf', basename)
+            if inv_match:
+                extracted_inv_id = inv_match.group(1)
+        if not extracted_inv_id:
+            inv_match = re.search(r'\[Quotation\s+#([A-Za-z0-9\-]+)\]', reply_subject, re.IGNORECASE)
+            if inv_match:
+                extracted_inv_id = inv_match.group(1)
+        
+        if extracted_inv_id:
+            try:
+                from src.database_sqlite import get_latest_message_id
+                reply_to_msg_id = get_latest_message_id(extracted_inv_id, tenant_id=tenant_id)
+            except Exception as e:
+                print(f"[Warning] Failed to look up Message-ID for threading: {e}")
+    # ──────────────────────────────────────────────────────────────────────────
+
     if email_user and outlook_client_secret:
         try:
             token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret)
@@ -2394,6 +2496,8 @@ def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, p
         with open(reply_path, 'w', encoding='utf-8') as rf:
             rf.write(f"To: {customer_email}\n")
             rf.write(f"Subject: {reply_subject}\n")
+            if reply_to_msg_id:
+                rf.write(f"In-Reply-To: {reply_to_msg_id}\n")
             if pdf_path:
                 rf.write(f"Attachment: {os.path.basename(pdf_path)}\n")
             rf.write("=" * 80 + "\n")
@@ -2416,6 +2520,7 @@ def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, p
             reply_msg["To"] = customer_email
             reply_msg["Subject"] = reply_subject
             if reply_to_msg_id:
+
                 reply_msg["In-Reply-To"] = reply_to_msg_id
                 reply_msg["References"] = reply_to_msg_id
 
@@ -2517,7 +2622,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
         for file in files:
             file_path = os.path.join(inbox_dir, file)
             try:
-                sender, subject, body = parse_mock_email(file_path)
+                sender, subject, body, msg_id = parse_mock_email(file_path)
                 
                 # Tier 1: Fast blocklist check (0ms, no API)
                 blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
@@ -2574,6 +2679,54 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 if not contact_phone:
                     contact_phone = "—"
                 
+                # ── Customer Reply Detection ─────────────────────────────────────────
+                subj_lower = subject.lower().strip()
+                is_reply_subject = subj_lower.startswith("re:")
+                qtn_match = re.search(r'QTN-\d+', subject, re.IGNORECASE)
+                sender_qtn = None
+                if is_reply_subject and not qtn_match and sender:
+                    try:
+                        from src.database_sqlite import get_connection
+                        _rc = get_connection(tenant_id)
+                        _row = _rc.execute(
+                            "SELECT invoice_id FROM quotations WHERE customer_email = ? ORDER BY rowid DESC LIMIT 1",
+                            (sender,)
+                        ).fetchone()
+                        if _row:
+                            sender_qtn = _row[0]
+                    except Exception as _e:
+                        print(f"[Reply Detector] sender-quote lookup failed: {_e}")
+
+                is_customer_reply = is_reply_subject and (
+                    ("quotation" in subj_lower or "qtn-" in subj_lower or "quote" in subj_lower)
+                    or sender_qtn is not None
+                )
+                qtn_ref = None
+                if is_customer_reply:
+                    qtn_ref = qtn_match.group(0).upper() if qtn_match else (sender_qtn or "REPLIED")
+
+                # ── Immediate DB Logging (Stage tracking) ──────────────────────────────
+                import datetime
+                received_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if msg_id:
+                    from src.database_sqlite import log_processed_message
+                    if is_customer_reply:
+                        log_processed_message(msg_id, f"CUSTOMER_REPLIED:{qtn_ref}", received_at=received_at, tenant_id=tenant_id)
+                    else:
+                        log_processed_message(msg_id, "NEW", received_at=received_at, tenant_id=tenant_id)
+
+                # Log timeline comment if customer reply
+                if is_customer_reply and qtn_ref and qtn_ref != "REPLIED":
+                    try:
+                        from src.database_sqlite import log_chat_msg
+                        _reply = body or ""
+                        _cut = re.search(r'On\s+.+?\bwrote:', _reply, re.DOTALL)
+                        if _cut:
+                            _reply = _reply[:_cut.start()]
+                        log_chat_msg(qtn_ref, "customer", _reply.strip() or "(customer replied)", tenant_id=tenant_id)
+                    except Exception as _e:
+                        print(f"[Reply Detector] failed to log reply to timeline: {_e}")
+
                 # 1. Notify Master User of incoming enquiry
                 if master_email and email_user and email_pass and email_user.strip() and not email_user.startswith("your_"):
                     subject_notif = f"[Notification] New enquiry received from {sender_name}"
@@ -2594,14 +2747,36 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     )
                     send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_notif, body_notif)
 
-                reply_subject, reply_body_tuple, pdf_path, status = process_incoming_email(
-                    sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=tenant_id
-                )
-                
-                if isinstance(reply_body_tuple, tuple):
-                    plain_body = reply_body_tuple[0]
+                # ── Human Request Checking & Routing ───────────────────────────────
+                is_human = is_human_request(body)
+                if is_human:
+                    print(f"[Human Request] Customer requested human agent. Routing to Pending.")
+                    reply_subject = clean_reply_subject(subject, is_unparsed=True)
+                    reply_body = (
+                        f"Dear {sender_name},\n\n"
+                        f"Thank you for contacting us. We have received your request and forwarded it "
+                        f"to a sales representative. A team member will contact you shortly to assist you.\n\n"
+                        f"Regards,\n"
+                        f"{tenant_config.get('business_name', 'Trofeo Hardware')} Sales Team"
+                    )
+                    plain_body = reply_body
+                    pdf_path = None
+                    status = "UNPARSED_NOTICE"
+                    proc_invoice_id = None
                 else:
-                    plain_body = reply_body_tuple
+                    reply_subject, reply_body_tuple, pdf_path, status = process_incoming_email(
+                        sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=tenant_id
+                    )
+                    # Extract invoice ID from reply_subject
+                    proc_invoice_id = None
+                    quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)
+                    if quote_id_match:
+                        proc_invoice_id = quote_id_match.group(1)
+                    
+                    if isinstance(reply_body_tuple, tuple):
+                        plain_body = reply_body_tuple[0]
+                    else:
+                        plain_body = reply_body_tuple
                 
                 # 2. Notify Master User of outgoing reply
                 if master_email and email_user and email_pass and email_user.strip() and not email_user.startswith("your_"):
@@ -2736,10 +2911,33 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 with open(reply_path, 'w', encoding='utf-8') as rf:
                     rf.write(f"To: {sender}\n")
                     rf.write(f"Subject: {reply_subject}\n")
+                    if msg_id:
+                        rf.write(f"In-Reply-To: {msg_id}\n")
+                        rf.write(f"References: {msg_id}\n")
                     if pdf_path:
                         rf.write(f"Attachment: {os.path.basename(pdf_path)}\n")
                     rf.write("=" * 80 + "\n")
                     rf.write(plain_body)
+                
+                if msg_id:
+                    from src.database_sqlite import log_processed_message
+                    if is_customer_reply:
+                        log_invoice_ref = f"CUSTOMER_REPLIED:{qtn_ref}"
+                    elif status == "UNPARSED_NOTICE":
+                        try:
+                            from src.database_sqlite import get_connection
+                            _rc = get_connection(tenant_id)
+                            _row = _rc.execute(
+                                "SELECT id FROM unmatched_items WHERE customer_email = ? ORDER BY id DESC LIMIT 1",
+                                (sender,)
+                            ).fetchone()
+                            log_invoice_ref = f"UNMATCHED_{_row[0]}" if _row else "UNMATCHED"
+                        except Exception:
+                            log_invoice_ref = "UNMATCHED"
+                    else:
+                         log_invoice_ref = proc_invoice_id or status
+                    log_processed_message(msg_id, log_invoice_ref, received_at=received_at, tenant_id=tenant_id)
+
                 print(f"[Success] Processed (status: {status}) for tenant {tenant_id}. Written reply & quote to mock_outbox/.")
                 
             except Exception as e:
@@ -2952,6 +3150,52 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     if not contact_phone:
                         contact_phone = "—"
                         
+                    # ── Customer Reply Detection ─────────────────────────────────────────
+                    subj_lower = subject.lower().strip()
+                    is_reply_subject = subj_lower.startswith("re:")
+                    qtn_match = re.search(r'QTN-\d+', subject, re.IGNORECASE)
+                    sender_qtn = None
+                    if is_reply_subject and not qtn_match and sender:
+                        try:
+                            from src.database_sqlite import get_connection
+                            _rc = get_connection(tenant_id)
+                            _row = _rc.execute(
+                                "SELECT invoice_id FROM quotations WHERE customer_email = ? ORDER BY rowid DESC LIMIT 1",
+                                (sender,)
+                            ).fetchone()
+                            if _row:
+                                sender_qtn = _row[0]
+                        except Exception as _e:
+                            print(f"[Reply Detector] sender-quote lookup failed: {_e}")
+
+                    is_customer_reply = is_reply_subject and (
+                        ("quotation" in subj_lower or "qtn-" in subj_lower or "quote" in subj_lower)
+                        or sender_qtn is not None
+                    )
+                    qtn_ref = None
+                    if is_customer_reply:
+                        qtn_ref = qtn_match.group(0).upper() if qtn_match else (sender_qtn or "REPLIED")
+
+                    # ── Immediate DB Logging (Stage tracking) ──────────────────────────────
+                    if msg_id:
+                        from src.database_sqlite import log_processed_message
+                        if is_customer_reply:
+                            log_processed_message(msg_id, f"CUSTOMER_REPLIED:{qtn_ref}", received_at=received_at, tenant_id=tenant_id)
+                        else:
+                            log_processed_message(msg_id, "NEW", received_at=received_at, tenant_id=tenant_id)
+
+                    # Log timeline comment if customer reply
+                    if is_customer_reply and qtn_ref and qtn_ref != "REPLIED":
+                        try:
+                            from src.database_sqlite import log_chat_msg
+                            _reply = body or ""
+                            _cut = re.search(r'On\s+.+?\bwrote:', _reply, re.DOTALL)
+                            if _cut:
+                                _reply = _reply[:_cut.start()]
+                            log_chat_msg(qtn_ref, "customer", _reply.strip() or "(customer replied)", tenant_id=tenant_id)
+                        except Exception as _e:
+                            print(f"[Reply Detector] failed to log reply to timeline: {_e}")
+
                     # 1. Notify Master User of incoming enquiry
                     master_email = tenant_config.get("master_email")
                     if master_email and email_user and email_pass:
@@ -2973,15 +3217,51 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         )
                         send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_notif, body_notif)
                     
-                    reply_subject, reply_body_tuple, pdf_path, status = process_incoming_email(
-                        sender_header, subject, body, catalog, crm_path, mode, project_root, tenant_id=tenant_id
-                    )
-                    
-                    if isinstance(reply_body_tuple, tuple):
-                        plain_body, html_body = reply_body_tuple
+                    # ── Human Request Checking & Routing ───────────────────────────────
+                    is_human = is_human_request(body)
+                    if is_human:
+                        print(f"[Human Request] Customer requested human agent. Routing to Pending.")
+                        try:
+                            from src.database_sqlite import log_unmatched_item
+                            u_id = log_unmatched_item(
+                                customer_email=sender,
+                                customer_name=sender_name,
+                                original_body=f"HUMAN AGENT REQUESTED:\n{body}",
+                                source="live_email",
+                                tenant_id=tenant_id
+                            )
+                            proc_invoice_id = f"UNMATCHED_{u_id}"
+                        except Exception as ue:
+                            print(f"[Warning] Failed to log human request unmatched item: {ue}")
+                            proc_invoice_id = "UNMATCHED"
+                        
+                        reply_subject = clean_reply_subject(subject, is_unparsed=True)
+                        reply_body = (
+                            f"Dear {sender_name},\n\n"
+                            f"Thank you for contacting us. We have received your request and forwarded it "
+                            f"to a sales representative. A team member will contact you shortly to assist you.\n\n"
+                            f"Regards,\n"
+                            f"{tenant_config.get('business_name', 'Trofeo Hardware')} Sales Team"
+                        )
+                        plain_body = reply_body
+                        html_body = f"<html><body><p>{reply_body.replace(chr(10), '<br>')}</p></body></html>"
+                        pdf_path = None
+                        status = "UNPARSED_NOTICE"
                     else:
-                        plain_body = reply_body_tuple
-                        html_body = f"<html><body><p>{plain_body.replace('\n', '<br>')}</p></body></html>"
+                        reply_subject, reply_body_tuple, pdf_path, status = process_incoming_email(
+                            sender_header, subject, body, catalog, crm_path, mode, project_root, tenant_id=tenant_id
+                        )
+                        # Extract invoice ID from reply_subject
+                        proc_invoice_id = None
+                        quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)
+                        if quote_id_match:
+                            proc_invoice_id = quote_id_match.group(1)
+
+                        if isinstance(reply_body_tuple, tuple):
+                            plain_body, html_body = reply_body_tuple
+                        else:
+                            plain_body = reply_body_tuple
+                            html_body = f"<html><body><p>{plain_body.replace('\n', '<br>')}</p></body></html>"
                     
                     reply_msg = MIMEMultipart()
                     reply_msg["From"] = email_user
@@ -3036,12 +3316,14 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     
                     mail.store(m_id, '+FLAGS', '\\Seen')
                     if msg_id:
-                        inv_id = "UNPARSED"
-                        quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)
-                        if quote_id_match:
-                            inv_id = quote_id_match.group(1)
                         from src.database_sqlite import log_processed_message
-                        log_processed_message(msg_id, inv_id, received_at=received_at, tenant_id=tenant_id)
+                        if is_customer_reply:
+                            log_invoice_ref = f"CUSTOMER_REPLIED:{qtn_ref}"
+                        elif status == "UNPARSED_NOTICE":
+                            log_invoice_ref = proc_invoice_id or "UNMATCHED"
+                        else:
+                            log_invoice_ref = proc_invoice_id or status
+                        log_processed_message(msg_id, log_invoice_ref, received_at=received_at, tenant_id=tenant_id)
                         
                     print(f"[Success] Processed email from {sender} (status: {status}) and sent reply via SMTP for tenant {tenant_id}.")
 
