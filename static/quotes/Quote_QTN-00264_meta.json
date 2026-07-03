@@ -1,0 +1,23 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "Brass Threaded Elbow Fitting 1/2 Inch - 2",
+      "parsed_query": "brass thread elbow fitting 0.5 inch",
+      "quantity": 2,
+      "matched_sku_id": "ELBOW-BRASS-050",
+      "matched_sku_name": "Brass Threaded Elbow Fitting 1/2 Inch",
+      "unit_price": 12.5,
+      "confidence": 100.0,
+      "match_method": "Vector Embedding",
+      "original_requested_qty": 2,
+      "stock_avail": 150,
+      "deficit": 0
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "Gopi S",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "mightymedic98@gmail.com",
+  "invoice_id": "QTN-00264",
+  "chat_history": []
+}

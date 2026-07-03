@@ -1,0 +1,21 @@
+{
+  "matched_lines": [
+    {
+      "query_text": "Plastic Tool Box 19 Inch",
+      "matched_sku_id": "BOX-TOOL-19",
+      "matched_sku_name": "Plastic Tool Box 19 Inch",
+      "quantity": 0,
+      "unit_price": 500.0,
+      "confidence": 95,
+      "original_requested_qty": 3,
+      "stock_avail": 0,
+      "deficit": 3
+    }
+  ],
+  "discount_pct": 0.05,
+  "customer_name": "Test WhatsApp Client 2",
+  "customer_phone": "\u2014",
+  "customer_email": null,
+  "invoice_id": "TEST-WA-002",
+  "chat_history": []
+}

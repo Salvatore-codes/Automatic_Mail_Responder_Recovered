@@ -1,0 +1,23 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "Blades - knife -10 -10 units",
+      "parsed_query": "blade knife 10",
+      "quantity": 10,
+      "matched_sku_id": "BLADES-KNIFE-10",
+      "matched_sku_name": "Utility Knife Spare Blades 10pc",
+      "unit_price": 1.99,
+      "confidence": 100.0,
+      "match_method": "Fuzzy (RapidFuzz)",
+      "original_requested_qty": 10,
+      "stock_avail": 100,
+      "deficit": 0
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "Rajarajan S",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "rajarajansvelora@gmail.com",
+  "invoice_id": "QTN-00260",
+  "chat_history": []
+}

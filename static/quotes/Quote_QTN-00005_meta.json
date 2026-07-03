@@ -1,0 +1,23 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "BRUSH-PAINT-2 - 10 units",
+      "parsed_query": "brush paint 2",
+      "quantity": 10,
+      "matched_sku_id": "BRUSH-PAINT-2",
+      "matched_sku_name": "Paint Brush 2 Inch Basic",
+      "unit_price": 2.5,
+      "confidence": 100.0,
+      "match_method": "Exact SKU ID Match",
+      "original_requested_qty": 10,
+      "stock_avail": 150,
+      "deficit": 0
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "Rajarajan S",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "rajarajansvelora@gmail.com",
+  "invoice_id": "QTN-00005",
+  "chat_history": []
+}

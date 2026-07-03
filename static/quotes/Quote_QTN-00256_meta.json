@@ -1,0 +1,23 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "ELBOW -BRASS-050 - 10",
+      "parsed_query": "elbow brass 050",
+      "quantity": 10,
+      "matched_sku_id": "ELBOW-BRASS-050",
+      "matched_sku_name": "Brass Threaded Elbow Fitting 1/2 Inch",
+      "unit_price": 12.5,
+      "confidence": 100.0,
+      "match_method": "Exact SKU ID Match",
+      "original_requested_qty": 10,
+      "stock_avail": 150,
+      "deficit": 0
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "Rajarajan S",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "rajarajansvelora@gmail.com",
+  "invoice_id": "QTN-00256",
+  "chat_history": []
+}

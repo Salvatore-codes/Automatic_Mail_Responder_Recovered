@@ -1,0 +1,23 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "Utility Knife Spare Blades - 5",
+      "parsed_query": "utility knife spare blade",
+      "quantity": 5,
+      "matched_sku_id": "BLADES-KNIFE-10",
+      "matched_sku_name": "Utility Knife Spare Blades 10pc",
+      "unit_price": 1.99,
+      "confidence": 100.0,
+      "match_method": "Vector Embedding",
+      "original_requested_qty": 5,
+      "stock_avail": 100,
+      "deficit": 0
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "Rajarajan S",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "rajarajansvelora@gmail.com",
+  "invoice_id": "QTN-00257",
+  "chat_history": []
+}

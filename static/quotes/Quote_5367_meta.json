@@ -1,0 +1,20 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "Hi, please quote 10 x Brass Threaded Elbow Fitting 1/2 Inch",
+      "parsed_query": "Hi, please quote 10 x Brass Threaded Elbow Fitting 1/2 Inch",
+      "quantity": 1,
+      "matched_sku_id": "ELBOW-BRASS-050",
+      "matched_sku_name": "Brass Threaded Elbow Fitting 1/2 Inch",
+      "unit_price": 15.0,
+      "confidence": 100.0,
+      "match_method": "Fuzzy + Semantic"
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "negotiation_escalation",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "negotiation_escalation@gmail.com",
+  "invoice_id": "5367",
+  "chat_history": []
+}

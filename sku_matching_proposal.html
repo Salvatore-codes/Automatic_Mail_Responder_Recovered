@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proposal: Automated SKU Matching & Quotation System</title>
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #0B0F19;
+            --bg-secondary: #161D30;
+            --bg-tertiary: #1E293B;
+            --accent-blue: #3B82F6;
+            --accent-indigo: #6366F1;
+            --accent-purple: #8B5CF6;
+            --accent-green: #10B981;
+            --accent-red: #EF4444;
+            --text-main: #F1F5F9;
+            --text-muted: #94A3B8;
+            --border-color: #334155;
+            --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Basic Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 1100px;
+            width: 100%;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        h1 {
+            font-size: 2.75rem;
+            background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Header Section */
+        header {
+            margin-bottom: 3.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 2rem;
+        }
+
+        .subtitle {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .meta-item {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .meta-item span {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+
+        .meta-item strong {
+            font-size: 1.1rem;
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* Section Styling */
+        section {
+            margin-bottom: 4rem;
+        }
+
+        section h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            display: inline-block;
+        }
+
+        section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 0;
+            width: 40px;
+            height: 3px;
+            background-color: var(--accent-indigo);
+            border-radius: 2px;
+        }
+
+        /* Callout Box */
+        .callout {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-left: 4px solid var(--accent-indigo);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .callout h3 {
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Analogy Box */
+        .analogy-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .analogy-card {
+            flex: 1 1 300px;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.75rem;
+            position: relative;
+            transition: var(--transition);
+        }
+
+        .analogy-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-indigo);
+        }
+
+        .analogy-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .analogy-card h3 {
+            margin-bottom: 0.75rem;
+            color: var(--text-main);
+        }
+
+        /* Comparison Grid */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        @media (max-width: 600px) {
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .comp-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.25rem;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+        }
+
+        .comp-card.free {
+            border-top: 4px solid var(--text-muted);
+        }
+
+        .comp-card.paid {
+            border-top: 4px solid var(--accent-indigo);
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.03) 100%);
+        }
+
+        .comp-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .comp-card .badge {
+            align-self: flex-start;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1.5rem;
+        }
+
+        .free .badge {
+            background-color: rgba(148, 163, 184, 0.15);
+            color: var(--text-muted);
+        }
+
+        .paid .badge {
+            background-color: rgba(99, 102, 241, 0.2);
+            color: #A5B4FC;
+        }
+
+        .feature-list {
+            list-style: none;
+            margin-bottom: 2rem;
+            flex-grow: 1;
+        }
+
+        .feature-list li {
+            position: relative;
+            padding-left: 1.75rem;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+
+        .feature-list li::before {
+            position: absolute;
+            left: 0;
+            top: 2px;
+            font-weight: bold;
+        }
+
+        .free .feature-list li::before {
+            content: "✓";
+            color: var(--text-muted);
+        }
+
+        .paid .feature-list li::before {
+            content: "✦";
+            color: var(--accent-indigo);
+        }
+
+        .comparison-table-wrapper {
+            overflow-x: auto;
+            margin-bottom: 3rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: var(--bg-secondary);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Matrix cell styles */
+        .metric-title {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-pill.good {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .status-pill.warn {
+            background-color: rgba(245, 158, 11, 0.15);
+            color: #FBBF24;
+        }
+
+        .status-pill.poor {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        /* Strategy Section */
+        .strategy-box {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            position: relative;
+        }
+
+        .strategy-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 16px 16px 0 0;
+        }
+
+        .strategy-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .step-card {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .step-card .num {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            background-color: var(--accent-indigo);
+            border-radius: 50%;
+            text-align: center;
+            line-height: 28px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 1rem;
+        }
+
+        .step-card h4 {
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Print styles */
+        @media print {
+            :root {
+                --bg-primary: #ffffff;
+                --bg-secondary: #f8fafc;
+                --bg-tertiary: #f1f5f9;
+                --text-main: #0f172a;
+                --text-muted: #475569;
+                --border-color: #cbd5e1;
+                --card-shadow: none;
+            }
+
+            body {
+                padding: 0;
+                background-color: white;
+                color: #0f172a;
+            }
+
+            .container {
+                max-width: 100%;
+            }
+
+            h1 {
+                background: none;
+                -webkit-text-fill-color: initial;
+                color: #0f172a;
+                font-size: 2.2rem;
+            }
+
+            .comp-card, .analogy-card, .meta-item, .step-card, .strategy-box {
+                border: 1px solid #94a3b8;
+                box-shadow: none !important;
+                background: white !important;
+                page-break-inside: avoid;
+            }
+
+            .comp-card.free {
+                border-top: 3px solid #64748b;
+            }
+
+            .comp-card.paid {
+                border-top: 3px solid #4f46e5;
+            }
+
+            tr {
+                page-break-inside: avoid;
+            }
+
+            .status-pill {
+                border: 1px solid #cbd5e1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <header>
+            <div class="subtitle">PROJECT PROPOSAL &amp; ARCHITECTURAL ANALYSIS</div>
+            <h1>Automated Order-to-Quotation System</h1>
+            <p>A comparative proposal on using local free utilities vs. paid semantic APIs to parse customer requests and auto-match 10,000+ SKUs.</p>
+            
+            <div class="meta-grid">
+                <div class="meta-item">
+                    <span>Target Business</span>
+                    <strong>Hardware Retail &amp; Wholesale</strong>
+                </div>
+                <div class="meta-item">
+                    <span>Catalog Complexity</span>
+                    <strong>10,000+ Active SKUs</strong>
+                </div>
+                <div class="meta-item">
+                    <span>Proposed Strategy</span>
+                    <strong>The Hybrid Model (Optimal Cost/Value)</strong>
+                </div>
+            </div>
+        </header>
+
+        <section class="callout">
+            <h3>Executive Challenge Summary</h3>
+            <p style="margin-bottom: 0;">Customers send product requests via emails, WhatsApp chats, and paper scans using varying descriptions (e.g., shorthand, typos, colloquialisms). Manually finding matches against a 10,000+ SKU database to draft quotations is slow, delays deliveries, and invites errors. The solution is an automated matching pipeline.</p>
+        </section>
+
+        <section>
+            <h2>The Core Logic Differentiator</h2>
+            <p>The differences between Free and Paid approaches center around two critical pipeline steps: **Information Ingestion** and **SKU Mapping**.</p>
+            
+            <div class="analogy-container">
+                <div class="analogy-card">
+                    <div class="analogy-icon">🔍</div>
+                    <h3>Scenario A: Free &amp; Local</h3>
+                    <p>Uses hardcoded rules (Regular Expressions) to extract items, and computes lexical string similarity (e.g., spelling checks like Levenshtein distance) to match catalog lines.</p>
+                </div>
+                <div class="analogy-card">
+                    <div class="analogy-icon">🧠</div>
+                    <h3>Scenario B: Paid API-Driven</h3>
+                    <p>Uses Large Language Models (LLMs) to read and understand the entire document, and translates product descriptions into vector spaces (Semantic Search) to match products based on meaning rather than spelling.</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Comparative Architecture Matrix</h2>
+            
+            <div class="comparison-table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Performance Metric</th>
+                            <th>Scenario A: Free / Local Stack</th>
+                            <th>Scenario B: Paid / API Stack</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="metric-title">OCR Accuracy (Photos/Scans)</td>
+                            <td>
+                                <span class="status-pill poor">Poor / Low</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Tesseract struggles with low-light photos, tables, and handwriting.</div>
+                            </td>
+                            <td>
+                                <span class="status-pill good">Exceptional</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Vision models (GPT-4o/Gemini) read crumpled lists and handwriting easily.</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Complex Parsing (e.g., compound lines)</td>
+                            <td>
+                                <span class="status-pill poor">Fails on compound logic</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Struggles when multiple items are requested in one line (e.g. "50 bolts and matching nuts").</div>
+                            </td>
+                            <td>
+                                <span class="status-pill good">Flawless</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">LLM contextually splits multi-item requests into correct separate rows.</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Semantic Matching (Synonyms)</td>
+                            <td>
+                                <span class="status-pill warn">Weak</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Fails if customer names do not spell-match database titles (e.g. "teflon taps" to "teflon tape").</div>
+                            </td>
+                            <td>
+                                <span class="status-pill good">Strong (95%+)</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Matches descriptions by intent and conceptual meaning via embeddings.</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Hosting &amp; Compute Costs</td>
+                            <td>
+                                <span class="status-pill good">Free ($0.00 / mo)</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Runs locally on standard shop PC. No external fees.</div>
+                            </td>
+                            <td>
+                                <span class="status-pill warn">Pay-per-use (Est. $5-$15 / mo)</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Requires small fractions of a cent per order processed.</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Development &amp; Maintenance</td>
+                            <td>
+                                <span class="status-pill poor">High Maintenance</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Requires writing and updating hundreds of custom regex rules for typos.</div>
+                            </td>
+                            <td>
+                                <span class="status-pill good">Low Maintenance</span>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">LLMs adapt dynamically to conversational styles without code changes.</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <h2>Detailed Scenario Breakdown</h2>
+            
+            <div class="comparison-grid">
+                
+                <!-- Free Scenario -->
+                <div class="comp-card free">
+                    <span class="badge">Scenario A</span>
+                    <h3>Free &amp; Local Stack</h3>
+                    <p style="margin-bottom: 1.5rem; font-size: 0.9rem;">Perfect for businesses with strict data privacy budgets that receive cleanly typed list files (Excel, CSV) and do not deal with handwritten scans or verbal WhatsApp chats.</p>
+                    
+                    <ul class="feature-list">
+                        <li><strong>Engine:</strong> Python, Tesseract OCR, Levenshtein algorithms, RapidFuzz.</li>
+                        <li><strong>Data Privacy:</strong> 100% secure. Zero company, customer, or price data leaves the local computer.</li>
+                        <li><strong>Offline Capability:</strong> Works completely without internet connection.</li>
+                        <li><strong>Limitation:</strong> Any minor typo or conversational word can throw off the match accuracy, requiring manual correction.</li>
+                    </ul>
+                </div>
+
+                <!-- Paid Scenario -->
+                <div class="comp-card paid">
+                    <span class="badge">Scenario B</span>
+                    <h3>Paid Hybrid API Stack</h3>
+                    <p style="margin-bottom: 1.5rem; font-size: 0.9rem;">The enterprise-grade solution. Perfect for stores processing dozens of unstructured orders daily, matching them with over 95% accuracy and responding in seconds.</p>
+                    
+                    <ul class="feature-list">
+                        <li><strong>Engine:</strong> Gemini 2.5 Flash API (Structured outputs) + Vector Database.</li>
+                        <li><strong>Smart Ingestion:</strong> Directly process emails, messy text blocks, and images of paper orders.</li>
+                        <li><strong>Semantic Search:</strong> Automatically links colloquial slang (like "1/2 inch brass joint") to exact stock codes (like `ELBOW-BRASS-050`).</li>
+                        <li><strong>Unmatched ROI:</strong> While there are small API costs, the savings in manual labor hours are massive.</li>
+                    </ul>
+                </div>
+
+            </div>
+        </section>
+
+        <section>
+            <div class="strategy-box">
+                <h2>Our Recommendation: The Hybrid Strategy</h2>
+                <p>To deliver maximum value at minimal cost, we recommend a **Hybrid Pipeline** architecture:</p>
+                
+                <div class="strategy-steps">
+                    <div class="step-card">
+                        <span class="num">1</span>
+                        <h4>Low-Cost Vision/LLM Ingestion</h4>
+                        <p style="font-size: 0.85rem; margin-bottom: 0;">Use Gemini 1.5/2.5 Flash API to parse orders and photos. Flash models cost fractions of a penny per run (e.g. $0.0005 per order) but guarantee near-perfect text extraction.</p>
+                    </div>
+                    <div class="step-card">
+                        <span class="num">2</span>
+                        <h4>Local Vector Matching Database</h4>
+                        <p style="font-size: 0.85rem; margin-bottom: 0;">Perform the actual search using a local vector database or lightweight search index (like a local pgvector or Python vector cache). This avoids expensive cloud database costs.</p>
+                    </div>
+                    <div class="step-card">
+                        <span class="num">3</span>
+                        <h4>Automated Output Dispatch</h4>
+                        <p style="font-size: 0.85rem; margin-bottom: 0;">Automatically format a PDF invoice quote and reply via email (free via SMTP) or WhatsApp, reducing the quotation cycle from hours to under 30 seconds.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Recommended Technology Stack &amp; Tools</h2>
+            <p>Below is the detailed software and platform stack recommended for each stage of the production pipeline:</p>
+            
+            <div class="comparison-table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Pipeline Stage</th>
+                            <th>Scenario A: Free Stack</th>
+                            <th>Scenario B: Paid/Hybrid Stack</th>
+                            <th>Purpose / Function</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="metric-title">Ingestion &amp; Triggers</td>
+                            <td>Python + IMAP / Local folder triggers</td>
+                            <td>n8n.io / Make.com + Twilio / Gmail API</td>
+                            <td>Listens for incoming emails or WhatsApp chats.</td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">OCR (Image Processing)</td>
+                            <td>Tesseract OCR / EasyOCR</td>
+                            <td>Gemini 2.5 Flash API (Multimodal Vision)</td>
+                            <td>Transcribes photos of lists and handwriting into raw text.</td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Structured Parser</td>
+                            <td>Python standard regular expressions (re)</td>
+                            <td>Gemini 2.5 Flash (Structured Output Mode)</td>
+                            <td>Extracts product names and quantities into JSON format.</td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">SKU Matching Engine</td>
+                            <td>RapidFuzz + Local custom TF-IDF similarity</td>
+                            <td>Gemini Embeddings + pgvector (PostgreSQL)</td>
+                            <td>Links customer descriptions to catalog Stock IDs.</td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">CRM &amp; ERP Sync</td>
+                            <td>Local CSV / SQLite database</td>
+                            <td>Odoo Community Edition / SAP REST APIs</td>
+                            <td>Applies client discount profiles and checks inventory levels.</td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Review Dashboard</td>
+                            <td>CLI Terminal prompts</td>
+                            <td>Retool / Glide / Custom React Web Page</td>
+                            <td>Allows manual override of low-confidence matches.</td>
+                        </tr>
+                        <tr>
+                            <td class="metric-title">Quote Dispatch</td>
+                            <td>Python standard smtplib (SMTP)</td>
+                            <td>SendGrid API / Twilio WhatsApp API</td>
+                            <td>Auto-replies PDF quotes back to incoming channels.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer style="text-align: center; margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85rem;">
+            <p>Proposal generated by Antigravity AI Systems. Print this page (Ctrl+P) to save as a clean PDF document.</p>
+        </footer>
+
+
+    </div>
+</body>
+</html>

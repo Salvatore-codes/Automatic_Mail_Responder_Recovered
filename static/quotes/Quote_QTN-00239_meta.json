@@ -1,0 +1,49 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "- 20 x Hex Head Bolt M8 x 50mm",
+      "parsed_query": "hex head bolt m8 x 50 mm",
+      "quantity": 20,
+      "matched_sku_id": "BOLT-HEX-M8-50",
+      "matched_sku_name": "Hex Head Bolt M8 x 50mm",
+      "unit_price": 0.45,
+      "confidence": 100.0,
+      "match_method": "Fuzzy (RapidFuzz)",
+      "original_requested_qty": 20,
+      "stock_avail": 1000,
+      "deficit": 0
+    },
+    {
+      "original_line": "- 10 x PTFE Teflon Seal Tape 12mm",
+      "parsed_query": "ptfe teflon seal tape 12 mm",
+      "quantity": 10,
+      "matched_sku_id": "PTFE-TAPE-12",
+      "matched_sku_name": "PTFE Teflon Seal Tape 12mm",
+      "unit_price": 1.2,
+      "confidence": 95.0,
+      "match_method": "Synonym Learner (Substring)",
+      "original_requested_qty": 10,
+      "stock_avail": 10,
+      "deficit": 0
+    },
+    {
+      "original_line": "- 5 x Claw Hammer 16oz",
+      "parsed_query": "claw hammer 16oz",
+      "quantity": 5,
+      "matched_sku_id": "HAMMER-CLAW-16",
+      "matched_sku_name": "Claw Hammer 16oz Fiberglass",
+      "unit_price": 15.99,
+      "confidence": 95.0,
+      "match_method": "Synonym Learner (Substring)",
+      "original_requested_qty": 5,
+      "stock_avail": 12,
+      "deficit": 0
+    }
+  ],
+  "discount_pct": 0.0,
+  "customer_name": "test_mixed",
+  "customer_phone": "+91 90000 00000",
+  "customer_email": "test_mixed@gmail.com",
+  "invoice_id": "QTN-00239",
+  "chat_history": []
+}
