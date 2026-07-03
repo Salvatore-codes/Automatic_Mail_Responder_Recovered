@@ -1,10 +1,10 @@
-﻿{
+{
   "default": {
     "name": "Trofeo Hardware",
     "business_name": "Trofeo Solution",
-    "email_user": "[YOUR_EMAIL]",
-    "outlook_tenant_id": "[YOUR_OUTLOOK_TENANT_ID]",
-    "outlook_client_id": "[YOUR_OUTLOOK_CLIENT_ID]",
-    "outlook_client_secret": "[YOUR_OUTLOOK_CLIENT_SECRET]"
+    "email_user": "rajarajan@trofeosolution.com",
+    "outlook_tenant_id": "fa491207-e0a1-4980-bb65-f8c2236101eb",
+    "outlook_client_id": "6a95a4b3-01ce-4f7c-ac23-22ea48732df9",
+    "outlook_client_secret": "CHANGE_ME"
   }
 }
