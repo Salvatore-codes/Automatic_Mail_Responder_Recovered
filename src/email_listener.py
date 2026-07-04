@@ -1969,10 +1969,19 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Logging to unmatched_items.")
                 try:
                     from src.database_sqlite import log_unmatched_item
+                    # Prepend Subject, Sender, and Attachments to body for rich preview in simulator
+                    full_body_log = f"Subject: {subject}\nSender: {sender_name} <{sender_email}>\n"
+                    # Check if attachments exist in scope
+                    if 'attachments' in locals() and attachments:
+                        names = [att.get("name", "") for att in attachments if att.get("name")]
+                        if names:
+                            full_body_log += f"Attachments: {', '.join(names)}\n"
+                    full_body_log += f"\n{body}"
+                    
                     u_id = log_unmatched_item(
                         customer_email=sender_email,
                         customer_name=sender_name,
-                        original_body=body,
+                        original_body=full_body_log.strip(),
                         source="live_email",
                         tenant_id=tenant_id
                     )

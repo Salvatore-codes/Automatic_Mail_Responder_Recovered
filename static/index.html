@@ -527,7 +527,7 @@
                       <p class="k-card-desc mt-1 text-xs truncate" x-text="'&ldquo;' + item.original_body + '&rdquo;'"></p>
                       <div class="k-card-footer mt-2">
                         <span class="k-id truncate max-w-[120px]" x-text="item.customer_email"></span>
-                        <button class="btn-micro">View</button>
+                        <button class="btn-micro" @click.stop="loadUnmatchedIntoSimulator(item)">View</button>
                       </div>
                     </div>
                   </template>
