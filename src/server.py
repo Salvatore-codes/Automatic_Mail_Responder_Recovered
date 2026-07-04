@@ -1093,7 +1093,7 @@ async def get_overview_analytics(tenant_id: str = "default"):
             FROM processed_messages pm
             LEFT JOIN quotations q ON q.invoice_id = pm.invoice_id
                 OR q.invoice_id = REPLACE(pm.invoice_id, 'CUSTOMER_REPLIED:', '')
-            LEFT JOIN unmatched_items u ON pm.message_id = 'UNMATCHED_' || u.id
+            LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || u.id
             WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')
             ORDER BY pm.processed_at DESC LIMIT 100
         """)
