@@ -145,6 +145,28 @@
               <span>Live</span>
             </div>
 
+            <!-- Mode Switcher Pill Group -->
+            <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;">
+              <button 
+                @click="settings.reply_mode = 'auto'; saveSettings();"
+                style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                :style="settings.reply_mode === 'auto' ? 'background:var(--green); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                title="Full Auto-Pilot Mode (Auto-Reply)"
+              >
+                <i data-lucide="bot" style="width:11px; height:11px;"></i>
+                <span>Automatic</span>
+              </button>
+              <button 
+                @click="settings.reply_mode = 'manual'; saveSettings();"
+                style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                :style="settings.reply_mode === 'manual' ? 'background:var(--yellow); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                title="Human-in-the-Loop Mode (Manual-Reply)"
+              >
+                <i data-lucide="user" style="width:11px; height:11px;"></i>
+                <span>Manual</span>
+              </button>
+            </div>
+
             <!-- Connect Outlook -->
             <a :href="'/api/outlook/login?tenant_id=' + selectedTenant" 
                target="_blank" 
@@ -298,6 +320,156 @@
                     <span class="ds-pct">all-time</span>
                   </div>
                 </div>
+              </div>
+            </div>
+            <!-- Sales Intelligence & Leakage Section -->
+            <div style="margin-top:20px; margin-bottom:20px;">
+              <div class="page-header" style="margin-bottom:14px; padding-bottom:10px;">
+                <div>
+                  <h2 class="page-title">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4" style="color:var(--accent)"></i>
+                    Sales Intelligence &amp; Leakage
+                  </h2>
+                  <p class="page-subtitle">Immediate operational insights, high-value clients, top quotes, and conversion leakages.</p>
+                </div>
+              </div>
+
+              <div style="display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start;">
+                
+                <!-- Funnel & Leakage Card -->
+                <div class="section-card" style="padding:16px 20px;">
+                  <div class="section-header" style="border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
+                    <h3 class="section-title">
+                      <i data-lucide="filter" class="w-4 h-4" style="color:var(--accent);"></i>
+                      Conversion Funnel &amp; Leakage
+                    </h3>
+                  </div>
+
+                  <!-- Funnel Stage Bar Chart -->
+                  <div style="display:flex; flex-direction:column; gap:14px;">
+                    
+                    <!-- Received -->
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span class="font-bold text-[var(--text-2)]">Total Ingested</span>
+                        <span class="font-bold font-mono" x-text="analyticsData.funnel ? analyticsData.funnel.total_received : 0"></span>
+                      </div>
+                      <div style="height:6px; background:var(--bg-canvas); border-radius:3px; overflow:hidden;">
+                        <div style="width: 100%; height:100%; background:var(--text-3); border-radius:3px;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Converted -->
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span class="font-bold text-[var(--green)]">Converted (Quotes Sent)</span>
+                        <span class="font-bold font-mono" x-text="analyticsData.funnel ? analyticsData.funnel.converted : 0"></span>
+                      </div>
+                      <div style="height:6px; background:var(--bg-canvas); border-radius:3px; overflow:hidden;">
+                        <div :style="`width: ${analyticsData.funnel ? (analyticsData.funnel.converted / Math.max(analyticsData.funnel.total_received, 1) * 100) : 0}%; height:100%; background:var(--green); border-radius:3px;`"></div>
+                      </div>
+                    </div>
+
+                    <!-- Leakage -->
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span class="font-bold text-rose-500">Leakage (Unmatched/Rejected)</span>
+                        <span class="font-bold font-mono" x-text="analyticsData.funnel ? (analyticsData.funnel.unmatched + analyticsData.funnel.rejected) : 0"></span>
+                      </div>
+                      <div style="height:6px; background:var(--bg-canvas); border-radius:3px; overflow:hidden;">
+                        <div :style="`width: ${analyticsData.funnel ? ((analyticsData.funnel.unmatched + analyticsData.funnel.rejected) / Math.max(analyticsData.funnel.total_received, 1) * 100) : 0}%; height:100%; background:var(--red); border-radius:3px;`"></div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <!-- Funnel Leakage Insight -->
+                  <div style="font-size:10px; color:var(--text-3); line-height:1.4; background:rgba(255,255,255,0.02); padding:10px; border-radius:8px; border:1px solid var(--border); margin-top:14px;">
+                    <strong>Leakage Analysis:</strong>
+                    <div style="margin-top:4px;">
+                      • Unmatched items: <strong class="text-rose-500" x-text="analyticsData.funnel ? analyticsData.funnel.unmatched : 0"></strong> enquiries<br>
+                      • Rejected discounts: <strong class="text-rose-500" x-text="analyticsData.funnel ? analyticsData.funnel.rejected : 0"></strong> enquiries
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Top Customers and Top Quotations Grid -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                  
+                  <!-- Top Customers Card -->
+                  <div class="section-card" style="padding:16px 20px;">
+                    <div class="section-header" style="border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
+                      <h3 class="section-title">
+                        <i data-lucide="users" class="w-4 h-4" style="color:var(--accent-2);"></i>
+                        Top Customers
+                      </h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                            <th class="p-2 border-b border-[var(--border)]">Name / Email</th>
+                            <th class="p-2 border-b border-[var(--border)] text-center">Quotes</th>
+                            <th class="p-2 border-b border-[var(--border)] text-right">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-if="!analyticsData.top_customers || analyticsData.top_customers.length === 0">
+                            <tr><td colspan="3" class="p-4 text-center italic text-[var(--text-3)]">No customers record</td></tr>
+                          </template>
+                          <template x-for="cust in analyticsData.top_customers" :key="cust.customer_email">
+                            <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/20">
+                              <td class="p-2">
+                                <div class="font-bold text-[var(--text-1)]" x-text="cust.customer_name"></div>
+                                <div class="text-[10px] text-[var(--text-2)]" x-text="cust.customer_email"></div>
+                              </td>
+                              <td class="p-2 text-center font-bold" x-text="cust.quote_count"></td>
+                              <td class="p-2 text-right font-mono font-extrabold text-[var(--text-1)]" x-text="fmt(cust.total_value)"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- Top Quotations Card -->
+                  <div class="section-card" style="padding:16px 20px;">
+                    <div class="section-header" style="border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
+                      <h3 class="section-title">
+                        <i data-lucide="file-text" class="w-4 h-4" style="color:var(--accent);"></i>
+                        Top Quotations
+                      </h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                            <th class="p-2 border-b border-[var(--border)]">Quote ID</th>
+                            <th class="p-2 border-b border-[var(--border)]">Customer</th>
+                            <th class="p-2 border-b border-[var(--border)] text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-if="!analyticsData.top_quotations || analyticsData.top_quotations.length === 0">
+                            <tr><td colspan="3" class="p-4 text-center italic text-[var(--text-3)]">No quotations record</td></tr>
+                          </template>
+                          <template x-for="q in analyticsData.top_quotations" :key="q.invoice_id">
+                            <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/20">
+                              <td class="p-2 font-bold font-mono text-[var(--text-1)]" x-text="q.invoice_id"></td>
+                              <td class="p-2">
+                                <div class="font-bold text-[var(--text-1)]" x-text="q.customer_name"></div>
+                                <div class="text-[9px] text-[var(--text-3)]" x-text="formatDate(q.created_at)"></div>
+                              </td>
+                              <td class="p-2 text-right font-mono font-extrabold text-[var(--text-1)]" x-text="fmt(q.grand_total)"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+
               </div>
             </div>
 
@@ -1297,7 +1469,30 @@
                   <h1 class="ov-title">Analytics &amp; Insights</h1>
                   <p class="ov-sub">Deep visibility into conversion funnels, top customers, item demand, and historical communications.</p>
                 </div>
-                <div class="ov-hero-side">
+                <div class="ov-hero-side" style="display:flex; align-items:center; gap:10px;">
+                  <!-- Mode Switcher Pill Group -->
+                  <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-card); border:1px solid var(--border); position:relative;">
+                    <button 
+                      @click="settings.reply_mode = 'auto'; saveSettings();"
+                      style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                      :style="settings.reply_mode === 'auto' ? 'background:var(--green); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                      title="Full Auto-Pilot Mode (Auto-Reply)"
+                    >
+                      <i data-lucide="bot" style="width:11px; height:11px;"></i>
+                      <span>Automatic</span>
+                    </button>
+                    <button 
+                      @click="settings.reply_mode = 'manual'; saveSettings();"
+                      style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                      :style="settings.reply_mode === 'manual' ? 'background:var(--yellow); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                      title="Human-in-the-Loop Mode (Manual-Reply)"
+                    >
+                      <i data-lucide="user" style="width:11px; height:11px;"></i>
+                      <span>Manual</span>
+                    </button>
+                  </div>
+
+                  <!-- Date Filter -->
                   <div class="header-chip" style="background:var(--bg-card); border:1px solid var(--border);">
                     <i data-lucide="calendar" style="width:13px;height:13px;opacity:0.5;margin-right:4px;"></i>
                     <select x-model="analyticsDateFilter" @change="loadAnalytics()" style="background:none;border:none;outline:none;font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;font-family:var(--font);">
@@ -2144,7 +2339,10 @@
             // Auto-refresh dashboard pipeline every 10 seconds
             setInterval(() => {
               this.isAutoRefreshing = true;
-              this.fetchOverviewData().finally(() => {
+              Promise.all([
+                this.fetchOverviewData(),
+                this.loadAnalytics()
+              ]).finally(() => {
                 this.isAutoRefreshing = false;
                 const now = new Date();
                 this.lastRefreshed = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -2201,6 +2399,7 @@
             this.loadCatalog();
             this.loadLogs();
             this.loadSettings();
+            this.loadAnalytics();
           },
           
           switchTab(tabId, filterVal = '') {
