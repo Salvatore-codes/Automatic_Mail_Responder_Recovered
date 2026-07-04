@@ -1816,7 +1816,9 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
             body_text = py_html.unescape(body_text)
             body = body_text.strip()
 
-        has_attach = msg.get("hasAttachments", False)
+        # Force has_attach to True to always fetch and scan for standard/inline attachments.
+        # Graph API omits inline attachments (such as pasted screenshots) from 'hasAttachments'.
+        has_attach = True
         attachment_text = ""
         clean_attach_text = ""
         
@@ -1962,6 +1964,22 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 _qtn_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)
                 if _qtn_match:
                     proc_invoice_id = _qtn_match.group(1)
+
+            if status == "UNPARSED_NOTICE":
+                print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Logging to unmatched_items.")
+                try:
+                    from src.database_sqlite import log_unmatched_item
+                    u_id = log_unmatched_item(
+                        customer_email=sender_email,
+                        customer_name=sender_name,
+                        original_body=body,
+                        source="live_email",
+                        tenant_id=tenant_id
+                    )
+                    proc_invoice_id = f"UNMATCHED_{u_id}"
+                except Exception as ue:
+                    print(f"[Warning] Failed to log unmatched live enquiry: {ue}")
+                    proc_invoice_id = "UNMATCHED"
 
             if isinstance(reply_body_tuple, tuple):
                 plain_body, html_body = reply_body_tuple
