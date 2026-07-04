@@ -492,7 +492,7 @@
                   <span class="kanban-col-label">
                     <i data-lucide="user-check" class="w-3.5 h-3.5" style="color:var(--yellow)"></i> Pending
                   </span>
-                  <span class="kanban-col-count yellow" x-text="pendingDeficits.length + pendingUnmatched.length"></span>
+                  <span class="kanban-col-count yellow" x-text="pendingDeficits.length + pendingUnmatched.length + pendingReviews.length"></span>
                 </div>
                 <div class="kanban-cards">
                   
@@ -516,6 +516,29 @@
                     </div>
                   </template>
 
+                  <!-- Manual Approval Quotes inside Pending Column -->
+                  <template x-for="item in pendingReviews" :key="item.invoice_id">
+                    <div class="k-card pending-approval" @click="openChatHistory(item.invoice_id, item.customer_name)" style="cursor:pointer; border-left: 3px solid var(--yellow);">
+                      <div class="flex justify-between items-start">
+                        <span class="k-card-name flex items-center gap-1 text-amber-500">
+                          <i data-lucide="clock" class="w-3 h-3"></i> Draft Quotation
+                        </span>
+                        <span class="text-[9px] text-[var(--text-2)]" x-text="formatTime(item.created_at)"></span>
+                      </div>
+                      <span class="k-card-name mt-1" x-text="item.customer_name || 'Customer'"></span>
+                      <div class="k-card-desc mt-1 text-xs">
+                        Draft Amount: <strong class="text-[var(--text-1)]" x-text="fmt(item.grand_total)"></strong>
+                      </div>
+                      <div class="k-card-footer mt-2" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="k-id">Ref: <span x-text="item.invoice_id"></span></span>
+                        <div style="display:flex; gap:6px;">
+                          <button class="btn-micro" @click.stop="openChatHistory(item.invoice_id, item.customer_name)">Review</button>
+                          <button class="btn-micro" style="background:var(--green); color:white;" @click.stop="approveManualQuote(item.invoice_id)">Approve &amp; Send</button>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
                   <!-- Unmatched inside Pending Column -->
                   <template x-for="item in pendingUnmatched" :key="item.id">
                     <div class="k-card unmatched" @click="loadUnmatchedIntoSimulator(item)">
@@ -531,7 +554,7 @@
                       </div>
                     </div>
                   </template>
-                  <template x-if="pendingDeficits.length === 0 && pendingUnmatched.length === 0">
+                  <template x-if="pendingDeficits.length === 0 && pendingUnmatched.length === 0 && pendingReviews.length === 0">
                     <div class="k-empty">
                       <i data-lucide="check-circle-2" class="k-empty-icon w-6 h-6"></i>
                       <span class="k-empty-label">All clear</span>
@@ -757,8 +780,9 @@
                                     <div class="text-[10px] text-[var(--text-2)] mt-0.5" x-text="line.matched_sku_id"></div>
                                   </div>
                                 </template>
+                              <td class="p-3.5">
+                                <input type="number" x-model.number="line.quantity" min="0" class="bg-[var(--bg-input)] border border-[var(--border)] rounded text-xs px-2 py-1 w-16 text-center font-bold text-[var(--text-1)]" />
                               </td>
-                              <td class="p-3.5 font-bold" x-text="line.quantity || 0"></td>
                               <td class="p-3.5">
                                 <div class="flex items-center gap-1.5">
                                   <span x-text="line.confidence + '%'"></span>
@@ -768,8 +792,10 @@
                               <td class="p-3.5">
                                 <span class="badge" :class="line.matched_sku_id === 'UNKNOWN' ? 'gray' : (line.stock_avail === 0 ? 'red' : (line.stock_avail <= 5 ? 'yellow' : 'green'))" x-text="line.matched_sku_id === 'UNKNOWN' ? 'N/A' : (line.stock_avail === 0 ? 'Out of stock' : (line.stock_avail <= 5 ? 'Low ('+line.stock_avail+')' : 'In Stock'))"></span>
                               </td>
-                              <td class="p-3.5 font-mono font-bold" x-text="fmt(line.unit_price)"></td>
-                              <td class="p-3.5 font-mono font-extrabold text-[var(--text-1)]" x-text="fmt((line.unit_price || 0) * (line.quantity || 0))"></td>
+                              <td class="p-3.5">
+                                <input type="number" step="0.01" x-model.number="line.unit_price" min="0" class="bg-[var(--bg-input)] border border-[var(--border)] rounded text-xs px-2 py-1 w-24 text-right font-mono font-bold text-[var(--text-1)]" />
+                              </td>
+                              <td class="p-3.5 font-mono font-extrabold text-[var(--text-1)] text-right" x-text="fmt((line.unit_price || 0) * (line.quantity || 0))"></td>
                             </tr>
                           </template>
                         </tbody>
@@ -1262,6 +1288,458 @@
               </div>
             </div>
 
+            <!-- TAB 8: ANALYTICS & INSIGHTS -->
+            <div class="tab-content" :class="{ 'active': activeTab === 'analytics' }">
+              <div class="ov-hero page-hero">
+                <div class="ov-hero-glow" aria-hidden="true"></div>
+                <div class="ov-hero-main">
+                  <div class="ov-eyebrow">Sales Intelligence</div>
+                  <h1 class="ov-title">Analytics &amp; Insights</h1>
+                  <p class="ov-sub">Deep visibility into conversion funnels, top customers, item demand, and historical communications.</p>
+                </div>
+                <div class="ov-hero-side">
+                  <div class="header-chip" style="background:var(--bg-card); border:1px solid var(--border);">
+                    <i data-lucide="calendar" style="width:13px;height:13px;opacity:0.5;margin-right:4px;"></i>
+                    <select x-model="analyticsDateFilter" @change="loadAnalytics()" style="background:none;border:none;outline:none;font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;font-family:var(--font);">
+                      <option value="all">All Time</option>
+                      <option value="7days">Last 7 Days</option>
+                      <option value="30days">Last 30 Days</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Analytics Grid Layout -->
+              <div style="display:grid; grid-template-columns: 1fr; lg:grid-template-columns: 320px 1fr; gap:20px; margin-top:20px; align-items:start;">
+                
+                <!-- Left: Sales Funnel -->
+                <div class="section-card" style="display:flex; flex-direction:column; gap:16px;">
+                  <div class="section-header">
+                    <h3 class="section-title">
+                      <i data-lucide="filter" class="w-4 h-4" style="color:var(--accent);"></i>
+                      Sales Funnel
+                    </h3>
+                  </div>
+                  
+                  <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 0; border-bottom:1px solid var(--border);">
+                    <div style="font-family:var(--serif); font-size:42px; font-weight:700; color:var(--green);" x-text="(analyticsData.funnel ? analyticsData.funnel.conversion_rate : 0) + '%'"></div>
+                    <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-3); margin-top:4px;">Conversion Rate</div>
+                  </div>
+
+                  <div style="display:flex; flex-direction:column; gap:12px;">
+                    <div class="ds-row">
+                      <span class="ds-lbl">Total Enquiries Ingested</span>
+                      <span class="ds-val font-bold" x-text="analyticsData.funnel ? analyticsData.funnel.total_received : 0"></span>
+                    </div>
+                    
+                    <!-- Funnel Stage: Converted -->
+                    <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span class="font-bold text-[var(--green)]">Converted (Quotes Sent)</span>
+                        <span class="font-bold font-mono" x-text="analyticsData.funnel ? analyticsData.funnel.converted : 0"></span>
+                      </div>
+                      <div style="height:6px; background:var(--bg-canvas); border-radius:3px; overflow:hidden;">
+                        <div :style="`width: ${analyticsData.funnel ? (analyticsData.funnel.converted / Math.max(analyticsData.funnel.total_received, 1) * 100) : 0}%; height:100%; background:var(--green); border-radius:3px;`"></div>
+                      </div>
+                    </div>
+
+                    <!-- Funnel Stage: Escalate/Review -->
+                    <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span class="font-bold text-[var(--yellow)]">Friction (Escalated/Pending)</span>
+                        <span class="font-bold font-mono" x-text="analyticsData.funnel ? (analyticsData.funnel.escalated + analyticsData.funnel.pending_review) : 0"></span>
+                      </div>
+                      <div style="height:6px; background:var(--bg-canvas); border-radius:3px; overflow:hidden;">
+                        <div :style="`width: ${analyticsData.funnel ? ((analyticsData.funnel.escalated + analyticsData.funnel.pending_review) / Math.max(analyticsData.funnel.total_received, 1) * 100) : 0}%; height:100%; background:var(--yellow); border-radius:3px;`"></div>
+                      </div>
+                    </div>
+
+                    <!-- Funnel Stage: Leakage -->
+                    <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span class="font-bold text-rose-500">Leakage (Unmatched/Rejected)</span>
+                        <span class="font-bold font-mono" x-text="analyticsData.funnel ? (analyticsData.funnel.unmatched + analyticsData.funnel.rejected) : 0"></span>
+                      </div>
+                      <div style="height:6px; background:var(--bg-canvas); border-radius:3px; overflow:hidden;">
+                        <div :style="`width: ${analyticsData.funnel ? ((analyticsData.funnel.unmatched + analyticsData.funnel.rejected) / Math.max(analyticsData.funnel.total_received, 1) * 100) : 0}%; height:100%; background:var(--rose-500); border-radius:3px;`"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="font-size:10px; color:var(--text-3); line-height:1.4; background:rgba(255,255,255,0.02); padding:10px; border-radius:8px; border:1px solid var(--border); margin-top:6px;">
+                    <strong>Funnel Leakage Insight:</strong>
+                    <div style="margin-top:4px;">
+                      • Lost due to unmatched SKUs: <strong class="text-rose-500" x-text="analyticsData.funnel ? analyticsData.funnel.unmatched : 0"></strong> enquiries<br>
+                      • Lost due to rejected discounts: <strong class="text-rose-500" x-text="analyticsData.funnel ? analyticsData.funnel.rejected : 0"></strong> enquiries
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right: Tables Grid -->
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                  
+                  <!-- Side by Side: Top Customers & Top Quotes -->
+                  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+                    
+                    <!-- Top Customers -->
+                    <div class="section-card">
+                      <div class="section-header">
+                        <h3 class="section-title">
+                          <i data-lucide="users" class="w-4 h-4" style="color:var(--accent-2);"></i>
+                          Top Customers
+                        </h3>
+                      </div>
+                      <div class="overflow-x-auto" style="margin-top:10px;">
+                        <table class="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                              <th class="p-2 border-b border-[var(--border)]">Name / Email</th>
+                              <th class="p-2 border-b border-[var(--border)] text-center">Quotes</th>
+                              <th class="p-2 border-b border-[var(--border)] text-right">Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <template x-if="!analyticsData.top_customers || analyticsData.top_customers.length === 0">
+                              <tr><td colspan="3" class="p-4 text-center italic text-[var(--text-3)]">No customers record</td></tr>
+                            </template>
+                            <template x-for="cust in analyticsData.top_customers" :key="cust.customer_email">
+                              <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/20">
+                                <td class="p-2">
+                                  <div class="font-bold text-[var(--text-1)]" x-text="cust.customer_name"></div>
+                                  <div class="text-[10px] text-[var(--text-2)]" x-text="cust.customer_email"></div>
+                                </td>
+                                <td class="p-2 text-center font-bold" x-text="cust.quote_count"></td>
+                                <td class="p-2 text-right font-mono font-extrabold text-[var(--text-1)]" x-text="fmt(cust.total_value)"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- Top Quotations -->
+                    <div class="section-card">
+                      <div class="section-header">
+                        <h3 class="section-title">
+                          <i data-lucide="file-text" class="w-4 h-4" style="color:var(--accent);"></i>
+                          Top Quotations
+                        </h3>
+                      </div>
+                      <div class="overflow-x-auto" style="margin-top:10px;">
+                        <table class="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                              <th class="p-2 border-b border-[var(--border)]">Quote ID</th>
+                              <th class="p-2 border-b border-[var(--border)]">Customer</th>
+                              <th class="p-2 border-b border-[var(--border)] text-right">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <template x-if="!analyticsData.top_quotations || analyticsData.top_quotations.length === 0">
+                              <tr><td colspan="3" class="p-4 text-center italic text-[var(--text-3)]">No quotations record</td></tr>
+                            </template>
+                            <template x-for="q in analyticsData.top_quotations" :key="q.invoice_id">
+                              <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/20">
+                                <td class="p-2 font-bold font-mono text-[var(--text-1)]" x-text="q.invoice_id"></td>
+                                <td class="p-2">
+                                  <div class="font-bold text-[var(--text-1)]" x-text="q.customer_name"></div>
+                                  <div class="text-[9px] text-[var(--text-3)]" x-text="formatDate(q.created_at)"></div>
+                                </td>
+                                <td class="p-2 text-right font-mono font-extrabold text-[var(--text-1)]" x-text="fmt(q.grand_total)"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <!-- Most Selling SKUs -->
+                  <div class="section-card">
+                    <div class="section-header">
+                      <h3 class="section-title">
+                        <i data-lucide="trending-up" class="w-4 h-4" style="color:var(--green);"></i>
+                        Most Selling Items
+                      </h3>
+                    </div>
+                    <div class="overflow-x-auto" style="margin-top:10px;">
+                      <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                            <th class="p-3 border-b border-[var(--border)]">SKU ID</th>
+                            <th class="p-3 border-b border-[var(--border)]">Product Name</th>
+                            <th class="p-3 border-b border-[var(--border)] text-center">Quantity Ordered</th>
+                            <th class="p-3 border-b border-[var(--border)] text-right">Total Revenue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-if="!analyticsData.best_sellers || analyticsData.best_sellers.length === 0">
+                            <tr><td colspan="4" class="p-4 text-center italic text-[var(--text-3)]">No sales log recorded</td></tr>
+                          </template>
+                          <template x-for="item in analyticsData.best_sellers" :key="item.sku_id">
+                            <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/20">
+                              <td class="p-3 font-mono font-bold" x-text="item.sku_id"></td>
+                              <td class="p-3 font-bold text-[var(--text-1)]" x-text="item.sku_name"></td>
+                              <td class="p-3 text-center font-bold font-mono" x-text="item.total_qty"></td>
+                              <td class="p-3 text-right font-mono font-extrabold text-[var(--text-1)]" x-text="fmt(item.total_sales)"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+
+              <!-- Customer Follow-Up Audit Timeline -->
+              <div class="section-card" style="margin-top:20px;">
+                <div class="section-header">
+                  <h3 class="section-title">
+                    <i data-lucide="history" class="w-4 h-4" style="color:var(--accent);"></i>
+                    Customer Follow-Up Audit Trail
+                  </h3>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:14px; max-w-md;">
+                  <input type="email" x-model="custHistoryEmail" placeholder="Enter customer email (e.g. customer@mail.com)" class="form-control" style="flex:1; font-size:12px;" @keydown.enter="loadCustomerHistory()" />
+                  <button class="btn btn-primary" @click="loadCustomerHistory()" style="font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                    <span x-show="!loadingCustHistory">Lookup Customer</span>
+                    <span x-show="loadingCustHistory" class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></span>
+                  </button>
+                </div>
+
+                <!-- History Result timeline -->
+                <div style="margin-top:20px;">
+                  <template x-if="!custHistoryResult">
+                    <div style="padding:40px 0; text-align:center; color:var(--text-3); font-style:italic; font-size:12px;">
+                      Enter a customer email above and click lookup to retrieve their communication timeline.
+                    </div>
+                  </template>
+                  <template x-if="custHistoryResult">
+                    <div style="display:flex; flex-direction:column; gap:16px;">
+                      
+                      <!-- Customer Stats Summary Header -->
+                      <div style="display:flex; gap:20px; background:rgba(255,255,255,0.02); padding:14px; border-radius:12px; border:1px solid var(--border); flex-wrap:wrap;">
+                        <div>
+                          <div style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:600;">Customer Name</div>
+                          <div style="font-size:14px; font-weight:700; color:var(--text-1); margin-top:2px;" x-text="custHistoryResult.name"></div>
+                        </div>
+                        <div>
+                          <div style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:600;">Total Quotations</div>
+                          <div style="font-size:14px; font-weight:700; color:var(--text-1); margin-top:2px;" x-text="custHistoryResult.total_quotes + ' requests'"></div>
+                        </div>
+                        <div>
+                          <div style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:600;">Cumulative Purchased Value</div>
+                          <div style="font-size:14px; font-weight:700; color:var(--green); margin-top:2px;" x-text="fmt(custHistoryResult.total_spent)"></div>
+                        </div>
+                      </div>
+
+                      <!-- Timeline thread -->
+                      <div style="position:relative; padding-left:24px; border-left:2px dashed var(--border); margin-left:8px; display:flex; flex-direction:column; gap:20px; margin-top:10px;">
+                        <template x-if="!custHistoryResult.timeline || custHistoryResult.timeline.length === 0">
+                          <div style="color:var(--text-3); font-style:italic; font-size:11px;">No recorded chat logs or email history found for this customer.</div>
+                        </template>
+                        <template x-for="log in custHistoryResult.timeline" :key="log.timestamp">
+                          <div style="position:relative;">
+                            <!-- Timeline Node Icon -->
+                            <div style="position:absolute; left:-33px; top:2px; width:16px; height:16px; border-radius:50%; background:var(--bg-card); border:2px solid; display:flex; align-items:center; justify-content:center; font-size:8px;"
+                                 :style="log.sender === 'CUSTOMER' ? 'border-color:var(--accent); color:var(--accent);' : 'border-color:var(--green); color:var(--green);'">
+                              <span x-text="log.sender === 'CUSTOMER' ? '✉' : '🤖'"></span>
+                            </div>
+                            
+                            <!-- Message Card -->
+                            <div class="p-3" style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px;">
+                              <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--text-2); font-weight:600; margin-bottom:4px;">
+                                <span :style="log.sender === 'CUSTOMER' ? 'color:var(--accent); font-weight:bold;' : 'color:var(--green); font-weight:bold;'" x-text="log.sender"></span>
+                                <span x-text="log.timestamp"></span>
+                              </div>
+                              <div style="font-size:10px; color:var(--text-3); font-family:var(--font-mono); margin-bottom:6px;" x-text="'Ref Quote: #' + log.invoice_id"></div>
+                              <p style="margin:0; font-size:12px; line-height:1.5; color:var(--text-1); white-space:pre-wrap;" x-text="log.message"></p>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- TAB 9: SYSTEM SETTINGS -->
+            <div class="tab-content" :class="{ 'active': activeTab === 'settings' }">
+              <div class="ov-hero page-hero">
+                <div class="ov-hero-glow" aria-hidden="true"></div>
+                <div class="ov-hero-main">
+                  <div class="ov-eyebrow">Control Panel</div>
+                  <h1 class="ov-title">System Settings</h1>
+                  <p class="ov-sub">Configure automated/manual response routing, AI persona tones, and contact signatures.</p>
+                </div>
+              </div>
+
+              <!-- Settings layout -->
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap:20px; margin-top:20px; align-items:start;">
+                
+                <!-- Left Column: Options toggles -->
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                  
+                  <!-- Ingestion / Automation policy -->
+                  <div class="section-card">
+                    <div class="section-header">
+                      <h3 class="section-title">
+                        <i data-lucide="bot" class="w-4 h-4" style="color:var(--accent);"></i>
+                        Automation Routing Policy
+                      </h3>
+                    </div>
+                    <p style="font-size:11px; color:var(--text-3); line-height:1.4; margin-top:4px;">Choose whether the system dispatches emails automatically or flags them for review.</p>
+                    
+                    <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+                      <!-- Auto-Reply Card -->
+                      <label style="cursor:pointer;">
+                        <input type="radio" x-model="settings.reply_mode" value="auto" style="display:none;" />
+                        <div class="p-3" style="border:1px solid var(--border); border-radius:12px; display:flex; gap:12px; align-items:center; transition:0.2s;"
+                             :style="settings.reply_mode === 'auto' ? 'border-color:var(--green); background:rgba(5,150,105,0.03); box-shadow:0 0 10px rgba(5,150,105,0.05);' : ''">
+                          <div style="width:16px; height:16px; border-radius:50%; border:2px solid; display:flex; align-items:center; justify-content:center;"
+                               :style="settings.reply_mode === 'auto' ? 'border-color:var(--green);' : 'border-color:var(--border);'">
+                            <div style="width:8px; height:8px; border-radius:50%; background:var(--green);" x-show="settings.reply_mode === 'auto'"></div>
+                          </div>
+                          <div>
+                            <div style="font-size:12px; font-weight:700; color:var(--text-1);">Full Auto-Pilot Mode (Auto-Reply)</div>
+                            <div style="font-size:10px; color:var(--text-3); margin-top:2px;">The system automatically builds and sends PDF quotations directly to clients without coordinator intervention.</div>
+                          </div>
+                        </div>
+                      </label>
+
+                      <!-- Manual-Reply Card -->
+                      <label style="cursor:pointer;">
+                        <input type="radio" x-model="settings.reply_mode" value="manual" style="display:none;" />
+                        <div class="p-3" style="border:1px solid var(--border); border-radius:12px; display:flex; gap:12px; align-items:center; transition:0.2s;"
+                             :style="settings.reply_mode === 'manual' ? 'border-color:var(--yellow); background:rgba(245,158,11,0.03); box-shadow:0 0 10px rgba(245,158,11,0.05);' : ''">
+                          <div style="width:16px; height:16px; border-radius:50%; border:2px solid; display:flex; align-items:center; justify-content:center;"
+                               :style="settings.reply_mode === 'manual' ? 'border-color:var(--yellow);' : 'border-color:var(--border);'">
+                            <div style="width:8px; height:8px; border-radius:50%; background:var(--yellow);" x-show="settings.reply_mode === 'manual'"></div>
+                          </div>
+                          <div>
+                            <div style="font-size:12px; font-weight:700; color:var(--text-1);">Human-in-the-Loop Mode (Manual-Reply)</div>
+                            <div style="font-size:10px; color:var(--text-3); margin-top:2px;">AI parses and drafts the quotation, but holds it in the Pending column. The coordinator reviews, modifies, and clicks 'Approve &amp; Send'.</div>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- Email covering pattern template -->
+                  <div class="section-card">
+                    <div class="section-header">
+                      <h3 class="section-title">
+                        <i data-lucide="mail-open" class="w-4 h-4" style="color:var(--accent-2);"></i>
+                        Email Covering Layout Pattern
+                      </h3>
+                    </div>
+                    <p style="font-size:11px; color:var(--text-3); line-height:1.4; margin-top:4px;">Define the level of detail provided in the body of the generated response email.</p>
+                    
+                    <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+                      <!-- Summary Card -->
+                      <label style="cursor:pointer;">
+                        <input type="radio" x-model="settings.reply_pattern" value="summary" style="display:none;" />
+                        <div class="p-3" style="border:1px solid var(--border); border-radius:12px; display:flex; gap:12px; align-items:center; transition:0.2s;"
+                             :style="settings.reply_pattern === 'summary' ? 'border-color:var(--accent-2); background:rgba(99,102,241,0.03);' : ''">
+                          <div style="width:16px; height:16px; border-radius:50%; border:2px solid; display:flex; align-items:center; justify-content:center;"
+                               :style="settings.reply_pattern === 'summary' ? 'border-color:var(--accent-2);' : 'border-color:var(--border);'">
+                            <div style="width:8px; height:8px; border-radius:50%; background:var(--accent-2);" x-show="settings.reply_pattern === 'summary'"></div>
+                          </div>
+                          <div>
+                            <div style="font-size:12px; font-weight:700; color:var(--text-1);">Concise Total Summary</div>
+                            <div style="font-size:10px; color:var(--text-3); margin-top:2px;">Includes a polite response greeting with subtotal, tax, and grand totals. Directs customer to refer to the attached PDF.</div>
+                          </div>
+                        </div>
+                      </label>
+
+                      <!-- Detailed Card -->
+                      <label style="cursor:pointer;">
+                        <input type="radio" x-model="settings.reply_pattern" value="detailed" style="display:none;" />
+                        <div class="p-3" style="border:1px solid var(--border); border-radius:12px; display:flex; gap:12px; align-items:center; transition:0.2s;"
+                             :style="settings.reply_pattern === 'detailed' ? 'border-color:var(--accent-2); background:rgba(99,102,241,0.03);' : ''">
+                          <div style="width:16px; height:16px; border-radius:50%; border:2px solid; display:flex; align-items:center; justify-content:center;"
+                               :style="settings.reply_pattern === 'detailed' ? 'border-color:var(--accent-2);' : 'border-color:var(--border);'">
+                            <div style="width:8px; height:8px; border-radius:50%; background:var(--accent-2);" x-show="settings.reply_pattern === 'detailed'"></div>
+                          </div>
+                          <div>
+                            <div style="font-size:12px; font-weight:700; color:var(--text-1);">Detailed Itemized Layout</div>
+                            <div style="font-size:10px; color:var(--text-3); margin-top:2px;">Draws a markdown items table directly in the email body displaying individual matched SKUs, quantities, and prices.</div>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                </div>
+
+                <!-- Right Column: Signature -->
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                  
+                  <div class="section-card" style="display:flex; flex-direction:column; gap:14px;">
+                    <div class="section-header">
+                      <h3 class="section-title">
+                        <i data-lucide="signature" class="w-4 h-4" style="color:var(--accent);"></i>
+                        Sales Executive Contact Signature
+                      </h3>
+                    </div>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                      <div>
+                        <label style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:700;">Executive Name</label>
+                        <input type="text" x-model="settings.exec_name" class="form-control mt-1" style="font-size:12px;" />
+                      </div>
+                      <div>
+                        <label style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:700;">Executive Title</label>
+                        <input type="text" x-model="settings.exec_title" class="form-control mt-1" style="font-size:12px;" />
+                      </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                      <div>
+                        <label style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:700;">Phone Number</label>
+                        <input type="text" x-model="settings.exec_phone" class="form-control mt-1" style="font-size:12px;" />
+                      </div>
+                      <div>
+                        <label style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:700;">Business Email</label>
+                        <input type="email" x-model="settings.exec_email" class="form-control mt-1" style="font-size:12px;" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style="font-size:10px; text-transform:uppercase; color:var(--text-3); font-weight:700;">Business Name</label>
+                      <input type="text" x-model="settings.business_name" class="form-control mt-1" style="font-size:12px;" />
+                    </div>
+
+                    <!-- Signature live preview -->
+                    <div style="border:1px dashed var(--border); border-radius:10px; padding:12px; background:rgba(255,255,255,0.01); margin-top:10px;">
+                      <div style="font-size:9px; text-transform:uppercase; color:var(--text-3); font-weight:700; margin-bottom:8px;">Live Signature Block Preview</div>
+                      <div style="font-size:11px; line-height:1.5; color:var(--text-2);">
+                        Warm regards,<br>
+                        <strong class="text-[var(--text-1)]" x-text="settings.exec_name || 'Rajaram'"></strong><br>
+                        <span x-text="(settings.exec_title || 'Sales Executive') + ' | ' + (settings.business_name || 'Trofeo Solution')"></span><br>
+                        <span style="color:var(--accent);" x-text="settings.exec_phone || '+91 98765 43210'"></span> &bull; <span x-text="settings.exec_email || 'sales@trofeosolution.com'"></span>
+                      </div>
+                    </div>
+
+                    <!-- Action save button -->
+                    <button @click="saveSettings()" class="btn btn-primary mt-2" style="font-size:12px; font-weight:700; width:100%; display:flex; align-items:center; justify-content:center; gap:6px;">
+                      <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                      Save Configuration
+                    </button>
+
+                  </div>
+
+                </div>
+
+              </div>
+            </div>
+
           </div>
 
         </main>
@@ -1497,7 +1975,9 @@
             { id: 'deficits', label: 'Deficits', icon: 'package', badge: 0, badgeColor: 'red', description: 'Manage raw material/item deficits and match alternatives for outstanding orders.' },
             { id: 'negotiations', label: 'Negotiations', icon: 'message-square-text', badge: 0, badgeColor: 'yellow', description: 'Review, counter-offer, or resolve discount requests escalated by the AI.' },
             { id: 'inventory', label: 'Full Inventory', icon: 'warehouse', badge: null, badgeColor: 'blue', description: 'View current stock levels, base prices, and catalog items.' },
-            { id: 'stocklog', label: 'Stock Update Log', icon: 'history', badge: null, badgeColor: 'blue', description: 'Audit logs of manual and automated stock quantity and price updates.' }
+            { id: 'stocklog', label: 'Stock Update Log', icon: 'history', badge: null, badgeColor: 'blue', description: 'Audit logs of manual and automated stock quantity and price updates.' },
+            { id: 'analytics', label: 'Analytics & Insights', icon: 'bar-chart-3', badge: null, badgeColor: 'blue', description: 'Advanced sales analytics, funnel leakage, top customer performance and history.' },
+            { id: 'settings', label: 'System Settings', icon: 'settings', badge: null, badgeColor: 'blue', description: 'Configure automated/manual response routing, AI persona tones, and contact signatures.' }
           ],
           
           activeTab: 'overview',
@@ -1517,11 +1997,44 @@
           rejectedMails: [],
           pendingDeficits: [],
           pendingUnmatched: [],
+          pendingReviews: [],
           lastRefreshed: '',
           isAutoRefreshing: false,
           logs: [],
           logsExpanded: false,
           autoRefreshLogs: true,
+          
+          // New Analytics State
+          analyticsData: {
+            top_customers: [],
+            top_quotations: [],
+            best_sellers: [],
+            funnel: {
+              total_received: 0,
+              converted: 0,
+              unmatched: 0,
+              rejected: 0,
+              pending_review: 0,
+              escalated: 0,
+              conversion_rate: 0.0,
+              leakage_rate: 0.0
+            }
+          },
+          analyticsDateFilter: 'all',
+          custHistoryEmail: '',
+          custHistoryResult: null,
+          loadingCustHistory: false,
+          
+          // New Settings State
+          settings: {
+            reply_mode: 'auto',
+            reply_pattern: 'summary',
+            exec_name: '',
+            exec_title: '',
+            exec_phone: '',
+            exec_email: '',
+            business_name: ''
+          },
           
           // Tab 2: Live Simulator
           simText: '',
@@ -1626,6 +2139,7 @@
             this.theme = localStorage.getItem('theme') || 'warm';
             this.applyTheme();
             this.loadTenants();
+            this.loadSettings();
             
             // Auto-refresh dashboard pipeline every 10 seconds
             setInterval(() => {
@@ -1686,12 +2200,16 @@
             this.loadQuotes();
             this.loadCatalog();
             this.loadLogs();
+            this.loadSettings();
           },
           
           switchTab(tabId, filterVal = '') {
             this.activeTab = tabId;
             this.invoiceFilter = filterVal;
             this.handleGlobalSearch();
+            if (tabId === 'analytics') {
+              this.loadAnalytics();
+            }
             this.$nextTick(() => {
               this.triggerLucide();
               this.drawQrCanvas();
@@ -1803,6 +2321,7 @@
               const negotiations = pending_items.negotiations || [];
               const deficits = pending_items.deficits || [];
               const unmatched = pending_items.unmatched || [];
+              this.pendingReviews = pending_items.reviews || [];
               
               // Sort stream by timestamp descending
               const sortedStream = [...recent_stream].sort((a, b) => {
@@ -2423,6 +2942,78 @@
               const data = await res.json();
               this.stockLogs = data.logs || [];
             } catch (e) {}
+          },
+          
+          async loadSettings() {
+            try {
+              const res = await this.safeFetch(`/api/settings?tenant_id=${this.selectedTenant}`);
+              this.settings = await res.json();
+            } catch (e) {
+              this.showToast('Error loading settings: ' + e.message, 'error');
+            }
+          },
+
+          async saveSettings() {
+            try {
+              const res = await this.safeFetch(`/api/settings/update?tenant_id=${this.selectedTenant}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.settings)
+              });
+              const data = await res.json();
+              if (data.status === 'success') {
+                this.showToast('System settings updated successfully!', 'success');
+              } else {
+                this.showToast('Failed to save settings: ' + data.detail, 'error');
+              }
+            } catch (e) {
+              this.showToast('Error saving settings: ' + e.message, 'error');
+            }
+          },
+
+          async loadAnalytics() {
+            try {
+              const res = await this.safeFetch(`/api/analytics/summary?date_filter=${this.analyticsDateFilter}&tenant_id=${this.selectedTenant}`);
+              this.analyticsData = await res.json();
+              this.$nextTick(() => this.triggerLucide());
+            } catch (e) {
+              this.showToast('Error loading analytics: ' + e.message, 'error');
+            }
+          },
+
+          async loadCustomerHistory() {
+            if (!this.custHistoryEmail || !this.custHistoryEmail.trim()) {
+              this.showToast('Please enter a valid customer email', 'warning');
+              return;
+            }
+            this.loadingCustHistory = true;
+            try {
+              const res = await this.safeFetch(`/api/analytics/customer_history?email=${encodeURIComponent(this.custHistoryEmail.trim())}&tenant_id=${this.selectedTenant}`);
+              this.custHistoryResult = await res.json();
+            } catch (e) {
+              this.showToast('Error loading customer history: ' + e.message, 'error');
+            } finally {
+              this.loadingCustHistory = false;
+            }
+          },
+
+          async approveManualQuote(invoiceId) {
+            try {
+              const res = await this.safeFetch(`/api/quote/approve_and_send?tenant_id=${this.selectedTenant}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ invoice_id: invoiceId })
+              });
+              const data = await res.json();
+              if (data.status === 'success') {
+                this.showToast(`Quotation ${invoiceId} approved and sent successfully!`, 'success');
+                this.fetchOverviewData();
+              } else {
+                this.showToast('Failed to approve quotation: ' + data.detail, 'error');
+              }
+            } catch (e) {
+              this.showToast('Error approving quotation: ' + e.message, 'error');
+            }
           }
         };
       }

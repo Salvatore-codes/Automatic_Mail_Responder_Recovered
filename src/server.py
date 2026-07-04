@@ -1070,11 +1070,15 @@ async def get_overview_analytics(tenant_id: str = "default"):
         cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items")
         unmatched_items = [dict(row) for row in cursor.fetchall()]
 
-        # D. Resolved deficits count (for KPI card)
+        # D. Pending reviews (for Manual Reply mode)
+        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, created_at FROM quotations WHERE status = 'PENDING_REVIEW'")
+        pending_reviews = [dict(row) for row in cursor.fetchall()]
+
+        # E. Resolved deficits count (for KPI card)
         cursor.execute("SELECT COUNT(*) FROM deficits WHERE status = 'RESOLVED'")
         resolved_deficits_count = cursor.fetchone()[0]
         
-        pending_approval_count = len(escalated_negs) + len(pending_deficits) + len(unmatched_items)
+        pending_approval_count = len(escalated_negs) + len(pending_deficits) + len(unmatched_items) + len(pending_reviews)
         
         # Overwrite total_received if it's less than the sum (in case of legacy/synced db rows)
         calculated_total = auto_responded + pending_approval_count
@@ -1127,7 +1131,10 @@ async def get_overview_analytics(tenant_id: str = "default"):
                 email = row['q_email'] or "Customer"
                 name = row['q_name'] or "Customer"
                 status = row['q_status'] or "QUOTE_GENERATED"
-                desc = f"Quotation {inv_id} Generated"
+                if status == "PENDING_REVIEW":
+                    desc = f"Quotation {inv_id} held for manual review"
+                else:
+                    desc = f"Quotation {inv_id} Generated"
             elif 'UNMATCHED' in inv_id:
                 email = row['u_email'] or "Customer"
                 name = row['u_name'] or "Customer"
@@ -1215,11 +1222,335 @@ async def get_overview_analytics(tenant_id: str = "default"):
             "pending_items": {
                 "negotiations": escalated_negs,
                 "deficits": pending_deficits,
-                "unmatched": unmatched_items
+                "unmatched": unmatched_items,
+                "reviews": pending_reviews
             }
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/settings")
+async def get_settings(tenant_id: str = "default"):
+    from src.database_sqlite import get_setting
+    from src.tenants import get_tenant_config
+    cfg = get_tenant_config(tenant_id) or {}
+    return {
+        "reply_mode": get_setting("reply_mode", "auto", tenant_id),
+        "reply_pattern": get_setting("reply_pattern", "summary", tenant_id),
+        "exec_name": get_setting("exec_name", cfg.get("sales_executive_name", ""), tenant_id),
+        "exec_title": get_setting("exec_title", cfg.get("sales_executive_title", ""), tenant_id),
+        "exec_phone": get_setting("exec_phone", cfg.get("sales_executive_phone", ""), tenant_id),
+        "exec_email": get_setting("exec_email", cfg.get("sales_executive_email", ""), tenant_id),
+        "business_name": get_setting("business_name", cfg.get("business_name", ""), tenant_id)
+    }
+
+
+class SettingsUpdateRequest(BaseModel):
+    reply_mode: str
+    reply_pattern: str
+    exec_name: str | None = None
+    exec_title: str | None = None
+    exec_phone: str | None = None
+    exec_email: str | None = None
+    business_name: str | None = None
+
+
+@app.post("/api/settings/update")
+async def update_settings(req: SettingsUpdateRequest, tenant_id: str = "default"):
+    from src.database_sqlite import set_setting
+    if req.reply_mode not in ("auto", "manual"):
+        raise HTTPException(status_code=400, detail="Invalid reply_mode")
+    if req.reply_pattern not in ("detailed", "summary"):
+        raise HTTPException(status_code=400, detail="Invalid reply_pattern")
+    
+    set_setting("reply_mode", req.reply_mode, tenant_id)
+    set_setting("reply_pattern", req.reply_pattern, tenant_id)
+    if req.exec_name is not None:
+        set_setting("exec_name", req.exec_name, tenant_id)
+    if req.exec_title is not None:
+        set_setting("exec_title", req.exec_title, tenant_id)
+    if req.exec_phone is not None:
+        set_setting("exec_phone", req.exec_phone, tenant_id)
+    if req.exec_email is not None:
+        set_setting("exec_email", req.exec_email, tenant_id)
+    if req.business_name is not None:
+        set_setting("business_name", req.business_name, tenant_id)
+    return {"status": "success"}
+
+
+@app.get("/api/analytics/summary")
+async def get_analytics_summary(date_filter: str = "all", tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_connection
+        conn = get_connection(tenant_id)
+        cursor = conn.cursor()
+        
+        where_clause = ""
+        if date_filter == "7days":
+            where_clause = " AND created_at >= datetime('now', '-7 days', 'localtime') "
+        elif date_filter == "30days":
+            where_clause = " AND created_at >= datetime('now', '-30 days', 'localtime') "
+            
+        # 1. Top Customers
+        cursor.execute(f"""
+            SELECT customer_email, customer_name, ROUND(SUM(grand_total), 2) as total_value, COUNT(*) as quote_count
+            FROM quotations
+            WHERE status NOT IN ('NEGOTIATION_REJECTED', 'PENDING_HUMAN', 'UNMATCHED', 'PENDING_REVIEW')
+            {where_clause}
+            GROUP BY customer_email, customer_name
+            ORDER BY total_value DESC
+            LIMIT 10
+        """)
+        top_customers = [dict(row) for row in cursor.fetchall()]
+        
+        # 2. Top Quotations
+        cursor.execute(f"""
+            SELECT invoice_id, customer_email, customer_name, ROUND(grand_total, 2) as grand_total, status, created_at
+            FROM quotations
+            WHERE status NOT IN ('NEGOTIATION_REJECTED')
+            {where_clause}
+            ORDER BY grand_total DESC
+            LIMIT 10
+        """)
+        top_quotations = [dict(row) for row in cursor.fetchall()]
+        
+        # 3. Best Selling Items
+        cursor.execute(f"""
+            SELECT sku_id, sku_name, SUM(quantity) as total_qty, ROUND(SUM(line_total), 2) as total_sales
+            FROM quotation_items qi
+            JOIN quotations q ON qi.invoice_id = q.invoice_id
+            WHERE q.status NOT IN ('NEGOTIATION_REJECTED', 'PENDING_HUMAN', 'UNMATCHED', 'PENDING_REVIEW')
+            {where_clause.replace('created_at', 'q.created_at')}
+            GROUP BY sku_id, sku_name
+            ORDER BY total_qty DESC
+            LIMIT 10
+        """)
+        best_sellers = [dict(row) for row in cursor.fetchall()]
+        
+        # 4. Funnel Leakage / Conversion stats
+        cursor.execute(f"SELECT COUNT(*) FROM processed_messages WHERE invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT') {where_clause.replace('created_at', 'processed_at')}")
+        total_received = cursor.fetchone()[0] or 0
+        
+        cursor.execute(f"SELECT COUNT(*) FROM quotations WHERE status IN ('QUOTE_GENERATED', 'QUOTE_UPDATED', 'NEGOTIATION_APPROVED', 'CONVERSATIONAL_REPLY') {where_clause}")
+        converted = cursor.fetchone()[0] or 0
+        
+        cursor.execute(f"SELECT COUNT(*) FROM unmatched_items WHERE 1=1 {where_clause}")
+        unmatched = cursor.fetchone()[0] or 0
+        
+        cursor.execute(f"SELECT COUNT(*) FROM quotations WHERE status = 'NEGOTIATION_REJECTED' {where_clause}")
+        rejected = cursor.fetchone()[0] or 0
+        
+        cursor.execute(f"SELECT COUNT(*) FROM quotations WHERE status = 'PENDING_REVIEW' {where_clause}")
+        pending_review = cursor.fetchone()[0] or 0
+        
+        cursor.execute(f"SELECT COUNT(*) FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING') {where_clause}")
+        escalated = cursor.fetchone()[0] or 0
+        
+        # Calculate conversion/leakage rates
+        conversion_rate = round((converted / max(total_received, 1)) * 100, 1)
+        leakage_rate = round(((unmatched + rejected) / max(total_received, 1)) * 100, 1)
+        
+        conn.close()
+        
+        return {
+            "top_customers": top_customers,
+            "top_quotations": top_quotations,
+            "best_sellers": best_sellers,
+            "funnel": {
+                "total_received": total_received,
+                "converted": converted,
+                "unmatched": unmatched,
+                "rejected": rejected,
+                "pending_review": pending_review,
+                "escalated": escalated,
+                "conversion_rate": conversion_rate,
+                "leakage_rate": leakage_rate
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/customer_history")
+async def get_customer_history(email: str, tenant_id: str = "default"):
+    if not email:
+        raise HTTPException(status_code=400, detail="Missing email parameter")
+    try:
+        from src.database_sqlite import get_connection
+        conn = get_connection(tenant_id)
+        cursor = conn.cursor()
+        
+        # 1. Fetch customer details and total metrics
+        cursor.execute("""
+            SELECT customer_name, COUNT(*) as total_quotes, ROUND(SUM(grand_total), 2) as total_spent
+            FROM quotations
+            WHERE customer_email = ? AND status NOT IN ('NEGOTIATION_REJECTED', 'PENDING_HUMAN', 'UNMATCHED', 'PENDING_REVIEW')
+            GROUP BY customer_name
+        """, (email.strip(),))
+        customer_row = cursor.fetchone()
+        
+        name = "Walk-in Retail Client"
+        total_quotes = 0
+        total_spent = 0.0
+        if customer_row:
+            name = customer_row["customer_name"]
+            total_quotes = customer_row["total_quotes"]
+            total_spent = customer_row["total_spent"]
+            
+        # 2. Fetch all quotations for this customer
+        cursor.execute("""
+            SELECT invoice_id, grand_total, status, created_at, source
+            FROM quotations
+            WHERE customer_email = ?
+            ORDER BY created_at DESC
+        """, (email.strip(),))
+        quotations = [dict(row) for row in cursor.fetchall()]
+        
+        # 3. Fetch all chat/followup logs for this customer's quotes
+        cursor.execute("""
+            SELECT cl.invoice_id, cl.sender, cl.message, cl.timestamp
+            FROM chat_logs cl
+            JOIN quotations q ON cl.invoice_id = q.invoice_id
+            WHERE q.customer_email = ?
+            ORDER BY cl.timestamp ASC
+        """, (email.strip(),))
+        chat_logs = [dict(row) for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return {
+            "email": email.strip(),
+            "name": name,
+            "total_quotes": total_quotes,
+            "total_spent": total_spent,
+            "quotations": quotations,
+            "timeline": chat_logs
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ApproveSendRequest(BaseModel):
+    invoice_id: str
+
+
+@app.post("/api/quote/approve_and_send")
+async def approve_and_send_quote(req: ApproveSendRequest, tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_connection, update_quotation_status, get_latest_message_id
+        from src.tenants import get_tenant_config
+        
+        conn = get_connection(tenant_id)
+        cursor = conn.cursor()
+        
+        # 1. Fetch quotation
+        cursor.execute("SELECT * FROM quotations WHERE invoice_id = ?", (req.invoice_id,))
+        q_row = cursor.fetchone()
+        if not q_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Quotation not found")
+        quote = dict(q_row)
+        
+        if quote["status"] != "PENDING_REVIEW":
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Quotation is in {quote['status']} state (not PENDING_REVIEW)")
+            
+        # 2. Fetch items
+        cursor.execute("SELECT * FROM quotation_items WHERE invoice_id = ?", (req.invoice_id,))
+        items = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        # 3. Retrieve Graph token and tenant configs
+        tenant_config = get_tenant_config(tenant_id)
+        email_user = tenant_config.get("email_user")
+        outlook_tenant_id = tenant_config.get("outlook_tenant_id")
+        outlook_client_id = tenant_config.get("outlook_client_id")
+        outlook_client_secret = os.environ.get("OUTLOOK_CLIENT_SECRET") or tenant_config.get("outlook_client_secret")
+        
+        from src.email_listener import get_graph_token, build_email_reply_body, send_outlook_mail, format_email_date
+        token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret)
+        if not token:
+            raise HTTPException(status_code=500, detail="Failed to acquire Microsoft Graph token")
+            
+        # 4. Reconstruct matched_lines structure for PDF and Email body generators
+        matched_lines = []
+        for it in items:
+            matched_lines.append({
+                "matched_sku_id": it["sku_id"],
+                "matched_sku_name": it["sku_name"],
+                "quantity": it["quantity"],
+                "unit_price": it["unit_price"],
+                "line_total": it["line_total"],
+                "stock_avail": it["quantity"],  # Since it's already approved/drawn
+                "deficit": 0
+            })
+            
+        # 5. Build covering note (using the setting!)
+        discount_pct = quote.get("discount_pct") or 0.0
+        
+        # Build quotation PDF
+        from src.pdf_generator import generate_pdf_quotation
+        static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "quotes")
+        os.makedirs(static_dir, exist_ok=True)
+        pdf_filename = f"Quote_{req.invoice_id}.pdf"
+        pdf_path = os.path.join(static_dir, pdf_filename)
+        
+        generate_pdf_quotation(
+            matched_lines=matched_lines,
+            discount_pct=discount_pct,
+            customer_name=quote["customer_name"],
+            invoice_id=req.invoice_id,
+            output_path=pdf_path,
+            customer_phone=quote.get("customer_phone", "—"),
+            upi_id=tenant_config.get("upi_id"),
+            upi_name=tenant_config.get("upi_name"),
+            logo_path=tenant_config.get("company_logo_path"),
+            business_name=tenant_config.get("business_name"),
+            customer_email=quote["customer_email"]
+        )
+        
+        # Build Reply Body
+        reply_body_tuple, grand_total = build_email_reply_body(
+            matched_lines=matched_lines,
+            discount_pct=discount_pct,
+            customer_name=quote["customer_name"],
+            invoice_id=req.invoice_id,
+            tenant_config=tenant_config,
+            customer_email=quote["customer_email"],
+            customer_phone=quote.get("customer_phone"),
+            origin="human"  # Origin flag is human since they clicked Approve & Send
+        )
+        plain_body, html_body = reply_body_tuple
+        
+        # 6. Retrieve reply-to Message-ID
+        internet_msg_id = get_latest_message_id(req.invoice_id, tenant_id=tenant_id)
+        
+        # Send Email
+        sent = send_outlook_mail(
+            token, email_user, quote["customer_email"],
+            f"RE: Quotation for items [Quotation #{req.invoice_id}]",
+            html_body, pdf_path=pdf_path,
+            logo_path=tenant_config.get("company_logo_path"),
+            reply_to_internet_msg_id=internet_msg_id
+        )
+        
+        if not sent:
+            raise HTTPException(status_code=500, detail="Failed to send email to customer via Outlook API")
+            
+        # 7. Update status in database
+        update_quotation_status(req.invoice_id, "QUOTE_GENERATED", tenant_id=tenant_id)
+        
+        # Log chatbot message
+        from src.database_sqlite import log_chat_msg
+        log_chat_msg(req.invoice_id, "BOT", f"Quotation approved and sent to customer. Status changed to QUOTE_GENERATED.", tenant_id=tenant_id)
+        
+        return {"status": "success", "invoice_id": req.invoice_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/report")
 async def get_report():

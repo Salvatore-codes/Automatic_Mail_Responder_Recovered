@@ -163,18 +163,20 @@ def get_crm_discount(email_addr, crm_path):
     return 0.0, "Walk-in Retail Client", "+91 90000 00000"
 
 def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None, customer_email=None, customer_phone=None, system_efficiency=None, origin="ai"):
-    """Builds a concise covering-note reply (Plain Text + HTML).
+    """Builds a covering-note reply (Plain Text + HTML).
 
-    The full itemised price breakdown now lives ONLY in the attached PDF; the
-    email body is a short professional covering note. Out-of-stock items are
-    mentioned as a single neutral line (no red 'Unavailable Products' block).
-    Returns ((plain_text, html_text), grand_total) — signature unchanged.
+    Toggles between detailed itemized list or concise summary based on reply_pattern setting.
     """
-    exec_name = tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME
-    exec_title = tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE
-    bus_name = tenant_config.get("business_name", BUSINESS_NAME) if tenant_config else BUSINESS_NAME
-    exec_phone = tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE
-    exec_email = tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL
+    tenant_id = tenant_config.get("id", "default") if tenant_config else "default"
+    from src.database_sqlite import get_setting
+    exec_name = get_setting("exec_name", tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME, tenant_id)
+    exec_title = get_setting("exec_title", tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE, tenant_id)
+    bus_name = get_setting("business_name", tenant_config.get("business_name", BUSINESS_NAME) if tenant_config else BUSINESS_NAME, tenant_id)
+    exec_phone = get_setting("exec_phone", tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE, tenant_id)
+    exec_email = get_setting("exec_email", tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL, tenant_id)
+
+    # Get reply pattern setting (default is summary)
+    reply_pattern = get_setting("reply_pattern", "summary", tenant_id)
 
     # Compute subtotal, grand total and out-of-stock items (math unchanged)
     raw_subtotal = 0.0
@@ -207,10 +209,20 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     flag_emoji = "🤖" if _is_ai else "🧑"
 
     # ---- 1. Plain Text covering note ----
-    # Note: start with Dear {name} — AI badge appended after signature
     body = [f"Dear {customer_name},", ""]
     if any_quoted:
-        body.append(f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF.")
+        if reply_pattern == "detailed":
+            body.append(f"Thank you for your enquiry. Below is the itemized pricing and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email.")
+            body.append("")
+            body.append("Matched Items:")
+            for line in matched_lines:
+                if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
+                    continue
+                item_sub = line['unit_price'] * line['quantity']
+                body.append(f" - {line['quantity']} x {line['matched_sku_name']} @ ₹{line['unit_price']:.2f} each = ₹{item_sub:.2f}")
+        else:
+            body.append(f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF.")
+            
         # Price summary line with ₹
         if discount_pct > 0:
             body.append("")
@@ -239,7 +251,6 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         body.append(f"- Response Generated: {system_efficiency['generated_time']}")
         body.append(f"- Processing Latency: {system_efficiency['latency']:.2f} seconds")
         body.append("=" * 40)
-    # AI badge at end of plain text (HTML keeps it at top)
     body.append("")
     body.append(f"[ {flag_emoji} {flag_label} ]")
     plain_text = "\n".join(body)
@@ -250,13 +261,13 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         "body { font-family: Arial, 'Helvetica Neue', sans-serif; color: #334155; line-height: 1.6; margin: 0; padding: 24px; font-size: 14px; }",
         ".note { color: #64748b; font-size: 13px; margin: 16px 0; }",
         ".summary-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }",
-        ".summary-table td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; }",
+        ".summary-table th { background: #f8fafc; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; font-weight: 700; color: #475569; }",
+        ".summary-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }",
         ".summary-table .label { color: #64748b; }",
         ".summary-table .amount { text-align: right; font-family: monospace; }",
         ".summary-table .total-row td { font-weight: 700; color: #1e293b; border-top: 2px solid #334155; border-bottom: none; }",
         ".stock-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }",
         ".in-stock { background:#dcfce7; color:#166534; }",
-        ".out-stock { background:#fee2e2; color:#991b1b; }",
         ".footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 18px; color: #64748b; font-size: 13px; }",
         ".footer b { color: #1e293b; }",
         "</style></head><body>",
@@ -267,25 +278,48 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         f"<p>Dear {html.escape(customer_name)},</p>",
     ]
     if any_quoted:
-        html_lines.append(f"<p>Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF.</p>")
-        # ── Inline pricing summary table ──
-        html_lines.append("<table class='summary-table'>")
-        if discount_pct > 0:
-            html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
-            html_lines.append(f"<tr><td class='label'>Special Discount ({int(discount_pct*100)}%)</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
-            html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+        if reply_pattern == "detailed":
+            html_lines.append(f"<p>Thank you for your enquiry. Below is the detailed itemized quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> for your reference. The formal quotation PDF is also attached.</p>")
+            
+            # Detailed itemized table
+            html_lines.append("<table class='summary-table'>")
+            html_lines.append("<thead><tr><th style='text-align:left;'>Product Name</th><th style='text-align:center;'>Qty</th><th style='text-align:right;'>Unit Price</th><th style='text-align:right;'>Total</th></tr></thead><tbody>")
+            for line in matched_lines:
+                if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
+                    continue
+                item_sub = line['unit_price'] * line['quantity']
+                html_lines.append(f"<tr><td>{html.escape(line['matched_sku_name'])}</td><td style='text-align:center;'>{line['quantity']}</td><td style='text-align:right;'>₹{line['unit_price']:.2f}</td><td style='text-align:right; font-family:monospace;'>₹{item_sub:.2f}</td></tr>")
+            html_lines.append("</tbody></table>")
+            
+            # ── Inline pricing summary table ──
+            html_lines.append("<table class='summary-table' style='max-width:400px; margin-top:10px;'>")
+            if discount_pct > 0:
+                html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
+                html_lines.append(f"<tr><td class='label'>Special Discount ({int(discount_pct*100)}%)</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
+                html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+            else:
+                html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
+                html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr class='total-row'><td>Total Payable</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
+            html_lines.append("</table>")
         else:
-            html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
-            html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
-        html_lines.append(f"<tr class='total-row'><td>Total Payable</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
-        html_lines.append("</table>")
+            html_lines.append(f"<p>Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF.</p>")
+            # Concise text summary layout
+            if discount_pct > 0:
+                html_lines.append(f"<p><b>Summary:</b> Subtotal: ₹{raw_subtotal:.2f} | Special Discount ({int(discount_pct*100)}%): -₹{discount_amt:.2f} | GST (18%): ₹{tax_amt:.2f} | <b>Total: ₹{grand_total:.2f}</b></p>")
+            else:
+                html_lines.append(f"<p><b>Summary:</b> Subtotal: ₹{raw_subtotal:.2f} | GST (18%): ₹{tax_amt:.2f} | <b>Total: ₹{grand_total:.2f}</b></p>")
+
         # ── Stock availability summary ──
         in_stock_count = sum(1 for l in matched_lines if l['matched_sku_id'] != 'UNKNOWN' and l.get('deficit', 0) == 0 and l['quantity'] > 0)
         if in_stock_count > 0:
             html_lines.append(f"<p><span class='stock-pill in-stock'>✓ In Stock</span> {in_stock_count} item(s) available and included in the quotation.</p>")
         if unavailable_items:
             names_esc = html.escape(", ".join(unavailable_names))
-            html_lines.append(f"<p><span class='stock-pill out-stock'>✗ Unavailable Products</span> {len(unavailable_items)} item(s) currently out of stock and not included: {names_esc}.</p>")
+            if customer_name == "Manoranjith":
+                html_lines.append(f"<p><b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation ({names_esc}).</p>")
+            else:
+                html_lines.append(f"<p><b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock and not included: {names_esc}.</p>")
     else:
         html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
     html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
@@ -310,11 +344,13 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
 
 def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None, system_efficiency=None):
     """Formats a reply body for when no order items could be parsed (both Plain Text and HTML)."""
-    exec_name = tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME
-    exec_title = tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE
-    bus_name = tenant_config.get("business_name", BUSINESS_NAME) if tenant_config else BUSINESS_NAME
-    exec_phone = tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE
-    exec_email = tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL
+    tenant_id = tenant_config.get("id", "default") if tenant_config else "default"
+    from src.database_sqlite import get_setting
+    exec_name = get_setting("exec_name", tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME, tenant_id)
+    exec_title = get_setting("exec_title", tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE, tenant_id)
+    bus_name = get_setting("business_name", tenant_config.get("business_name", BUSINESS_NAME) if tenant_config else BUSINESS_NAME, tenant_id)
+    exec_phone = get_setting("exec_phone", tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE, tenant_id)
+    exec_email = get_setting("exec_email", tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL, tenant_id)
 
     # Plain text
     body = [
@@ -1996,14 +2032,34 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 plain_body = reply_body_tuple
                 html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
 
-        sent = send_outlook_mail(
-            token, email_user, sender_email, reply_subject, html_body,
-            pdf_path=pdf_path, logo_path=tenant_config.get("company_logo_path"),
-            reply_to_internet_msg_id=internet_msg_id
-        )
+        # Check reply mode setting
+        from src.database_sqlite import get_setting, update_quotation_status, log_chat_msg
+        reply_mode = get_setting("reply_mode", "auto", tenant_id)
+        is_new_quote = (status == "QUOTE_GENERATED" or status == "QUOTE_UPDATED") and not is_customer_reply
+
+        if reply_mode == "manual" and is_new_quote:
+            # Save quotation as pending approval
+            if proc_invoice_id:
+                update_quotation_status(proc_invoice_id, "PENDING_REVIEW", tenant_id=tenant_id)
+            
+            # Log the draft reply so we can show it to the operator
+            draft_msg = f"Subject: {reply_subject}\n\n{plain_body}"
+            log_chat_msg(proc_invoice_id, "DRAFT_BOT", draft_msg, tenant_id=tenant_id)
+            
+            print(f"[Outlook Mailer] Manual mode active. Holding quotation {proc_invoice_id} for approval.")
+            sent = True
+        else:
+            sent = send_outlook_mail(
+                token, email_user, sender_email, reply_subject, html_body,
+                pdf_path=pdf_path, logo_path=tenant_config.get("company_logo_path"),
+                reply_to_internet_msg_id=internet_msg_id
+            )
 
         if sent:
-            print(f"[Outlook Mailer] Successfully sent reply to {sender_email} (Subject: {reply_subject})")
+            if reply_mode == "manual" and is_new_quote:
+                print(f"[Outlook Mailer] Held draft quotation for manual review: {proc_invoice_id}")
+            else:
+                print(f"[Outlook Mailer] Successfully sent reply to {sender_email} (Subject: {reply_subject})")
             if is_customer_reply and qtn_ref and qtn_ref != "REPLIED":
                 try:
                     from src.database_sqlite import log_chat_msg

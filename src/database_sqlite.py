@@ -189,6 +189,14 @@ def init_db_conn(conn):
     )
     """)
     
+    # 10. Settings table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
+    
     conn.commit()
 
 def init_db(tenant_id=None):
@@ -523,6 +531,35 @@ def get_latest_message_id(invoice_id, tenant_id=None):
     except Exception as e:
         print(f"[Warning] SQLite Message-ID lookup failed: {e}")
         return None
+    finally:
+        conn.close()
+
+
+def get_setting(key, default_value=None, tenant_id=None):
+    """Retrieves a configuration setting value from the settings table."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        if row:
+            return row["value"]
+    except Exception as e:
+        print(f"[Database] Error reading setting {key}: {e}")
+    finally:
+        conn.close()
+    return default_value
+
+
+def set_setting(key, value, tenant_id=None):
+    """Saves or updates a configuration setting value in the settings table."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
+        conn.commit()
+    except Exception as e:
+        print(f"[Database] Error writing setting {key}: {e}")
     finally:
         conn.close()
 
