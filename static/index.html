@@ -384,7 +384,7 @@
                           <span class="badge" :class="streamOrigin(item.status).cls" x-text="streamOrigin(item.status).flag" style="font-size:8px;padding:1px 6px;"></span>
                         </template>
                         <template x-if="item.status !== 'Auto-Filtered'">
-                          <button class="btn-micro">View Quote</button>
+                          <button class="btn-micro" x-text="item.status === 'CONVERSATIONAL_REPLY' ? 'View Thread' : 'View Quote'"></button>
                         </template>
                       </div>
                     </div>
@@ -1414,16 +1414,16 @@
       </div>
 
       <!-- 5. Chat History & Email Log Modal -->
-      <div x-show="showChatModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition>
-        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-2xl w-full p-6 shadow-3 flex flex-col gap-4">
+      <div x-show="showChatModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-0" x-transition>
+        <div class="bg-[var(--bg-card)] w-full h-full p-6 md:p-8 flex flex-col gap-4 max-w-none rounded-none shadow-none border-none">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <h3 class="text-sm font-bold text-[var(--text-1)] m-0" x-text="'Email Log Timeline: ' + chatCustName"></h3>
             <button @click="showChatModal = false" class="text-xs text-[var(--text-2)] bg-transparent border-none">✕</button>
           </div>
           
-          <div class="flex flex-col md:grid md:grid-cols-[1fr_220px] gap-5">
+          <div class="flex flex-col md:grid md:grid-cols-[1fr_280px] gap-6 flex-1 min-h-0">
             <!-- Timeline Log logs -->
-            <div class="flex flex-col gap-3.5 overflow-y-auto max-h-72 p-3 bg-[var(--bg-dark)] border border-[var(--border)] rounded-xl">
+            <div class="flex flex-col gap-3.5 overflow-y-auto p-4 bg-[var(--bg-dark)] border border-[var(--border)] rounded-xl flex-1">
               <template x-if="loadingChat">
                 <div class="flex items-center justify-center py-20 text-xs text-[var(--text-2)] gap-2">
                   <div class="animate-spin rounded-full h-4 w-4 border-2 border-[var(--accent)] border-t-transparent"></div>
@@ -1434,21 +1434,21 @@
                 <div class="text-[var(--text-2)] italic text-center py-20 text-xs">No recorded logs for this transaction.</div>
               </template>
               <template x-for="(log, i) in chatLogs" :key="i">
-                <div class="border-b border-[var(--border)]/70 pb-3 last:border-0 last:pb-0 text-xs">
-                  <div class="flex justify-between items-center text-[10px] text-[var(--text-2)] font-semibold mb-1">
+                <div class="border-b border-[var(--border)]/70 pb-4 mb-4 last:border-0 last:pb-0 last:mb-0">
+                  <div class="flex justify-between items-center text-[11px] text-[var(--text-2)] font-semibold mb-2">
                     <span class="flex items-center gap-1.5">
-                      <span class="uppercase" :class="senderMeta(log.sender).labelCls" x-text="senderMeta(log.sender).role"></span>
-                      <span class="badge" :class="senderMeta(log.sender).flagCls" x-text="senderMeta(log.sender).flag" style="font-size:8.5px;padding:1px 6px;"></span>
+                      <span class="uppercase font-bold" :class="senderMeta(log.sender).labelCls" x-text="senderMeta(log.sender).role"></span>
+                      <span class="badge" :class="senderMeta(log.sender).flagCls" x-text="senderMeta(log.sender).flag" style="font-size:9px;padding:2px 8px;"></span>
                     </span>
                     <span x-text="formatDate(log.timestamp)"></span>
                   </div>
-                  <p class="m-0 leading-relaxed font-mono whitespace-pre-wrap text-[11px]" x-text="log.message"></p>
+                  <p class="m-0 leading-relaxed whitespace-pre-wrap text-[13px] text-[var(--text-1)]" style="font-family: inherit;" x-text="log.message"></p>
                 </div>
               </template>
             </div>
 
             <!-- Items summary column -->
-            <div class="p-4 bg-[var(--bg-card2)] border border-[var(--border)] rounded-xl flex flex-col gap-3 max-h-72 overflow-y-auto">
+            <div class="p-4 bg-[var(--bg-card2)] border border-[var(--border)] rounded-xl flex flex-col gap-3 overflow-y-auto">
               <h4 class="text-[10px] font-bold text-[var(--text-2)] uppercase tracking-wider mb-1 m-0">Quotation Line Items</h4>
               <template x-if="chatItems.length === 0">
                 <div class="text-[var(--text-2)] text-[10px] italic">No items mapping.</div>
@@ -1811,50 +1811,52 @@
                 return tB - tA;
               });
 
-              // 1. New Mail Column: New/just-arrived emails not yet fully processed
-              //    Shows items that arrived but don't yet have a quote or category
-              this.newMails = sortedStream.filter(item => 
-                item.customer_email !== "System / Marketing" && 
-                (
-                  item.status === "Pending Review" ||
-                  item.status === "UNMATCHED" ||
-                  item.status === "UNPARSED"
-                )
+              // 1. New Mail Column: Emails that just arrived, not yet responded
+              this.newMails = sortedStream.filter(item =>
+                item.customer_email !== "System / Marketing" &&
+                item.status === "Pending Review"
               );
 
               // 2. Responded Column: Auto-quoted and completed items (automated quote sent)
-              this.respondedMails = sortedStream.filter(item => 
-                item.status === "Auto-Filtered" || 
-                item.status === "QUOTE_GENERATED" || 
-                item.status === "QUOTE_UPDATED" || 
-                item.status === "NEGOTIATION_APPROVED"
+              this.respondedMails = sortedStream.filter(item =>
+                item.status === "Auto-Filtered" ||
+                item.status === "QUOTE_GENERATED" ||
+                item.status === "QUOTE_UPDATED" ||
+                item.status === "NEGOTIATION_APPROVED" ||
+                item.status === "NEGOTIATION_NEGOTIATING" ||
+                item.status === "CONVERSATIONAL_REPLY"
               );
 
-              // 3. Reply Column: Emails that are customer replies to existing quotes
-              //    Detected when subject contains RE: with a quotation reference
+              // 3. Reply Column: Customer replies to existing quotes or active negotiation
               this.repliedMails = sortedStream.filter(item =>
                 item.customer_email !== "System / Marketing" &&
                 (
-                  item.status === "CUSTOMER_REPLIED" ||
-                  item.status === "NEGOTIATION_NEGOTIATING" ||
-                  item.invoice_id && item.invoice_id.startsWith('QTN-') &&
-                    item.description && item.description.toLowerCase().includes('re:')
+                  item.status === "CUSTOMER_REPLIED"
                 )
               );
 
               // 4. Rejected: Rejected quotes
-              this.rejectedMails = sortedStream.filter(item => 
+              this.rejectedMails = sortedStream.filter(item =>
                 item.status === "NEGOTIATION_REJECTED"
               );
 
-              // 5. Negotiations: escalated/negotiating items from pending_items
+              // 5. Pending Column: Human-requested, unmatched, escalated negotiations, stock deficits
+              // Combine from stream (PENDING_HUMAN) + pending_items from DB
+              const pendingFromStream = sortedStream.filter(item =>
+                item.status === "PENDING_HUMAN"
+              );
               this.negotiations = negotiations;
-
-              // 6. Deficits: pending stock deficits
               this.pendingDeficits = deficits;
-
-              // 7. Unmatched: pending unmatched items
-              this.pendingUnmatched = unmatched;
+              // Merge stream-based human requests into unmatched display list
+              const humanRequestsAsUnmatched = pendingFromStream.map(item => ({
+                id: item.message_id,
+                customer_email: item.customer_email,
+                customer_name: item.customer_name,
+                original_body: item.description,
+                source: "email",
+                created_at: item.timestamp
+              }));
+              this.pendingUnmatched = [...humanRequestsAsUnmatched, ...unmatched];
 
               // Feeds: Today / Yesterday mails
               const todayStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -1864,7 +1866,11 @@
               this.todayMails = sortedStream.filter(item => {
                 if (!item.timestamp) return false;
                 try {
-                  const mailDate = new Date(item.timestamp.replace(' ', 'T') + 'Z');
+                  let clean = item.timestamp.replace(' IST', '').replace(' ', 'T').trim();
+                  if (clean.includes('T') && !clean.includes('+') && !clean.includes('Z')) {
+                    clean += '+05:30';
+                  }
+                  const mailDate = new Date(clean);
                   const mailDateStr = mailDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
                   return mailDateStr === todayStr;
                 } catch (e) {
@@ -1875,7 +1881,11 @@
               this.yesterdayMails = sortedStream.filter(item => {
                 if (!item.timestamp) return false;
                 try {
-                  const mailDate = new Date(item.timestamp.replace(' ', 'T') + 'Z');
+                  let clean = item.timestamp.replace(' IST', '').replace(' ', 'T').trim();
+                  if (clean.includes('T') && !clean.includes('+') && !clean.includes('Z')) {
+                    clean += '+05:30';
+                  }
+                  const mailDate = new Date(clean);
                   const mailDateStr = mailDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
                   return mailDateStr === yesterdayStr;
                 } catch (e) {
@@ -2421,8 +2431,11 @@
       function logDateConverter(ts) {
         if (!ts) return '';
         try {
-          const clean = ts.replace(' ', 'T');
-          const date = new Date(clean + (clean.includes('T') ? 'Z' : ''));
+          let clean = ts.replace(' IST', '').replace(' ', 'T').trim();
+          if (clean.includes('T') && !clean.includes('+') && !clean.includes('Z')) {
+            clean += '+05:30';
+          }
+          const date = new Date(clean);
           if (isNaN(date.getTime())) return ts;
           return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
         } catch (e) { return ts; }

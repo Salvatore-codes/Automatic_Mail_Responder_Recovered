@@ -2,6 +2,11 @@ import os
 import sqlite3
 import datetime
 
+def get_now_ist_str():
+    tz_ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    return datetime.datetime.now(tz_ist).strftime("%Y-%m-%d %H:%M:%S")
+
+
 # Database Path
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "trofeo_sales.db")
@@ -193,7 +198,7 @@ def init_db(tenant_id=None):
 def log_quotation(invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source='email', tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_now_ist_str()
     
     cursor.execute("""
     INSERT OR REPLACE INTO quotations (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, created_at)
@@ -218,7 +223,7 @@ def log_quotation_item(invoice_id, sku_id, sku_name, quantity, unit_price, line_
 def log_chat_msg(invoice_id, sender, message, tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_now_ist_str()
     
     cursor.execute("""
     INSERT INTO chat_logs (invoice_id, sender, message, timestamp)
@@ -257,7 +262,7 @@ def update_quotation_status(invoice_id, status, discount_pct=None, tenant_id=Non
 def log_synonym(query, sku_id, tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_now_ist_str()
     
     cursor.execute("""
     INSERT OR REPLACE INTO synonyms (query, sku_id, created_at)
@@ -289,10 +294,11 @@ def log_unmatched_item(customer_email, customer_name, original_body, source="unk
     """
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
+    now_str = get_now_ist_str()
     cursor.execute("""
-    INSERT INTO unmatched_items (customer_email, customer_name, original_body, source)
-    VALUES (?, ?, ?, ?)
-    """, (customer_email, customer_name, original_body, source))
+    INSERT INTO unmatched_items (customer_email, customer_name, original_body, source, created_at)
+    VALUES (?, ?, ?, ?, ?)
+    """, (customer_email, customer_name, original_body, source, now_str))
     conn.commit()
     conn.close()
 
@@ -356,7 +362,7 @@ def log_processed_message(message_id, invoice_id, received_at=None, tenant_id=No
             WHERE message_id = ?
             """, (invoice_id, message_id.strip()))
     else:
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_str = get_now_ist_str()
         cursor.execute("""
         INSERT INTO processed_messages (message_id, invoice_id, received_at, processed_at)
         VALUES (?, ?, ?, ?)
@@ -402,10 +408,11 @@ init_db()
 def log_deficit(invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
+    now_str = get_now_ist_str()
     cursor.execute("""
-    INSERT INTO deficits (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
-    """, (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone))
+    INSERT INTO deficits (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
+    """, (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, now_str))
     conn.commit()
     conn.close()
 
@@ -446,10 +453,11 @@ def get_escalated_negotiations(tenant_id=None):
 def log_inventory_update(sku_id, sku_name, old_stock, new_stock, tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
+    now_str = get_now_ist_str()
     cursor.execute("""
-    INSERT INTO inventory_logs (sku_id, sku_name, old_stock, new_stock)
-    VALUES (?, ?, ?, ?)
-    """, (sku_id, sku_name, old_stock, new_stock))
+    INSERT INTO inventory_logs (sku_id, sku_name, old_stock, new_stock, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    """, (sku_id, sku_name, old_stock, new_stock, now_str))
     conn.commit()
     conn.close()
 
@@ -471,7 +479,7 @@ def get_inventory_logs(tenant_id=None):
 def update_service_status(status, error_message=None, tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_now_ist_str()
     cursor.execute("""
         INSERT OR REPLACE INTO service_status (service_name, status, last_seen, error_message)
         VALUES (?, ?, ?, ?)
@@ -493,3 +501,28 @@ def get_service_status(tenant_id=None):
     finally:
         conn.close()
     return {"status": "UNKNOWN", "last_seen": None, "error_message": None}
+
+
+def get_latest_message_id(invoice_id, tenant_id=None):
+    """Retrieves the latest processed Message-ID for a given invoice_id."""
+    if not invoice_id:
+        return None
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    clean_id = invoice_id
+    if clean_id.startswith("CUSTOMER_REPLIED:"):
+        clean_id = clean_id.split(":", 1)[1]
+    try:
+        cursor.execute("""
+            SELECT message_id FROM processed_messages 
+            WHERE invoice_id = ? OR invoice_id = ? OR invoice_id = ?
+            ORDER BY processed_at DESC LIMIT 1
+        """, (clean_id, f"CUSTOMER_REPLIED:{clean_id}", f"CUSTOMER_REPLIED:{clean_id}"))
+        row = cursor.fetchone()
+        return row["message_id"] if row else None
+    except Exception as e:
+        print(f"[Warning] SQLite Message-ID lookup failed: {e}")
+        return None
+    finally:
+        conn.close()
+

@@ -54,7 +54,8 @@ _register_fonts()
 
 def generate_daily_report(output_path, tenant_id=None):
     """Queries SQLite and generates a daily transaction report PDF."""
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    tz_ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    today_str = datetime.datetime.now(tz_ist).strftime("%Y-%m-%d")
     
     from src.database_sqlite import get_connection
     conn = get_connection(tenant_id)
@@ -268,7 +269,8 @@ def generate_daily_report(output_path, tenant_id=None):
 
 def send_daily_report_email(smtp_server, smtp_port, email_user, email_pass, recipient_email, tenant_id=None):
     """Generates the daily report PDF and emails it to the supervisor."""
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    tz_ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    today_str = datetime.datetime.now(tz_ist).strftime("%Y-%m-%d")
     pdf_filename = f"Daily_Report_{today_str}.pdf"
     
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

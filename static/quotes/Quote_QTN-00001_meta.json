@@ -19,5 +19,14 @@
   "customer_phone": "+91 90000 00000",
   "customer_email": "rajarajanselvarajan02@gmail.com",
   "invoice_id": "QTN-00001",
-  "chat_history": []
+  "chat_history": [
+    {
+      "sender": "customer",
+      "text": "This is a bit high. Can you give me a 10% discount?"
+    },
+    {
+      "sender": "ai",
+      "text": "Thank you for getting back to us. I understand where you're coming from \u2014 10.0% would be a bit difficult for us at current pricing. However, I can offer you a 3% discount right away, or if your order value crosses \u20b95,000 we can also look at complimentary delivery. Would either of these work for you?"
+    }
+  ]
 }
