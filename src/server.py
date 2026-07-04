@@ -968,6 +968,55 @@ async def get_quote_details(invoice_id: str, tenant_id: str = "default"):
         cursor.execute("SELECT * FROM chat_logs WHERE invoice_id = ? ORDER BY timestamp ASC", (invoice_id,))
         logs = [dict(row) for row in cursor.fetchall()]
 
+        # --- Fallback: synthesize log entries from quotation + processed_messages if chat_logs is empty ---
+        if not logs:
+            synth_logs = []
+            q_created = quote.get("created_at", "")
+            q_status = quote.get("status", "")
+            cust_name = quote.get("customer_name", "Customer")
+
+            # 1. Initial enquiry (CUSTOMER)
+            synth_logs.append({
+                "id": 0,
+                "invoice_id": invoice_id,
+                "sender": "CUSTOMER",
+                "message": f"Enquiry received from {cust_name} — quotation {invoice_id} was raised.",
+                "timestamp": q_created,
+            })
+
+            # 2. Bot's original quotation reply
+            synth_logs.append({
+                "id": 1,
+                "invoice_id": invoice_id,
+                "sender": "BOT",
+                "message": f"Quotation {invoice_id} was generated and sent to {cust_name}.",
+                "timestamp": q_created,
+            })
+
+            # 3. If there is a CUSTOMER_REPLIED processed_message, show it
+            cursor.execute(
+                "SELECT processed_at FROM processed_messages WHERE invoice_id = ? ORDER BY processed_at DESC LIMIT 1",
+                (f"CUSTOMER_REPLIED:{invoice_id}",)
+            )
+            reply_row = cursor.fetchone()
+            if reply_row:
+                synth_logs.append({
+                    "id": 2,
+                    "invoice_id": invoice_id,
+                    "sender": "customer",
+                    "message": "Customer sent a reply to this quotation.",
+                    "timestamp": reply_row["processed_at"],
+                })
+                synth_logs.append({
+                    "id": 3,
+                    "invoice_id": invoice_id,
+                    "sender": "BOT",
+                    "message": f"AI responded to customer's reply. Current status: {q_status}.",
+                    "timestamp": reply_row["processed_at"],
+                })
+
+            logs = synth_logs
+
         conn.close()
 
         return {
@@ -1067,8 +1116,13 @@ async def get_overview_analytics(tenant_id: str = "default"):
                 qtn_ref = inv_id.replace('CUSTOMER_REPLIED:', '')
                 email = row['q_email'] or "Customer"
                 name = row['q_name'] or "Customer"
-                status = "CUSTOMER_REPLIED"
-                desc = f"Customer replied to {qtn_ref}"
+                q_status = row['q_status']
+                if q_status in ("NEGOTIATION_APPROVED", "NEGOTIATION_NEGOTIATING", "QUOTE_UPDATED", "CONVERSATIONAL_REPLY"):
+                    status = q_status
+                    desc = f"AI replied to customer's thread for {qtn_ref} ({q_status})"
+                else:
+                    status = "CUSTOMER_REPLIED"
+                    desc = f"Customer replied to {qtn_ref}"
             elif inv_id.startswith('QTN-'):
                 email = row['q_email'] or "Customer"
                 name = row['q_name'] or "Customer"
@@ -1104,7 +1158,7 @@ async def get_overview_analytics(tenant_id: str = "default"):
                 name = row['q_name'] or row['u_name'] or "Incoming Mail"
                 status = "Pending Review"
                 desc = "New enquiry received"
-            elif inv_id in ('UNPARSED_NOTICE', 'QUOTE_GENERATED', 'QUOTE_UPDATED', 'UNPARSED'):
+            elif inv_id in ('UNPARSED_NOTICE', 'UNPARSED'):
                 # Legacy/bad data rows where status was stored as invoice_id - skip them
                 continue
             else:
