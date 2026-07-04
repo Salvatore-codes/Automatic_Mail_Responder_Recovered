@@ -1064,6 +1064,50 @@ def extract_text_from_docx(docx_bytes):
         return ""
 
 
+def extract_text_from_xlsx(xlsx_bytes):
+    """
+    Extracts text/cells from XLSX bytes using openpyxl.
+    """
+    import openpyxl
+    from io import BytesIO
+    try:
+        wb = openpyxl.load_workbook(BytesIO(xlsx_bytes), data_only=True)
+        lines = []
+        for name in wb.sheetnames:
+            sheet = wb[name]
+            lines.append(f"Sheet: {name}")
+            for row in sheet.iter_rows(values_only=True):
+                if any(val is not None for val in row):
+                    row_str = ", ".join(str(val).strip() for val in row if val is not None)
+                    lines.append(row_str)
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[Attachment] Error parsing xlsx: {e}")
+        return ""
+
+
+def extract_text_from_xls(xls_bytes):
+    """
+    Extracts text/cells from XLS bytes using xlrd.
+    """
+    import xlrd
+    try:
+        wb = xlrd.open_workbook(file_contents=xls_bytes)
+        lines = []
+        for sheet_idx in range(wb.nsheets):
+            sheet = wb.sheet_by_index(sheet_idx)
+            lines.append(f"Sheet: {sheet.name}")
+            for row_idx in range(sheet.nrows):
+                row = sheet.row_values(row_idx)
+                if any(val != "" and val is not None for val in row):
+                    row_str = ", ".join(str(val).strip() for val in row if val != "" and val is not None)
+                    lines.append(row_str)
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[Attachment] Error parsing xls: {e}")
+        return ""
+
+
 def has_attachments(msg):
     """
     Quickly scans a parsed email message to check if it has ANY attachments.
@@ -1120,6 +1164,18 @@ def extract_text_from_attachments(msg):
         "application/x-docx": ".docx"
     }
 
+    xlsx_mimes = {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/xlsx": ".xlsx",
+        "application/x-xlsx": ".xlsx"
+    }
+
+    xls_mimes = {
+        "application/vnd.ms-excel": ".xls",
+        "application/xls": ".xls",
+        "application/x-xls": ".xls"
+    }
+
     extracted_texts = []
 
     for part in msg.walk():
@@ -1131,8 +1187,10 @@ def extract_text_from_attachments(msg):
         is_supported = (
             content_type in gemini_native_mimes or
             content_type in docx_mimes or
+            content_type in xlsx_mimes or
+            content_type in xls_mimes or
             content_type.startswith("text/") or
-            filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp", ".docx", ".txt", ".rtf", ".html", ".xml", ".csv"))
+            filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp", ".docx", ".txt", ".rtf", ".html", ".xml", ".csv", ".xlsx", ".xls"))
         )
 
         # Skip if not an attachment or not supported
@@ -1154,6 +1212,10 @@ def extract_text_from_attachments(msg):
                 ext = gemini_native_mimes[content_type]
             elif content_type in docx_mimes:
                 ext = ".docx"
+            elif content_type in xlsx_mimes:
+                ext = ".xlsx"
+            elif content_type in xls_mimes:
+                ext = ".xls"
             elif content_type.startswith("text/"):
                 ext = ".txt"
 
@@ -1192,7 +1254,7 @@ def extract_text_from_attachments(msg):
                                     mime_type=content_type if content_type in gemini_native_mimes else "application/pdf"
                                 ),
                                 prompt
-                            ]
+                             ]
                         )
                         extracted = response.text.strip() if response.text else ""
                     else:
@@ -1200,11 +1262,18 @@ def extract_text_from_attachments(msg):
                         raw_text = ""
                         if content_type in docx_mimes or ext == ".docx":
                             raw_text = extract_text_from_docx(payload)
+                        elif content_type in xlsx_mimes or ext == ".xlsx":
+                            raw_text = extract_text_from_xlsx(payload)
+                        elif content_type in xls_mimes or ext == ".xls":
+                            raw_text = extract_text_from_xls(payload)
                         else:
                             try:
                                 raw_text = payload.decode('utf-8', errors='ignore')
-                            except Exception as de:
-                                print(f"[Attachment] Failed to decode text: {de}")
+                            except Exception:
+                                try:
+                                    raw_text = payload.decode('latin-1', errors='ignore')
+                                except Exception as de:
+                                    print(f"[Attachment] Failed to decode text: {de}")
                         
                         if raw_text.strip():
                             response = client.models.generate_content(
@@ -1522,6 +1591,18 @@ def extract_outlook_attachment_text(payload, filename, content_type):
         "application/x-docx": ".docx"
     }
 
+    xlsx_mimes = {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/xlsx": ".xlsx",
+        "application/x-xlsx": ".xlsx"
+    }
+
+    xls_mimes = {
+        "application/vnd.ms-excel": ".xls",
+        "application/xls": ".xls",
+        "application/x-xls": ".xls"
+    }
+
     ext = ""
     if filename:
         _, file_ext = os.path.splitext(filename)
@@ -1531,14 +1612,20 @@ def extract_outlook_attachment_text(payload, filename, content_type):
             ext = gemini_native_mimes[content_type]
         elif content_type in docx_mimes:
             ext = ".docx"
+        elif content_type in xlsx_mimes:
+            ext = ".xlsx"
+        elif content_type in xls_mimes:
+            ext = ".xls"
         elif content_type.startswith("text/"):
             ext = ".txt"
 
     is_supported = (
         content_type in gemini_native_mimes or
         content_type in docx_mimes or
+        content_type in xlsx_mimes or
+        content_type in xls_mimes or
         (content_type and content_type.startswith("text/")) or
-        (filename and filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp", ".docx", ".txt", ".rtf", ".html", ".xml", ".csv")))
+        (filename and filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp", ".docx", ".txt", ".rtf", ".html", ".xml", ".csv", ".xlsx", ".xls")))
     )
 
     if not is_supported or not payload:
@@ -1582,6 +1669,10 @@ def extract_outlook_attachment_text(payload, filename, content_type):
                     raw_text = ""
                     if content_type in docx_mimes or ext == ".docx":
                         raw_text = extract_text_from_docx(payload)
+                    elif content_type in xlsx_mimes or ext == ".xlsx":
+                        raw_text = extract_text_from_xlsx(payload)
+                    elif content_type in xls_mimes or ext == ".xls":
+                        raw_text = extract_text_from_xls(payload)
                     else:
                         try:
                             raw_text = payload.decode('utf-8', errors='ignore')
