@@ -2040,7 +2040,7 @@ _gemini_client_cache = {}
 
 def _get_gemini_client():
     """Returns a cached Gemini client instance, or None if API key is unavailable."""
-    if "client" in _gemini_client_cache:
+    if "client" in _gemini_client_cache and _gemini_client_cache["client"] is not None:
         return _gemini_client_cache["client"]
     
     api_key = os.environ.get("GEMINI_API_KEY", "")
