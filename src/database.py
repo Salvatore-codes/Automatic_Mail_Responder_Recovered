@@ -471,8 +471,12 @@ class Catalog:
         Returns list of matches in the same format as match_fuzzy/match_local_semantic.
         Falls back to empty list if vector index is not available.
         """
-        if np is None or self.embedding_matrix is None or len(self.embedding_ids) == 0:
+        if np is None:
             return []
+        if self.embedding_matrix is None or len(self.embedding_ids) == 0:
+            success = self.build_vector_index(client=client)
+            if not success or self.embedding_matrix is None:
+                return []
         
         # First check synonyms (instant exact match)
         syn_match = self.check_synonyms(query_text)
@@ -542,8 +546,12 @@ class Catalog:
         Returns a list of match lists corresponding to each query.
         Falls back to individual match_vector or empty list if vector index is not available or fails.
         """
-        if np is None or self.embedding_matrix is None or len(self.embedding_ids) == 0 or not queries:
+        if np is None or not queries:
             return [[] for _ in queries]
+        if self.embedding_matrix is None or len(self.embedding_ids) == 0:
+            success = self.build_vector_index(client=client)
+            if not success or self.embedding_matrix is None:
+                return [[] for _ in queries]
             
         # Check synonyms first for each query
         synonym_matches = [None] * len(queries)
