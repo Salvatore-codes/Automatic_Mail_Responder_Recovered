@@ -1,0 +1,44 @@
+# CodeRabbit Configuration File (.coderabbit.yaml)
+# Reference: https://docs.coderabbit.ai
+
+language: "en-US"
+
+reviews:
+  profile: "assertive"
+  poem: false
+  high_level_summary: true
+  collaborative_billing: true
+
+auto_review:
+  enabled: true
+  drafts: false
+  base_branches:
+    - "main"
+    - "master"
+    - "feature/pipeline-stages"
+
+tone_instructions: "Act as a senior software architect and tech lead reviewing Python, FastAPI, and SQLite integrations. Keep feedback constructive, concise, and focused on security, robust error handling, and performance."
+
+# File path specific instructions
+file_path_instructions:
+  - path: "src/**/*.py"
+    instructions: |
+      - Check that all routes handle async/await operations correctly.
+      - Ensure Pydantic model validations are used for request bodies.
+      - Verify that database connection contexts are closed/released properly.
+      - Avoid exposing raw SQLite database exception details directly to API responses (use HTTPException with standard status codes).
+  
+  - path: "tests/**/*.py"
+    instructions: |
+      - Ensure unit tests assert specific return codes and structures.
+      - Verify mock objects are used correctly where external resources (e.g., SMTP, Gmail) are involved.
+      
+path_filters:
+  exclude:
+    - "**/__pycache__/**"
+    - "**/data/**"
+    - "**/mock_inbox/**"
+    - "**/mock_outbox/**"
+    - "**/static/**"
+    - "*.docx"
+    - "*.pdf"

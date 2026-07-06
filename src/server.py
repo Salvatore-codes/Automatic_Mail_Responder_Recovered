@@ -1835,7 +1835,12 @@ def outlook_callback(code: str = None, error: str = None, error_description: str
 
 @app.get("/")
 async def get_index(request: Request):
-    response = templates.TemplateResponse("index.html", {"request": request})
+    import inspect
+    sig = inspect.signature(templates.TemplateResponse)
+    if "request" in sig.parameters:
+        response = templates.TemplateResponse(request=request, name="index.html", context={"request": request})
+    else:
+        response = templates.TemplateResponse("index.html", {"request": request})
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"

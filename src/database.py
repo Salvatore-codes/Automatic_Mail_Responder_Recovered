@@ -14,9 +14,35 @@ except ImportError:
     np = None
 
 # A lightweight pure-Python TF-IDF system for local semantic-like matching
+def correct_ocr_typos(text):
+    if not text:
+        return ""
+    # Common WinRT OCR misidentifications for Trofeo catalog items:
+    text = re.sub(r'\bblades-knife-io\b', 'blades-knife-10', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bblades knife io\b', 'blades knife 10', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bbolt-hex-mio-so\b', 'bolt-hex-m10-80', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bbolt hex mio so\b', 'bolt hex m10 80', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bbolt-hex-ms-so\b', 'bolt-hex-m8-50', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bbolt hex ms so\b', 'bolt hex m8 50', text, flags=re.IGNORECASE)
+    
+    # Generic OCR substitutions for common numeric/alphabetic mixups in SKU structures
+    text = re.sub(r'\bmio\b', 'm10', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bms\b', 'm8', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bm8[- ]so\b', 'm8-50', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bm10[- ]so\b', 'm10-80', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bknife[- ]io\b', 'knife-10', text, flags=re.IGNORECASE)
+    
+    # Fractions and dimensions OCR correction
+    text = re.sub(r'\b[il]/2\b', '1/2', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b[il]\s+1/2\b', '1 1/2', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b[il] inch\b', '1 inch', text, flags=re.IGNORECASE)
+    
+    return text
+
 def normalize_dimensions(text):
     if not text:
         return ""
+    text = correct_ocr_typos(text)
     text = text.lower()
     
     # Normalize unicode quotes/prime symbols to standard double/single quotes

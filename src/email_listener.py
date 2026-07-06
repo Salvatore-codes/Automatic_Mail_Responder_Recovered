@@ -538,6 +538,12 @@ def extract_global_quantity_override(text):
             
     return None
 
+class EmailResponseTuple(tuple):
+    def __new__(cls, reply_subject, reply_body, pdf_path, status, invoice_id=None):
+        obj = super().__new__(cls, (reply_subject, reply_body, pdf_path, status))
+        obj.invoice_id = invoice_id
+        return obj
+
 def process_incoming_email(sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=None, prior_thread_context=None, skip_initial_customer_log=False):
     """
     Main ingestion business logic. Parses the email body, matches SKUs, 
@@ -849,7 +855,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             
             reply_subject = clean_reply_subject(subject, invoice_id=existing_invoice_id)
             db_status = "PENDING_REVIEW" if status == "PENDING_REVIEW" else f"NEGOTIATION_{status}"
-            return reply_subject, reply_payload, pdf_out_path, db_status, existing_invoice_id
+            return EmailResponseTuple(reply_subject, reply_payload, pdf_out_path, db_status, existing_invoice_id)
             
         # 2. Check if the customer is modifying the quotation items (high-confidence items only!)
         matched_lines = _run_ingestion(body_clean, catalog, client, tenant_id)
@@ -996,7 +1002,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 print(f"[Warning] SQLite logging failed: {e}")
                 
             reply_subject = clean_reply_subject(subject, invoice_id=existing_invoice_id)
-            return reply_subject, reply_body, pdf_out_path, "QUOTE_UPDATED", existing_invoice_id
+            return EmailResponseTuple(reply_subject, reply_body, pdf_out_path, "QUOTE_UPDATED", existing_invoice_id)
 
         else:
             # Handle general conversational enquiry
@@ -1062,7 +1068,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 
             reply_subject = clean_reply_subject(subject, invoice_id=existing_invoice_id)
             reply_payload = (reply_text, f"<html><body><p>{reply_text.replace('\n', '<br>')}</p></body></html>")
-            return reply_subject, reply_payload, None, "CONVERSATIONAL_REPLY", existing_invoice_id
+            return EmailResponseTuple(reply_subject, reply_payload, None, "CONVERSATIONAL_REPLY", existing_invoice_id)
 
     # Default logic: Brand new quotation request
     discount_pct, customer_name, customer_phone = get_crm_discount(email_addr, crm_path)
@@ -1215,7 +1221,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             print(f"[Warning] SQLite logging failed: {e}")
             
         reply_subject = clean_reply_subject(subject, invoice_id=invoice_id)
-        return reply_subject, reply_body, pdf_out_path, "QUOTE_GENERATED", invoice_id
+        return EmailResponseTuple(reply_subject, reply_body, pdf_out_path, "QUOTE_GENERATED", invoice_id)
     else:
         duration = time.time() - start_time
         now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
@@ -1233,7 +1239,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             system_efficiency=system_efficiency
         )
         reply_subject = clean_reply_subject(subject, is_unparsed=True)
-        return reply_subject, reply_body, None, "UNPARSED_NOTICE", None
+        return EmailResponseTuple(reply_subject, reply_body, None, "UNPARSED_NOTICE", None)
 
 def load_crm_emails(crm_path):
     """Loads email addresses of registered customers from CRM."""
@@ -1343,15 +1349,55 @@ def has_attachments(msg):
     return False
 
 
+
+def extract_text_via_local_ocr(payload, ext):
+    """
+    Saves the payload bytes to a temp image file and runs the local ocr.ps1 script on it.
+    """
+    import subprocess
+    import tempfile
+    import os
+    
+    if not ext:
+        ext = ".png"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    temp_dir = os.path.join(project_root, "data")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    fd, temp_path = tempfile.mkstemp(suffix=ext, dir=temp_dir)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(payload)
+        
+        ocr_script = os.path.join(project_root, "ocr.ps1")
+        cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ocr_script, temp_path]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            ocr_text = result.stdout.strip()
+            print(f"[Local OCR] Extracted text ({len(ocr_text)} chars) from image.")
+            return ocr_text
+        else:
+            print(f"[Local OCR Warning] PowerShell returned non-zero code: {result.stderr}")
+            return ""
+    except Exception as e:
+        print(f"[Local OCR Warning] Failed to run local OCR: {e}")
+        return ""
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
 def extract_text_from_attachments(msg):
     """
     Scans all MIME parts of an email.message object for attachments (PDF, images, Word, text format)
-    and extracts product item lists from each. Uses Gemini 2.5 Flash.
+    and extracts product item lists from each. Uses Gemini 2.5 Flash, falling back to local OCR for images.
     """
     api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key or api_key.startswith("your_"):
-        print("[Attachment] GEMINI_API_KEY not configured. Cannot extract attachment content.")
-        return ""
+    has_gemini = api_key and not api_key.startswith("your_") and api_key.strip() != ""
 
     gemini_native_mimes = {
         "application/pdf": ".pdf",
@@ -1363,7 +1409,7 @@ def extract_text_from_attachments(msg):
         "image/tiff": ".tiff",
         "image/bmp": ".bmp",
     }
-    
+
     docx_mimes = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
         "application/docx": ".docx",
@@ -1430,99 +1476,99 @@ def extract_text_from_attachments(msg):
 
         # Check if it is native image/PDF vs text/word format
         is_native_gemini = content_type in gemini_native_mimes or ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"]
-        
-        extracted = ""
-        try:
-            from google import genai
-            from google.genai import types as genai_types
-            client = genai.Client(api_key=api_key)
-            
-            prompt = (
-                "You are a purchasing document analyser. Extract ALL product names, item descriptions, "
-                "SKU codes, part numbers, quantities, and specifications mentioned in this document. "
-                "Return them as a plain numbered list. Do NOT add any extra commentary or headings — "
-                "just list each line item or product request exactly as written. "
-                "If you cannot find any product items, reply with the single word: NONE."
-            )
+        is_image = ext in [".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"]
 
-            # Retry up to 3 times for transient API errors (503, 429, 500)
-            max_retries = 3
-            extracted = ""
-            for attempt in range(1, max_retries + 1):
-                try:
-                    if is_native_gemini:
-                        # 1. Native Gemini Multimodal parsing (images, PDFs)
-                        response = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=[
-                                genai_types.Part.from_bytes(
-                                    data=payload,
-                                    mime_type=content_type if content_type in gemini_native_mimes else "application/pdf"
-                                ),
-                                prompt
-                             ]
-                        )
-                        extracted = response.text.strip() if response.text else ""
-                    else:
-                        # 2. Local text extraction followed by Gemini text restructuring
-                        raw_text = ""
-                        if content_type in docx_mimes or ext == ".docx":
-                            raw_text = extract_text_from_docx(payload)
-                        elif content_type in xlsx_mimes or ext == ".xlsx":
-                            raw_text = extract_text_from_xlsx(payload)
-                        elif content_type in xls_mimes or ext == ".xls":
-                            raw_text = extract_text_from_xls(payload)
-                        else:
-                            try:
-                                raw_text = payload.decode('utf-8', errors='ignore')
-                            except Exception:
-                                try:
-                                    raw_text = payload.decode('latin-1', errors='ignore')
-                                except Exception as de:
-                                    print(f"[Attachment] Failed to decode text: {de}")
-                        
-                        if raw_text.strip():
+        extracted = ""
+        
+        # 1. Try Gemini Multimodal / Text restructuring first if key is configured
+        if has_gemini:
+            try:
+                from google import genai
+                from google.genai import types as genai_types
+                client = genai.Client(api_key=api_key)
+
+                prompt = (
+                    "You are a purchasing document analyser. Extract ALL product names, item descriptions, "
+                    "SKU codes, part numbers, quantities, and specifications mentioned in this document. "
+                    "Return them as a plain numbered list. Do NOT add any extra commentary or headings - "
+                    "just list each line item or product request exactly as written. "
+                    "If you cannot find any product items, reply with the single word: NONE."
+                )
+
+                # Retry up to 3 times for transient API errors (503, 429, 500)
+                max_retries = 3
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        if is_native_gemini:
+                            # Native Gemini Multimodal parsing
                             response = client.models.generate_content(
                                 model="gemini-2.5-flash",
-                                contents=(
-                                    f"You are a purchasing document analyser. Extract ALL product names, item descriptions, "
-                                    f"SKU codes, part numbers, quantities, and specifications mentioned in this text:\n\n"
-                                    f"{raw_text}\n\n"
-                                    f"Return them as a plain numbered list. Do NOT add any extra commentary or headings — "
-                                    f"just list each line item or product request exactly as written. "
-                                    f"If you cannot find any product items, reply with the single word: NONE."
-                                )
+                                contents=[
+                                    genai_types.Part.from_bytes(
+                                        data=payload,
+                                        mime_type=content_type if content_type in gemini_native_mimes else "application/pdf"
+                                    ),
+                                    prompt
+                                 ]
                             )
                             extracted = response.text.strip() if response.text else ""
-                    break  # Success — exit retry loop
+                        else:
+                            # Local text extraction followed by Gemini text restructuring
+                            raw_text = ""
+                            if content_type in docx_mimes or ext == ".docx":
+                                raw_text = extract_text_from_docx(payload)
+                            elif content_type in xlsx_mimes or ext == ".xlsx":
+                                raw_text = extract_text_from_xlsx(payload)
+                            elif content_type in xls_mimes or ext == ".xls":
+                                raw_text = extract_text_from_xls(payload)
+                            else:
+                                try:
+                                    raw_text = payload.decode('utf-8', errors='ignore')
+                                except Exception:
+                                    try:
+                                        raw_text = payload.decode('latin-1', errors='ignore')
+                                    except Exception as de:
+                                        print(f"[Attachment] Failed to decode text: {de}")
 
-                except Exception as api_err:
-                    err_str = str(api_err)
-                    is_transient = any(code in err_str for code in ["503", "429", "500", "UNAVAILABLE", "Resource has been exhausted"])
-                    if is_transient and attempt < max_retries:
-                        wait_sec = 2 ** attempt  # 2s, 4s, 8s
-                        print(f"[Attachment] Attempt {attempt}/{max_retries} failed (transient): {err_str[:80]}. Retrying in {wait_sec}s...")
-                        time.sleep(wait_sec)
-                    else:
-                        raise  # Non-transient or last attempt — bubble up
+                            if raw_text.strip():
+                                response = client.models.generate_content(
+                                    model="gemini-2.5-flash",
+                                    contents=(
+                                        f"You are a purchasing document analyser. Extract ALL product names, item descriptions, "
+                                        f"SKU codes, part numbers, quantities, and specifications mentioned in this text:\n\n"
+                                        f"{raw_text}\n\n"
+                                        f"Return them as a plain numbered list. Do NOT add any extra commentary or headings - "
+                                        f"just list each line item or product request exactly as written. "
+                                        f"If you cannot find any product items, reply with the single word: NONE."
+                                    )
+                                )
+                                extracted = response.text.strip() if response.text else ""
+                        break  # Success - exit retry loop
 
-            if extracted and extracted.upper() != "NONE":
-                print(f"[Attachment] Extracted text from '{display_filename}':\n{extracted[:300]}...")
-                extracted_texts.append(f"[From attachment '{display_filename}']:\n{extracted}")
-            else:
-                print(f"[Attachment] No product items found in '{display_filename}'.")
+                    except Exception as api_err:
+                        err_str = str(api_err)
+                        is_transient = any(code in err_str for code in ["503", "429", "500", "UNAVAILABLE", "Resource has been exhausted"])
+                        if is_transient and attempt < max_retries:
+                            wait_sec = 2 ** attempt
+                            print(f"[Attachment] Attempt {attempt}/{max_retries} failed (transient): {err_str[:80]}. Retrying in {wait_sec}s...")
+                            time.sleep(wait_sec)
+                        else:
+                            raise
+            except Exception as e:
+                print(f"[Attachment] Gemini extraction failed for '{display_filename}': {e}")
 
-        except Exception as e:
-            print(f"[Attachment] Extraction failed for '{display_filename}' after retries: {e}")
-            # Mark the attachment as failed so callers can handle it
-            extracted_texts.append(f"[ATTACHMENT_FAILED:'{display_filename}']")
+        # 2. Local OCR Fallback for Images if Gemini is not available or failed
+        if (not extracted or extracted.upper() == "NONE") and is_image:
+            print(f"[Attachment] Gemini not available or failed. Falling back to local OCR for '{display_filename}'...")
+            extracted = extract_text_via_local_ocr(payload, ext)
+
+        if extracted and extracted.upper() != "NONE":
+            print(f"[Attachment] Extracted text from '{display_filename}':\n{extracted[:300]}...")
+            extracted_texts.append(f"[From attachment '{display_filename}']:\n{extracted}")
+        else:
+            print(f"[Attachment] No product items found in '{display_filename}'.")
 
     return "\n\n".join(extracted_texts)
-
-
-import urllib.request
-import urllib.parse
-import json
 
 def get_graph_token_delegated(tenant_id, client_id, client_secret):
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1810,9 +1856,7 @@ def mark_outlook_message_read(access_token, email_user, message_id):
 
 def extract_outlook_attachment_text(payload, filename, content_type):
     api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key or api_key.startswith("your_"):
-        print("[Attachment] GEMINI_API_KEY not configured. Cannot extract attachment content.")
-        return ""
+    has_gemini = api_key and not api_key.startswith("your_") and api_key.strip() != ""
 
     gemini_native_mimes = {
         "application/pdf": ".pdf",
@@ -1824,7 +1868,7 @@ def extract_outlook_attachment_text(payload, filename, content_type):
         "image/tiff": ".tiff",
         "image/bmp": ".bmp",
     }
-    
+
     docx_mimes = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
         "application/docx": ".docx",
@@ -1875,72 +1919,81 @@ def extract_outlook_attachment_text(payload, filename, content_type):
     print(f"[Attachment] Processing Outlook attachment: '{display_filename}' ({content_type}).")
 
     is_native_gemini = content_type in gemini_native_mimes or ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"]
-    
+    is_image = ext in [".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"]
+
     extracted = ""
-    try:
-        from google import genai
-        from google.genai import types as genai_types
-        client = genai.Client(api_key=api_key)
-        
-        prompt = (
-            "You are a purchasing document analyser. Extract ALL product names, item descriptions, "
-            "SKU codes, part numbers, quantities, and specifications mentioned in this document. "
-            "Return them as a plain numbered list. Do NOT add any extra commentary or headings — "
-            "just list each line item or product request exactly as written. "
-            "If you cannot find any product items, reply with the single word: NONE."
-        )
+    
+    # 1. Try Gemini first if key is configured
+    if has_gemini:
+        try:
+            from google import genai
+            from google.genai import types as genai_types
+            client = genai.Client(api_key=api_key)
 
-        max_retries = 3
-        for attempt in range(1, max_retries + 1):
-            try:
-                if is_native_gemini:
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[
-                            genai_types.Part.from_bytes(
-                                data=payload,
-                                mime_type=content_type if content_type in gemini_native_mimes else "application/pdf"
-                            ),
-                            prompt
-                        ]
-                    )
-                    extracted = response.text.strip() if response.text else ""
-                else:
-                    raw_text = ""
-                    if content_type in docx_mimes or ext == ".docx":
-                        raw_text = extract_text_from_docx(payload)
-                    elif content_type in xlsx_mimes or ext == ".xlsx":
-                        raw_text = extract_text_from_xlsx(payload)
-                    elif content_type in xls_mimes or ext == ".xls":
-                        raw_text = extract_text_from_xls(payload)
+            prompt = (
+                "You are a purchasing document analyser. Extract ALL product names, item descriptions, "
+                "SKU codes, part numbers, quantities, and specifications mentioned in this document. "
+                "Return them as a plain numbered list. Do NOT add any extra commentary or headings - "
+                "just list each line item or product request exactly as written. "
+                "If you cannot find any product items, reply with the single word: NONE."
+            )
+
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    if is_native_gemini:
+                        response = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=[
+                                genai_types.Part.from_bytes(
+                                    data=payload,
+                                    mime_type=content_type if content_type in gemini_native_mimes else "application/pdf"
+                                ),
+                                prompt
+                            ]
+                        )
+                        extracted = response.text.strip() if response.text else ""
                     else:
-                        try:
-                            raw_text = payload.decode('utf-8', errors='ignore')
-                        except Exception:
-                            raw_text = payload.decode('latin-1', errors='ignore')
-                    
-                    if not raw_text.strip():
-                        return ""
-                        
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[
-                            f"Document Content:\n{raw_text}\n\n{prompt}"
-                        ]
-                    )
-                    extracted = response.text.strip() if response.text else ""
-                break
-            except Exception as re:
-                print(f"[Attachment] Transient error on attempt {attempt}: {re}")
-                if attempt == max_retries:
-                    raise re
-                time.sleep(1)
+                        raw_text = ""
+                        if content_type in docx_mimes or ext == ".docx":
+                            raw_text = extract_text_from_docx(payload)
+                        elif content_type in xlsx_mimes or ext == ".xlsx":
+                            raw_text = extract_text_from_xlsx(payload)
+                        elif content_type in xls_mimes or ext == ".xls":
+                            raw_text = extract_text_from_xls(payload)
+                        else:
+                            try:
+                                raw_text = payload.decode('utf-8', errors='ignore')
+                            except Exception:
+                                raw_text = payload.decode('latin-1', errors='ignore')
 
-        if extracted and extracted != "NONE":
-            return extracted
-    except Exception as e:
-        print(f"[Attachment] Error analyzing Outlook attachment {display_filename}: {e}")
-        
+                        if not raw_text.strip():
+                            return ""
+
+                        response = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=[
+                                f"Document Content:\n{raw_text}\n\n{prompt}"
+                            ]
+                        )
+                        extracted = response.text.strip() if response.text else ""
+                    break
+                except Exception as re:
+                    print(f"[Attachment] Transient error on attempt {attempt}: {re}")
+                    if attempt == max_retries:
+                        raise re
+                    time.sleep(1)
+        except Exception as e:
+            print(f"[Attachment] Error analyzing Outlook attachment {display_filename}: {e}")
+
+    # 2. Local OCR Fallback for Images if Gemini is not available or failed
+    if (not extracted or extracted.upper() == "NONE") and is_image:
+        print(f"[Attachment] Gemini not available or failed. Falling back to local OCR for Outlook attachment '{display_filename}'...")
+        extracted = extract_text_via_local_ocr(payload, ext)
+
+    if extracted and extracted != "NONE":
+        return extracted
+
     return ""
 
 def format_graph_datetime(dt_str):
@@ -2322,7 +2375,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result
             else:
                 reply_subject, reply_body_tuple, pdf_path, status = result
-                proc_invoice_id = None
+                proc_invoice_id = getattr(result, "invoice_id", None)
 
             # Extract QTN invoice ID from the reply subject (e.g. "RE: ... [Quotation #QTN-00049]")
             if not proc_invoice_id:
@@ -3374,7 +3427,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result
                     else:
                         reply_subject, reply_body_tuple, pdf_path, status = result
-                        proc_invoice_id = None
+                        proc_invoice_id = getattr(result, "invoice_id", None)
                     
                     if not proc_invoice_id:
                         quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)
@@ -3948,7 +4001,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                             reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result
                         else:
                             reply_subject, reply_body_tuple, pdf_path, status = result
-                            proc_invoice_id = None
+                            proc_invoice_id = getattr(result, "invoice_id", None)
                         
                         if not proc_invoice_id:
                             quote_id_match = re.search(r'\[Quotation\s+#([A-Z0-9\-]+)\]', reply_subject, re.IGNORECASE)

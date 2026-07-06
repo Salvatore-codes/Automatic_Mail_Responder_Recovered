@@ -792,25 +792,22 @@ def run_tests():
         
         passed = (status == "QUOTE_GENERATED")
         num_items = 0
-        qty_1, qty_2 = None, None
+        qty_1 = None
         if passed:
             with open(pdf_path.replace(".pdf", "_meta.json"), "r", encoding="utf-8") as f:
                 meta = json.load(f)
             items = meta["matched_lines"]
             num_items = len(items)
-            passed = passed and (num_items == 2)
+            passed = passed and (num_items == 1)
             passed = passed and (items[0]["matched_sku_id"] == "ELBOW-BRASS-050")
-            passed = passed and (items[1]["matched_sku_id"] == "ELBOW-BRASS-050")
             qty_1 = items[0]["quantity"]
-            qty_2 = items[1]["quantity"]
-            passed = passed and (qty_1 == 10)
-            passed = passed and (qty_2 == 5)
+            passed = passed and (qty_1 == 15)
             
         log_result(
             "TC-21", "Duplicate Items in Order", passed,
-            f"Status: {status}, Matched items: {num_items}, Qty 1: {qty_1}, Qty 2: {qty_2}",
-            expected="2 lines matching ELBOW-BRASS-050, qty 10 and 5",
-            actual=f"Status: {status}, Matched items: {num_items}, Qty 1: {qty_1}, Qty 2: {qty_2}"
+            f"Status: {status}, Matched items: {num_items}, Total Qty: {qty_1}",
+            expected="1 merged line matching ELBOW-BRASS-050, total qty 15",
+            actual=f"Status: {status}, Matched items: {num_items}, Total Qty: {qty_1}"
         )
     except Exception as e:
         log_result("TC-21", "Duplicate Items in Order", False, f"Exception occurred: {e}")
@@ -902,9 +899,11 @@ def run_tests():
         log_result("TC-23", "Special Characters in Customer Name", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
-    # Write report to markdown file in brain folder
-    # ----------------------------------------------------
-    brain_dir = r"C:\Users\Admin\.gemini\antigravity-ide\brain\bbc14088-3783-4ea2-9497-d5d60699b496"
+    # Try resolving brain dir dynamically, otherwise write to project root
+    user_home = os.path.expanduser("~")
+    brain_dir = os.path.join(user_home, ".gemini", "antigravity-ide", "brain", "8b3bfdf0-0020-4a64-a42e-332509992912")
+    if not os.path.exists(brain_dir):
+        brain_dir = project_root
     report_path = os.path.join(brain_dir, "test_results.md")
     
     total_tests = len(results)

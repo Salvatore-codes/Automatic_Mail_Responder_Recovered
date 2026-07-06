@@ -54,6 +54,7 @@ def test_settings_api_endpoints():
     req = SettingsUpdateRequest(
         reply_mode="manual",
         reply_pattern="detailed",
+        ingestion_engine="A",
         exec_name="Jane Doe",
         exec_title="Manager",
         exec_phone="+91 11111 22222",
