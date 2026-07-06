@@ -629,7 +629,7 @@ def run_tests():
         log_result("TC-16", "Request a Small Discount (<= 2%) — Auto Approved", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
-    # TC-17 · Request a Medium Discount (3–5%) — Counter-Offer
+    # TC-17 · Request a Medium Discount (3–5%) — Escalated to Pending
     # ----------------------------------------------------
     try:
         sender = "negotiation_counter@gmail.com"
@@ -656,22 +656,22 @@ def run_tests():
             catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
         )
         
-        passed = (status_2 == "NEGOTIATION_NEGOTIATING")
+        passed = (status_2 == "PENDING_REVIEW")
         plain_body_2 = rep_body_2[0] if isinstance(rep_body_2, tuple) else rep_body_2
-        has_counter = ("3% discount" in plain_body_2 or "offer you a 3% discount" in plain_body_2 or "stretch" in plain_body_2.lower())
-        passed = passed and has_counter
+        has_consideration = ("under consideration" in plain_body_2 or "officials" in plain_body_2)
+        passed = passed and has_consideration
         
         log_result(
-            "TC-17", "Request a Medium Discount (3–5%) — Counter-Offer", passed,
-            f"Status: {status_2}, Body has counter-offer text: {has_counter}",
-            expected="NEGOTIATION_NEGOTIATING, counter-offer for 3% or similar in body",
-            actual=f"Status: {status_2}, Body has counter-offer text: {has_counter}"
+            "TC-17", "Request a Medium Discount (3–5%) — Escalated to Pending", passed,
+            f"Status: {status_2}, Body has consideration text: {has_consideration}",
+            expected="PENDING_REVIEW, consideration message in body",
+            actual=f"Status: {status_2}, Body has consideration text: {has_consideration}"
         )
     except Exception as e:
-        log_result("TC-17", "Request a Medium Discount (3–5%) — Counter-Offer", False, f"Exception occurred: {e}")
+        log_result("TC-17", "Request a Medium Discount (3–5%) — Escalated to Pending", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
-    # TC-18 · Request an Unreasonable Discount (> 5%) — Escalation
+    # TC-18 · Request an Unreasonable Discount (> 5%) — Escalated to Pending
     # ----------------------------------------------------
     try:
         sender = "negotiation_escalation@gmail.com"
@@ -695,31 +695,19 @@ def run_tests():
             catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
         )
         
-        # Turn 2: Insist 15%
-        rep_sub_3, rep_body_3, pdf_path_3, status_3 = process_incoming_email(
-            sender=sender, subject=rep_sub, body="No, 15% is my minimum requirement",
-            catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
-        )
-        
-        # Turn 3: Insist again
-        rep_sub_4, rep_body_4, pdf_path_4, status_4 = process_incoming_email(
-            sender=sender, subject=rep_sub, body="I can't accept anything less than 15%",
-            catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
-        )
-        
-        passed = (status_4 == "NEGOTIATION_ESCALATED")
-        plain_body_4 = rep_body_4[0] if isinstance(rep_body_4, tuple) else rep_body_4
-        has_escalation_text = ("management team" in plain_body_4 or "review" in plain_body_4)
-        passed = passed and has_escalation_text
+        passed = (status_2 == "PENDING_REVIEW")
+        plain_body_2 = rep_body_2[0] if isinstance(rep_body_2, tuple) else rep_body_2
+        has_consideration = ("under consideration" in plain_body_2 or "officials" in plain_body_2)
+        passed = passed and has_consideration
         
         log_result(
-            "TC-18", "Request an Unreasonable Discount (> 5%) — Escalation", passed,
-            f"Status: {status_4}, Has escalation text: {has_escalation_text}",
-            expected="NEGOTIATION_ESCALATED, body mentions sharing with management",
-            actual=f"Status: {status_4}, Has escalation text: {has_escalation_text}"
+            "TC-18", "Request an Unreasonable Discount (> 5%) — Escalated to Pending", passed,
+            f"Status: {status_2}, Has consideration text: {has_consideration}",
+            expected="PENDING_REVIEW, body mentions under consideration by officials",
+            actual=f"Status: {status_2}, Has consideration text: {has_consideration}"
         )
     except Exception as e:
-        log_result("TC-18", "Request an Unreasonable Discount (> 5%) — Escalation", False, f"Exception occurred: {e}")
+        log_result("TC-18", "Request an Unreasonable Discount (> 5%) — Escalated to Pending", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
     # TC-19 · Empty / Irrelevant Email

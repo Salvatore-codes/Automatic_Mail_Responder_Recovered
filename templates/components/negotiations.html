@@ -1,0 +1,101 @@
+          <!-- TAB 4: NEGOTIATIONS -->
+          <div class="tab-content" :class="{ 'active': activeTab === 'negotiations' }">
+
+            <div class="ov-hero page-hero">
+              <div class="ov-hero-glow" aria-hidden="true"></div>
+              <div class="ov-hero-main">
+                <div class="ov-eyebrow">Revenue Operations</div>
+                <h1 class="ov-title">Discount Negotiations</h1>
+                <p class="ov-sub">Review, counter, or approve the discount requests the AI escalated for human judgment.</p>
+              </div>
+              <div class="ov-hero-side">
+                <div class="ov-pulse"><span class="ov-pulse-dot"></span> Live</div>
+              </div>
+            </div>
+
+            <!-- Negotiations KPIs -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;">
+              <div class="kpi-card">
+                <span>Pending Review</span>
+                <strong style="color:var(--yellow);" x-text="negotiationsList.filter(n => n.status !== 'NEGOTIATION_RESOLVED').length"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>Escalated</span>
+                <strong style="color:var(--red);" x-text="negotiationsList.filter(n => n.status === 'NEGOTIATION_ESCALATED').length"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>Avg. Asked Discount</span>
+                <strong x-text="(() => { const p = negotiationsList.filter(n => n.status !== 'NEGOTIATION_RESOLVED'); return (p.length ? Math.round(p.reduce((a,n)=>a+(n.discount_pct||0),0)/p.length*100) : 0) + '%'; })()"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>Value at Stake</span>
+                <strong class="kpi-money" x-text="fmt(negotiationsList.filter(n => n.status !== 'NEGOTIATION_RESOLVED').reduce((a,n)=>a+(n.grand_total||0),0))"></strong>
+              </div>
+            </div>
+
+            <div class="section-card">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <i data-lucide="message-square" class="w-4 h-4" style="color:var(--yellow)"></i> Escalated Discount Negotiations
+                </h3>
+                <button @click="loadNegotiations" class="btn btn-ghost btn-sm">
+                  <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh
+                </button>
+              </div>
+
+              <!-- Table -->
+              <div class="overflow-x-auto max-w-full">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                      <th class="p-3.5 border-b border-[var(--border)]">Invoice ID</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Channel</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Customer Name</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Quote Total</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Asked Discount</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Status</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Operator Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-if="getFilteredNegotiations().length === 0">
+                      <tr>
+                        <td colspan="7" class="p-12 text-center text-xs text-[var(--text-2)] italic">No escalated negotiations found.</td>
+                      </tr>
+                    </template>
+                    <template x-for="neg in getFilteredNegotiations()" :key="neg.invoice_id">
+                      <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/30">
+                        <td class="p-3.5 font-bold text-[var(--text-1)]" x-text="neg.invoice_id"></td>
+                        <td class="p-3.5">
+                          <span class="flex items-center gap-1.5 capitalize text-[10px] font-bold" x-text="neg.source || 'email'"></span>
+                        </td>
+                        <td class="p-3.5">
+                          <strong x-text="neg.customer_name"></strong>
+                          <div class="text-[10px] text-[var(--text-2)] mt-0.5 truncate max-w-[150px]" x-text="neg.customer_email"></div>
+                        </td>
+                        <td class="p-3.5 font-bold font-mono" x-text="fmt(neg.grand_total)"></td>
+                        <td class="p-3.5 font-extrabold text-[var(--yellow)]" x-text="Math.round(neg.discount_pct * 100) + '%'"></td>
+                        <td class="p-3.5">
+                          <span class="badge" :class="neg.status === 'NEGOTIATION_RESOLVED' ? 'green' : 'yellow'" x-text="neg.status === 'NEGOTIATION_RESOLVED' ? 'Resolved' : 'Pending Review'"></span>
+                        </td>
+                        <td class="p-3.5 flex gap-2">
+                          <button @click="openChatHistory(neg.invoice_id, neg.customer_name)" class="btn-micro text-[10px] px-2.5 py-1">
+                            <i data-lucide="history" class="w-3.5 h-3.5 mr-1 inline-block align-middle"></i> Logs
+                          </button>
+                          <template x-if="neg.status !== 'NEGOTIATION_RESOLVED'">
+                            <button @click="openResolveNeg(neg.invoice_id, neg.customer_name, neg.subtotal, neg.discount_pct)" class="px-2.5 py-1 bg-[var(--accent)] text-white text-[10px] font-bold rounded-lg flex items-center gap-1">
+                              <i data-lucide="git-pull-request" class="w-3 h-3"></i> Decide
+                            </button>
+                          </template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+
+

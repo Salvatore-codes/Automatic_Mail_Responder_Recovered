@@ -144,10 +144,11 @@ def init_db_conn(conn):
         processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
-    try:
-        cursor.execute("ALTER TABLE processed_messages ADD COLUMN received_at TEXT")
-    except sqlite3.OperationalError:
-        pass
+    for _col_name in ["received_at", "customer_name", "customer_email"]:
+        try:
+            cursor.execute(f"ALTER TABLE processed_messages ADD COLUMN {_col_name} TEXT")
+        except sqlite3.OperationalError:
+            pass
     
     # 7. Deficits table
     cursor.execute("""
@@ -196,7 +197,26 @@ def init_db_conn(conn):
         value TEXT
     )
     """)
-    
+
+    # 11. Activity log table (structured event log for the dashboard)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT,
+        invoice_id TEXT,
+        customer_name TEXT,
+        customer_email TEXT,
+        description TEXT,
+        timestamp TEXT
+    )
+    """)
+    # Backward-compat: add missing columns if DB was created before this table
+    for _col in [("customer_name", "TEXT"), ("customer_email", "TEXT"), ("description", "TEXT")]:
+        try:
+            cursor.execute(f"ALTER TABLE activity_log ADD COLUMN {_col[0]} {_col[1]}")
+        except Exception:
+            pass
+
     conn.commit()
 
 def init_db(tenant_id=None):
@@ -307,8 +327,10 @@ def log_unmatched_item(customer_email, customer_name, original_body, source="unk
     INSERT INTO unmatched_items (customer_email, customer_name, original_body, source, created_at)
     VALUES (?, ?, ?, ?, ?)
     """, (customer_email, customer_name, original_body, source, now_str))
+    last_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return last_id
 
 def get_all_unmatched_items(limit=100, tenant_id=None):
     """Returns recent unmatched enquiries for use in reports and the dashboard."""
@@ -324,6 +346,19 @@ def get_all_unmatched_items(limit=100, tenant_id=None):
     items = [dict(row) for row in rows]
     conn.close()
     return items
+
+def delete_unmatched_item(item_id, tenant_id=None):
+    """Deletes an unmatched item by its database ID once resolved."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM unmatched_items WHERE id = ?", (item_id,))
+        conn.commit()
+    except Exception as e:
+        print(f"[Database] Failed to delete unmatched item {item_id}: {e}")
+    finally:
+        conn.close()
+
 
 def get_unmatched_items_count(tenant_id=None):
     """Returns count of unmatched enquiries for dashboard stats."""
@@ -345,7 +380,7 @@ def is_message_processed(message_id, tenant_id=None):
     conn.close()
     return row is not None
 
-def log_processed_message(message_id, invoice_id, received_at=None, tenant_id=None):
+def log_processed_message(message_id, invoice_id, received_at=None, tenant_id=None, customer_name=None, customer_email=None):
     """Logs a processed Message-ID mapping it to the quotation sequence number."""
     if not message_id:
         return
@@ -360,21 +395,21 @@ def log_processed_message(message_id, invoice_id, received_at=None, tenant_id=No
         if received_at:
             cursor.execute("""
             UPDATE processed_messages 
-            SET invoice_id = ?, received_at = ?
+            SET invoice_id = ?, received_at = ?, customer_name = ?, customer_email = ?
             WHERE message_id = ?
-            """, (invoice_id, received_at, message_id.strip()))
+            """, (invoice_id, received_at, customer_name, customer_email, message_id.strip()))
         else:
             cursor.execute("""
             UPDATE processed_messages 
-            SET invoice_id = ?
+            SET invoice_id = ?, customer_name = ?, customer_email = ?
             WHERE message_id = ?
-            """, (invoice_id, message_id.strip()))
+            """, (invoice_id, customer_name, customer_email, message_id.strip()))
     else:
         now_str = get_now_ist_str()
         cursor.execute("""
-        INSERT INTO processed_messages (message_id, invoice_id, received_at, processed_at)
-        VALUES (?, ?, ?, ?)
-        """, (message_id.strip(), invoice_id, received_at, now_str))
+        INSERT INTO processed_messages (message_id, invoice_id, received_at, customer_name, customer_email, processed_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (message_id.strip(), invoice_id, received_at, customer_name, customer_email, now_str))
         
     conn.commit()
     conn.close()
@@ -531,6 +566,80 @@ def get_latest_message_id(invoice_id, tenant_id=None):
     except Exception as e:
         print(f"[Warning] SQLite Message-ID lookup failed: {e}")
         return None
+    finally:
+        conn.close()
+
+
+def log_activity(event_type, invoice_id=None, customer_name=None, customer_email=None, description=None, tenant_id=None):
+    """Logs a structured activity event to the activity_log table."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    now_str = get_now_ist_str()
+    try:
+        cursor.execute("""
+        INSERT INTO activity_log (event_type, invoice_id, customer_name, customer_email, description, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (event_type, invoice_id, customer_name, customer_email, description, now_str))
+        conn.commit()
+    except Exception as e:
+        print(f"[ActivityLog] Failed to log activity: {e}")
+    finally:
+        conn.close()
+
+
+def get_activity_log(limit=200, tenant_id=None):
+    """Returns the most recent structured activity log entries for the dashboard."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id, event_type, invoice_id, customer_name, customer_email, description, timestamp
+            FROM activity_log
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"[ActivityLog] Failed to fetch activity log: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_chat_history_for_context(invoice_id, tenant_id=None, max_entries=20):
+    """Builds a plain-text conversation summary from chat_logs for AI context injection.
+    
+    Returns a multi-line string like:
+        [Customer - 2026-07-06 11:23 IST]: I need 10 brass elbows...
+        [Bot - 2026-07-06 11:23 IST]: Quotation QTN-00123 generated. Total: Rs.1450...
+    or empty string if no prior history.
+    """
+    if not invoice_id:
+        return ""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT sender, message, timestamp
+            FROM chat_logs
+            WHERE invoice_id = ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+        """, (invoice_id, max_entries))
+        rows = cursor.fetchall()
+        if not rows:
+            return ""
+        lines = []
+        for row in rows:
+            sender_label = row["sender"].upper() if row["sender"] else "UNKNOWN"
+            ts = row["timestamp"] or ""
+            msg = (row["message"] or "").strip()[:500]  # cap per-message to 500 chars
+            lines.append(f"[{sender_label} - {ts} IST]: {msg}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[ChatHistory] Failed to fetch thread context: {e}")
+        return ""
     finally:
         conn.close()
 

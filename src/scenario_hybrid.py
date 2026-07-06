@@ -50,18 +50,33 @@ def parse_order_with_gemini(text, client, is_mock=False, input_type="custom"):
             
     prompt = f"""
     You are an intelligent order processing agent for a hardware shop.
-    Your task is to read the customer order enquiry (which may contain spelling errors, shorthand, or conversational fluff)
-    and extract all individual hardware items they want to buy.
-    
-    For each item, identify:
-    1. 'extracted_item': Cleaned, standardized name of the product with all sizes/specs (e.g. "PTFE Teflon Seal Tape 12mm", "Hex Head Bolt M8 x 50mm", "Brass Elbow 1/2 Inch").
-    2. 'quantity': The count/units requested. (Extract integers only, default to 1 if not specified).
-    3. 'original_phrase': The original line or segment of text from the customer.
+    Your task is to read the customer order enquiry and extract all individual hardware items they want to buy.
 
-    Return ONLY a JSON array of objects. Do not include markdown formatting or backticks around the JSON.
-    Example output format:
+    IMPORTANT: The input may be a structured TABLE copied from a spreadsheet or web form, where columns are separated by tabs or newlines.
+    Common table column layouts include:
+      - Particulars | Part No | Quantity | UOM
+      - Part No | Description | Qty | Unit
+      - Description | SKU | Quantity | UOM
+    The first row is always the header — SKIP it. Each subsequent row is one product.
+    Some rows may have the Part No (SKU code like "BOLT-HEX-M8-50") in the FIRST column and the description in the SECOND column — handle both orderings.
+
+    For each data row, identify:
+    1. 'extracted_item': The product name/description (NOT the SKU code). E.g. "Utility Knife Spare Blades 10pc", "Hex Head Bolt M8 x 50mm".
+    2. 'sku_hint': The Part No / SKU code if present in the row (e.g. "BLADES-KNIFE-10", "BOLT-HEX-M8-50"). Leave as empty string "" if not present.
+    3. 'quantity': The numeric quantity requested as an integer. Default to 1 if not specified.
+    4. 'original_phrase': The full original row text from the customer.
+
+    Rules:
+    - Do NOT invent items not present in the input.
+    - Do NOT duplicate rows.
+    - Skip any row that is a header (contains words like "Particulars", "Part No", "Quantity", "UOM", "Description", "SKU").
+    - If a row contains ONLY a SKU code with no description, look at adjacent rows to pair them correctly.
+
+    Return ONLY a valid JSON array of objects. No markdown, no backticks.
+    Example output:
     [
-      {{"extracted_item": "brass elbow 1/2 inch", "quantity": 10, "original_phrase": "- 10 brass elbow joints 1/2"}}
+      {{"extracted_item": "Utility Knife Spare Blades 10pc", "sku_hint": "BLADES-KNIFE-10", "quantity": 15, "original_phrase": "Utility Knife Spare Blades 10pc | BLADES-KNIFE-10 | 15 | Nos"}},
+      {{"extracted_item": "Hex Head Bolt M8 x 50mm", "sku_hint": "BOLT-HEX-M8-50", "quantity": 3, "original_phrase": "BOLT-HEX-M8-50 | Hex Head Bolt M8 x 50mm | 3 | Pcs"}}
     ]
 
     Here is the customer enquiry:
@@ -114,29 +129,39 @@ def run_scenario_hybrid(order_text, catalog, input_type="custom"):
     
     # Step 2: Match each extracted item
     for item in extracted_items:
-        query = item['extracted_item']
-        qty = item['quantity']
-        original = item['original_phrase']
+        query = item.get('extracted_item', '')
+        qty = item.get('quantity', 1)
+        original = item.get('original_phrase', query)
+        sku_hint = item.get('sku_hint', '').strip()
         
         best_match = None
         match_method = "None"
         confidence = 0.0
         
-        if not is_mock and client:
-            # Match using Gemini embeddings
+        # Priority 0: Direct SKU lookup — if Gemini extracted a Part No, use it directly
+        if sku_hint:
+            direct = catalog.get_by_sku_id(sku_hint)
+            if direct:
+                best_match = direct
+                confidence = 100.0
+                match_method = "Direct SKU Lookup"
+        
+        if not best_match and not is_mock and client:
+            # Priority 1: Match using Gemini embeddings
             candidates = catalog.match_gemini_embeddings(query, client, limit=1)
             if candidates:
                 best_match = candidates[0]['sku']
                 confidence = candidates[0]['score']
                 match_method = "Gemini Embeddings"
         
-        # Fallback to local TF-IDF semantic search if live match fails or is in mock mode
+        # Priority 2: Fallback to local TF-IDF semantic search
         if not best_match:
-            candidates = catalog.match_local_semantic(query, limit=1)
+            search_query = query or sku_hint
+            candidates = catalog.match_local_semantic(search_query, limit=1)
             if candidates:
                 best_match = candidates[0]['sku']
                 confidence = candidates[0]['score']
-                match_method = "Local TF-IDF Match (Simulated)"
+                match_method = "Local TF-IDF Match"
                 
         if best_match and confidence >= 80.0:
             matched_lines.append({
@@ -162,3 +187,4 @@ def run_scenario_hybrid(order_text, catalog, input_type="custom"):
             })
             
     return matched_lines
+

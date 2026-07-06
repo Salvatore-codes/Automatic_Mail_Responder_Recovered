@@ -202,6 +202,17 @@ class Catalog:
         except Exception as e:
             print(f"[Warning] Failed to save synonym to SQLite for tenant {self.tenant_id}: {e}")
 
+    def get_by_sku_id(self, sku_id):
+        """
+        Direct lookup of a catalog entry by its exact SKU ID (case-insensitive).
+        Returns the SKU dict if found, or None.
+        """
+        sku_id_upper = sku_id.strip().upper()
+        for sku in self.skus:
+            if sku['sku_id'].strip().upper() == sku_id_upper:
+                return sku
+        return None
+
     def check_synonyms(self, query):
         clean_q = query.lower().strip()
         

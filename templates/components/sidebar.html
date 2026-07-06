@@ -1,0 +1,47 @@
+      <!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
+      <aside class="sidebar" style="position:relative;z-index:50;">
+
+        <!-- Brand top -->
+        <div class="sidebar-top">
+          <div class="sidebar-brand">
+            <img src="/static/logo.png" alt="Trofeo" class="theme-logo" style="height:26px;object-fit:contain;" />
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="sidebar-nav">
+          <div class="nav-section-label">Operations</div>
+
+          <template x-for="tab in tabs" :key="tab.id">
+            <button
+              @click="switchTab(tab.id)"
+              class="nav-item"
+              :class="activeTab === tab.id ? 'active' : ''"
+              :title="tab.description"
+            >
+              <!-- Icon wrap gets gradient when active -->
+              <span class="nav-icon-wrap">
+                <i :data-lucide="tab.icon" style="width:14px;height:14px;"></i>
+              </span>
+              <span style="flex:1;text-align:left;" x-text="tab.label"></span>
+              <template x-if="tab.badge !== null && tab.badge > 0">
+                <span
+                  class="nav-badge"
+                  :class="tab.badgeColor === 'yellow' ? 'nav-badge-yellow' : 'nav-badge-red'"
+                  x-text="tab.badge"
+                ></span>
+              </template>
+            </button>
+          </template>
+        </nav>
+
+        <!-- User Footer -->
+        <div class="sidebar-footer">
+          <div class="user-avatar">OP</div>
+          <div class="user-info">
+            <div class="user-name">Operator</div>
+            <div class="user-role">Administrator</div>
+          </div>
+          <div class="online-dot" title="Online"></div>
+        </div>
+      </aside>

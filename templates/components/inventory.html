@@ -1,0 +1,117 @@
+          <!-- TAB 6: CATALOG INVENTORY -->
+          <div class="tab-content" :class="{ 'active': activeTab === 'inventory' }">
+
+            <div class="ov-hero page-hero">
+              <div class="ov-hero-glow" aria-hidden="true"></div>
+              <div class="ov-hero-main">
+                <div class="ov-eyebrow">Catalog</div>
+                <h1 class="ov-title">Full Inventory</h1>
+                <p class="ov-sub">Live stock levels, base pricing, and availability across every SKU in the branch.</p>
+              </div>
+              <div class="ov-hero-side">
+                <div class="ov-pulse"><span class="ov-pulse-dot"></span> Live</div>
+              </div>
+            </div>
+
+            <!-- Inventory KPIs -->
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px;">
+              <div class="kpi-card">
+                <span>Total SKUs</span>
+                <strong x-text="catalog.length"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>In Stock</span>
+                <strong style="color:var(--green);" x-text="catalog.filter(s => s.stock > 5).length"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>Low Stock</span>
+                <strong style="color:var(--yellow);" x-text="catalog.filter(s => s.stock > 0 && s.stock <= 5).length"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>Out of Stock</span>
+                <strong style="color:var(--red);" x-text="catalog.filter(s => s.stock === 0).length"></strong>
+              </div>
+              <div class="kpi-card">
+                <span>Inventory Value</span>
+                <strong class="kpi-money" x-text="fmt(catalog.reduce((a,s)=>a+(s.stock||0)*(s.price||0),0))"></strong>
+              </div>
+            </div>
+
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-3">
+              <div class="flex justify-between items-center p-4 px-5 border-b border-[var(--border)] bg-[var(--bg-card2)]/50">
+                <div>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-1)] flex items-center gap-2 m-0">
+                    <i data-lucide="warehouse" class="w-4 h-4 text-[var(--accent)]"></i> Full Product Inventory Catalog
+                  </h3>
+                </div>
+                <div class="flex gap-3">
+                  <select x-model="inventoryCategory" @change="filterCatalog" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)] cursor-pointer">
+                    <option value="all">All Categories</option>
+                    <template x-for="c in [...new Set(catalog.map(s => s.category).filter(Boolean))].sort()" :key="c">
+                      <option :value="c" x-text="c"></option>
+                    </template>
+                  </select>
+                  <select x-model="inventoryStatus" @change="filterCatalog" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)] cursor-pointer">
+                    <option value="all">All Status</option>
+                    <option value="in">In Stock</option>
+                    <option value="low">Low Stock</option>
+                    <option value="out">Out of Stock</option>
+                  </select>
+                  <input type="text" x-model="inventorySearch" @input="filterCatalog" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Search SKU ID or Name..." />
+                  <button @click="loadCatalog" class="btn-micro px-2.5 py-1"><i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh</button>
+                </div>
+              </div>
+
+              <!-- Table -->
+              <div class="overflow-x-auto max-w-full">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                      <th class="p-3.5 border-b border-[var(--border)]">#</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">SKU ID</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Product Name</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Category</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Price (Base)</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Stock Level</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Status</th>
+                      <th class="p-3.5 border-b border-[var(--border)]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-if="filteredCatalog.length === 0">
+                      <tr>
+                        <td colspan="8" class="p-0">
+                          <div class="table-empty">
+                            <i data-lucide="search-x" class="w-7 h-7"></i>
+                            <div class="te-title">No matching products</div>
+                            <div class="te-sub">Try a different search term, category, or stock status.</div>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                    <template x-for="(sku, idx) in filteredCatalog" :key="sku.sku_id">
+                      <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/30">
+                        <td class="p-3.5 text-[var(--text-2)]" x-text="idx + 1"></td>
+                        <td class="p-3.5 font-bold font-mono" x-text="sku.sku_id"></td>
+                        <td class="p-3.5"><strong x-text="sku.sku_name"></strong></td>
+                        <td class="p-3.5 text-[var(--text-2)]" x-text="sku.category"></td>
+                        <td class="p-3.5 font-bold font-mono text-[var(--text-1)]" x-text="fmt(sku.price)"></td>
+                        <td class="p-3.5">
+                          <strong :class="sku.stock === 0 ? 'text-red-500' : (sku.stock <= 5 ? 'text-amber-500' : 'text-emerald-500')" x-text="sku.stock + ' units'"></strong>
+                        </td>
+                        <td class="p-3.5">
+                          <span class="badge font-bold" :class="sku.stock === 0 ? 'red' : (sku.stock <= 5 ? 'yellow' : 'green')" x-text="sku.stock === 0 ? 'Out of stock' : (sku.stock <= 5 ? 'Low Stock' : 'In Stock')"></span>
+                        </td>
+                        <td class="p-3.5">
+                          <button @click="openStockModal(sku.sku_id, sku.sku_name, sku.stock)" class="px-2.5 py-1 bg-[var(--accent)] text-white font-bold rounded-lg text-[10px] flex items-center gap-1.5">
+                            <i data-lucide="edit" class="w-3.5 h-3.5"></i> Update Stock
+                          </button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>

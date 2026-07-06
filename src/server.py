@@ -4,9 +4,10 @@ load_dotenv()
 import time
 import json
 import random
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
@@ -16,6 +17,10 @@ from src.scenario_free import run_scenario_free
 from src.scenario_hybrid import run_scenario_hybrid
 from src.pdf_generator import generate_pdf_quotation
 from src.negotiator import run_negotiation_step
+import datetime
+
+# Record when the server process started
+_SERVER_START_TIME = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
 
 # 1. Initialize FastAPI app
 app = FastAPI(title="Trofeo Hardware Automated SKU Matcher API")
@@ -32,6 +37,7 @@ app.add_middleware(
 project_root = os.path.dirname(os.path.dirname(__file__))
 static_dir = os.path.join(project_root, "static")
 quotes_dir = os.path.join(static_dir, "quotes")
+templates = Jinja2Templates(directory=os.path.join(project_root, "templates"))
 
 # Ensure static and quotes directory exist
 os.makedirs(quotes_dir, exist_ok=True)
@@ -911,6 +917,28 @@ async def get_inventory_update_logs(tenant_id: str = "default"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/activity/log")
+async def get_activity_log_endpoint(tenant_id: str = "default", limit: int = 200):
+    """Returns the structured activity log with server uptime and IST timestamps."""
+    try:
+        from src.database_sqlite import get_activity_log
+        logs = get_activity_log(limit=limit, tenant_id=tenant_id)
+
+        ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        now_ist = datetime.datetime.now(ist)
+        uptime_seconds = int((now_ist - _SERVER_START_TIME).total_seconds())
+
+        return {
+            "server_start_time": _SERVER_START_TIME.strftime("%Y-%m-%d %H:%M:%S IST"),
+            "current_time": now_ist.strftime("%Y-%m-%d %H:%M:%S IST"),
+            "uptime_seconds": uptime_seconds,
+            "count": len(logs),
+            "logs": logs
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/service/status")
 async def get_email_listener_status(tenant_id: str = "default"):
     try:
@@ -1059,19 +1087,19 @@ async def get_overview_analytics(tenant_id: str = "default"):
         
         # 4. Pending items
         # A. Escalated negotiations
-        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, discount_pct, subtotal FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING')")
+        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, discount_pct, subtotal, created_at FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING') ORDER BY created_at DESC")
         escalated_negs = [dict(row) for row in cursor.fetchall()]
         
         # B. Pending deficits
-        cursor.execute("SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email FROM deficits WHERE status = 'PENDING'")
+        cursor.execute("SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, created_at FROM deficits WHERE status = 'PENDING' ORDER BY created_at DESC")
         pending_deficits = [dict(row) for row in cursor.fetchall()]
         
         # C. Unmatched items
-        cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items")
+        cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items ORDER BY created_at DESC")
         unmatched_items = [dict(row) for row in cursor.fetchall()]
 
         # D. Pending reviews (for Manual Reply mode)
-        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, created_at FROM quotations WHERE status = 'PENDING_REVIEW'")
+        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, created_at FROM quotations WHERE status = 'PENDING_REVIEW' ORDER BY created_at DESC")
         pending_reviews = [dict(row) for row in cursor.fetchall()]
 
         # E. Resolved deficits count (for KPI card)
@@ -1090,24 +1118,32 @@ async def get_overview_analytics(tenant_id: str = "default"):
         human_intervention = round((pending_approval_count / max(total_received, 1)) * 100, 1)
         
         # 5. Fetch recent email/response log stream (excluding SELF_SENT and IRRELEVANT)
+        # Bug 4 fix: Use pm.customer_name and pm.customer_email as primary source (stored during ingestion).
+        # The LEFT JOIN to quotations is only for status. This ensures UNMATCHED and NEW items show correct customer info.
         cursor.execute("""
             SELECT pm.message_id, pm.invoice_id, pm.processed_at, pm.received_at,
+                   pm.customer_name as pm_name, pm.customer_email as pm_email,
                    q.customer_email as q_email, q.customer_name as q_name, q.status as q_status,
                    u.customer_email as u_email, u.customer_name as u_name
             FROM processed_messages pm
             LEFT JOIN quotations q ON q.invoice_id = pm.invoice_id
                 OR q.invoice_id = REPLACE(pm.invoice_id, 'CUSTOMER_REPLIED:', '')
-            LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || u.id
+            LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || CAST(u.id AS TEXT)
             WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')
             ORDER BY pm.processed_at DESC LIMIT 100
         """)
         raw_stream = cursor.fetchall()
+
         
         log_stream = []
         for row in raw_stream:
             inv_id = row['invoice_id']
             processed_at = row['processed_at']
             received_at = row['received_at'] or processed_at
+            
+            # Use processed_message's stored customer info as primary source (Bug 4 fix)
+            pm_name = row['pm_name'] or ""
+            pm_email = row['pm_email'] or ""
             
             # Map type and status
             if inv_id == 'IRRELEVANT' or inv_id == 'EMPTY_BODY':
@@ -1118,8 +1154,8 @@ async def get_overview_analytics(tenant_id: str = "default"):
             elif inv_id.startswith('CUSTOMER_REPLIED:'):
                 # Customer reply to a previous quotation
                 qtn_ref = inv_id.replace('CUSTOMER_REPLIED:', '')
-                email = row['q_email'] or "Customer"
-                name = row['q_name'] or "Customer"
+                email = pm_email or row['q_email'] or "Customer"
+                name = pm_name or row['q_name'] or "Customer"
                 q_status = row['q_status']
                 if q_status in ("NEGOTIATION_APPROVED", "NEGOTIATION_NEGOTIATING", "QUOTE_UPDATED", "CONVERSATIONAL_REPLY"):
                     status = q_status
@@ -1127,20 +1163,21 @@ async def get_overview_analytics(tenant_id: str = "default"):
                 else:
                     status = "CUSTOMER_REPLIED"
                     desc = f"Customer replied to {qtn_ref}"
+                # Show the underlying QTN ID for the Kanban card invoice_id so the chat modal opens correctly
+                inv_id = qtn_ref
             elif inv_id.startswith('QTN-'):
-                email = row['q_email'] or "Customer"
-                name = row['q_name'] or "Customer"
+                email = pm_email or row['q_email'] or "Customer"
+                name = pm_name or row['q_name'] or "Customer"
                 status = row['q_status'] or "QUOTE_GENERATED"
                 if status == "PENDING_REVIEW":
                     desc = f"Quotation {inv_id} held for manual review"
                 else:
                     desc = f"Quotation {inv_id} Generated"
             elif 'UNMATCHED' in inv_id:
-                email = row['u_email'] or "Customer"
-                name = row['u_name'] or "Customer"
+                email = pm_email or row['u_email'] or "Customer"
+                name = pm_name or row['u_name'] or "Customer"
                 # If original_body indicates human agent request → Pending
                 try:
-                    _body_check = (row['u_email'] or '') + inv_id
                     # Fetch from DB to check HUMAN AGENT REQUESTED tag
                     if 'UNMATCHED_' in inv_id:
                         _uid = inv_id.replace('UNMATCHED_', '')
@@ -1148,7 +1185,17 @@ async def get_overview_analytics(tenant_id: str = "default"):
                             "SELECT original_body FROM unmatched_items WHERE id = ?",
                             (_uid,)
                         ).fetchone()
-                        if _urow and 'HUMAN AGENT REQUESTED' in (_urow[0] or ''):
+                        
+                        # Check if an automated reply email was sent for this unmatched item
+                        _has_sent = cursor.execute(
+                            "SELECT 1 FROM activity_log WHERE event_type = 'EMAIL_SENT' AND invoice_id = ?",
+                            (inv_id,)
+                        ).fetchone()
+                        
+                        if _has_sent:
+                            status = "UNPARSED_NOTICE"
+                            desc = "Automated reply sent (asking for details)"
+                        elif _urow and 'HUMAN AGENT REQUESTED' in (_urow[0] or ''):
                             status = "PENDING_HUMAN"
                             desc = "Customer requested human assistance"
                         else:
@@ -1161,18 +1208,18 @@ async def get_overview_analytics(tenant_id: str = "default"):
                     status = "PENDING_HUMAN"
                     desc = "Pending manual review"
             elif inv_id == 'NEW':
-                email = row['q_email'] or row['u_email'] or "Customer"
-                name = row['q_name'] or row['u_name'] or "Incoming Mail"
+                email = pm_email or row['q_email'] or row['u_email'] or "Customer"
+                name = pm_name or row['q_name'] or row['u_name'] or "Incoming Mail"
                 status = "Pending Review"
                 desc = "New enquiry received"
             elif inv_id in ('UNPARSED_NOTICE', 'UNPARSED'):
                 # Legacy/bad data rows where status was stored as invoice_id - skip them
                 continue
             else:
-                email = row['q_email'] or row['u_email'] or "Customer"
-                name = row['q_name'] or row['u_name'] or "Incoming Mail"
-                status = "Pending Review"
-                desc = "New enquiry received"
+                email = pm_email or row['q_email'] or row['u_email'] or "Customer"
+                name = pm_name or row['q_name'] or row['u_name'] or "Incoming Mail"
+                status = row['q_status'] or "Pending Review"
+                desc = f"Quotation {inv_id}" if status else "New enquiry received"
                 
             log_stream.append({
                 "message_id": row['message_id'],
@@ -1184,6 +1231,7 @@ async def get_overview_analytics(tenant_id: str = "default"):
                 "status": status,
                 "description": desc
             })
+
 
             
         # Fallback: if log_stream is empty, fill it from quotations and unmatched items
@@ -1235,9 +1283,14 @@ async def get_settings(tenant_id: str = "default"):
     from src.database_sqlite import get_setting
     from src.tenants import get_tenant_config
     cfg = get_tenant_config(tenant_id) or {}
+    import os
+    api_key = os.environ.get("GEMINI_API_KEY")
+    has_gemini = api_key and api_key.strip() and not api_key.startswith("your_")
+    default_engine = 'B' if has_gemini else 'A'
     return {
         "reply_mode": get_setting("reply_mode", "auto", tenant_id),
         "reply_pattern": get_setting("reply_pattern", "summary", tenant_id),
+        "ingestion_engine": get_setting("ingestion_engine", default_engine, tenant_id),
         "exec_name": get_setting("exec_name", cfg.get("sales_executive_name", ""), tenant_id),
         "exec_title": get_setting("exec_title", cfg.get("sales_executive_title", ""), tenant_id),
         "exec_phone": get_setting("exec_phone", cfg.get("sales_executive_phone", ""), tenant_id),
@@ -1249,6 +1302,7 @@ async def get_settings(tenant_id: str = "default"):
 class SettingsUpdateRequest(BaseModel):
     reply_mode: str
     reply_pattern: str
+    ingestion_engine: str
     exec_name: str | None = None
     exec_title: str | None = None
     exec_phone: str | None = None
@@ -1263,9 +1317,12 @@ async def update_settings(req: SettingsUpdateRequest, tenant_id: str = "default"
         raise HTTPException(status_code=400, detail="Invalid reply_mode")
     if req.reply_pattern not in ("detailed", "summary"):
         raise HTTPException(status_code=400, detail="Invalid reply_pattern")
+    if req.ingestion_engine not in ("A", "B"):
+        raise HTTPException(status_code=400, detail="Invalid ingestion_engine")
     
     set_setting("reply_mode", req.reply_mode, tenant_id)
     set_setting("reply_pattern", req.reply_pattern, tenant_id)
+    set_setting("ingestion_engine", req.ingestion_engine, tenant_id)
     if req.exec_name is not None:
         set_setting("exec_name", req.exec_name, tenant_id)
     if req.exec_title is not None:
@@ -1552,6 +1609,92 @@ async def approve_and_send_quote(req: ApproveSendRequest, tenant_id: str = "defa
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class SendManualReplyRequest(BaseModel):
+    customer_email: str
+    customer_name: str = "Customer"
+    subject: str
+    reply_body: str
+    invoice_id: str = ""  # optional (can be QTN-xxxxx or UNMATCHED_xx)
+    tenant_id: str = "default"
+
+@app.post("/api/manual/reply")
+async def send_manual_reply(req: SendManualReplyRequest):
+    try:
+        from src.database_sqlite import get_connection, log_chat_msg, log_activity, delete_unmatched_item, get_latest_message_id
+        from src.tenants import get_tenant_config
+        
+        tenant_id = req.tenant_id
+        tenant_config = get_tenant_config(tenant_id)
+        email_user = tenant_config.get("email_user")
+        outlook_tenant_id = tenant_config.get("outlook_tenant_id")
+        outlook_client_id = tenant_config.get("outlook_client_id")
+        outlook_client_secret = os.environ.get("OUTLOOK_CLIENT_SECRET") or tenant_config.get("outlook_client_secret")
+        
+        from src.email_listener import get_graph_token, send_outlook_mail
+        token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret)
+        if not token:
+            raise HTTPException(status_code=500, detail="Failed to acquire Microsoft Graph token")
+        
+        # Build reply body in HTML format
+        html_body = f"<html><body><p>{req.reply_body.replace(chr(10), '<br>')}</p></body></html>"
+        
+        # Determine subject
+        subject = req.subject
+        if req.invoice_id and not subject.upper().startswith("RE:"):
+            subject = f"RE: {subject} [Quotation #{req.invoice_id}]"
+            
+        # Retrieve reply-to Message-ID if we have a quote/unmatched ID
+        internet_msg_id = get_latest_message_id(req.invoice_id, tenant_id=tenant_id)
+        
+        sent = send_outlook_mail(
+            token, email_user, req.customer_email,
+            subject, html_body,
+            logo_path=tenant_config.get("company_logo_path"),
+            reply_to_internet_msg_id=internet_msg_id
+        )
+        
+        if not sent:
+            raise HTTPException(status_code=500, detail="Failed to send email to customer via Outlook API")
+            
+        # Log to chat_logs if there is an invoice ID
+        clean_inv = req.invoice_id
+        if clean_inv:
+            if clean_inv.startswith("CUSTOMER_REPLIED:"):
+                clean_inv = clean_inv.split(":", 1)[1]
+            try:
+                log_chat_msg(clean_inv, "BOT", req.reply_body, tenant_id=tenant_id)
+            except Exception:
+                pass
+                
+        # If this was an unmatched item, delete/resolve it
+        if req.invoice_id and req.invoice_id.startswith("UNMATCHED_"):
+            try:
+                u_id = int(req.invoice_id.replace("UNMATCHED_", ""))
+                delete_unmatched_item(u_id, tenant_id=tenant_id)
+            except Exception as e:
+                print(f"[Warning] Failed to delete unmatched item: {e}")
+                
+        # Log to activity log
+        try:
+            log_activity(
+                "EMAIL_SENT",
+                invoice_id=req.invoice_id or "MANUAL",
+                customer_name=req.customer_name,
+                customer_email=req.customer_email,
+                description=f"Manual email reply sent to {req.customer_email} - Subject: {subject[:80]}",
+                tenant_id=tenant_id
+            )
+        except Exception:
+            pass
+            
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @app.get("/report")
 async def get_report():
     from fastapi.responses import FileResponse
@@ -1691,10 +1834,8 @@ def outlook_callback(code: str = None, error: str = None, error_description: str
 
 
 @app.get("/")
-async def get_index():
-    # Serves static dashboard index by default, with cache-control to prevent caching
-    from fastapi.responses import FileResponse
-    response = FileResponse(os.path.join(static_dir, "index.html"))
+async def get_index(request: Request):
+    response = templates.TemplateResponse("index.html", {"request": request})
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"

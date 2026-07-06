@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" data-theme="warm">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trofeo Hardware — Admin Control Panel</title>
+    <meta name="description" content="Admin Command Center for Trofeo Hardware: manage stock deficits, approve negotiations, and view quotation history.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Fraunces — editorial serif display (Ivory & Ink) -->
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
+    
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="/static/style.css">
+    
+    <!-- Tailwind Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            }
+          }
+        }
+      }
+    </script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    
+    <!-- Alpine.js CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  </head>
+  <body style="overflow:hidden; background:var(--bg-dark);">
+    
+    <!-- Alpine Application Root -->
+    <div x-data="dashboardApp()" x-init="initApp()" class="app-shell" style="color:var(--text-1);">
+      
+      <!-- Ambient Glow -->
+      <div class="glow-orb orb-1" aria-hidden="true"></div>
+      <div class="glow-orb orb-2" aria-hidden="true"></div>
+      <div class="glow-orb orb-3" aria-hidden="true"></div>
+
+      <!-- Offline Banner -->
+      <div x-show="connectionStatus === 'offline'" x-transition
+        style="position:absolute;top:0;left:0;right:0;z-index:100;background:linear-gradient(90deg,#EF4444,#DC2626);color:#fff;font-weight:700;text-align:center;font-size:12px;padding:9px 16px;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <div style="width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+        <span>⚠️ Connection to server lost — attempting to reconnect…</span>
+      </div>
+
+
+      <!-- Include Sidebar Component -->
+      {% include 'components/sidebar.html' %}
+
+
+      <!-- ═══════════════════════ MAIN SHELL ═══════════════════════ -->
+      <div class="view-shell">
+        
+        <!-- HEADER -->
+        <header class="topbar">
+          
+          <!-- Left: Search -->
+          <div class="header-search">
+            <i data-lucide="search" style="width:13px;height:13px;color:var(--text-3);flex-shrink:0;"></i>
+            <input 
+              type="text" 
+              placeholder="Search invoice, client, SKU…" 
+              x-model="invoiceFilter"
+              @input="handleGlobalSearch"
+            />
+            <template x-if="invoiceFilter">
+              <button 
+                @click="invoiceFilter = ''; handleGlobalSearch();" 
+                style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:12px;padding:0;line-height:1;"
+              >✕</button>
+            </template>
+          </div>
+
+          <!-- Right: Controls -->
+          <div style="display:flex;align-items:center;gap:10px;">
+            
+            <!-- Tenant -->
+            <div class="header-chip">
+              <i data-lucide="building-2" style="width:13px;height:13px;opacity:0.5;"></i>
+              <select x-model="selectedTenant" @change="handleTenantChange" style="background:none;border:none;outline:none;font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;font-family:var(--font);">
+                <template x-for="tenant in tenants" :key="tenant.id">
+                  <option :value="tenant.id" x-text="tenant.name"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- Status -->
+            <div class="status-chip">
+              <div class="status-dot"></div>
+              <span>Live</span>
+            </div>
+
+            <!-- Mode Switcher Pill Group -->
+            <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;">
+              <button 
+                @click="settings.reply_mode = 'auto'; saveSettings();"
+                style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                :style="settings.reply_mode === 'auto' ? 'background:var(--green); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                title="Full Auto-Pilot Mode (Auto-Reply)"
+              >
+                <i data-lucide="bot" style="width:11px; height:11px;"></i>
+                <span>Automatic</span>
+              </button>
+              <button 
+                @click="settings.reply_mode = 'manual'; saveSettings();"
+                style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                :style="settings.reply_mode === 'manual' ? 'background:var(--yellow); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                title="Human-in-the-Loop Mode (Manual-Reply)"
+              >
+                <i data-lucide="user" style="width:11px; height:11px;"></i>
+                <span>Manual</span>
+              </button>
+            </div>
+
+            <!-- Engine Switcher Pill Group -->
+            <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;" title="Select Ingestion Engine">
+              <button 
+                @click="settings.ingestion_engine = 'A'; saveSettings();"
+                style="border:none; border-radius:6px; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                :style="settings.ingestion_engine === 'A' ? 'background:var(--accent-2); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                title="Engine A: Free local rule-based / fuzzy search"
+              >
+                <i data-lucide="zap-off" style="width:11px; height:11px;"></i>
+                <span>Engine A (Local)</span>
+              </button>
+              <button 
+                @click="settings.ingestion_engine = 'B'; saveSettings();"
+                style="border:none; border-radius:6px; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all 0.2s; font-family:var(--font); outline:none;"
+                :style="settings.ingestion_engine === 'B' ? 'background:var(--accent-cyan); color:#000; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                title="Engine B: AI Hybrid parsing via Gemini API (Free tier)"
+              >
+                <i data-lucide="sparkles" style="width:11px; height:11px;" :style="settings.ingestion_engine === 'B' ? 'color:#000;' : ''"></i>
+                <span>Engine B (AI)</span>
+              </button>
+            </div>
+
+            <!-- Connect Outlook -->
+            <a :href="'/api/outlook/login?tenant_id=' + selectedTenant" 
+               target="_blank" 
+               class="header-chip" 
+               style="text-decoration:none; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-1); background:linear-gradient(135deg, rgba(176,138,74,0.15), rgba(154,118,69,0.25)); border:1px solid rgba(176,138,74,0.3);" 
+               title="Connect or Authorize Outlook Mail Account via Microsoft Graph">
+              <i data-lucide="mail" style="width:13px;height:13px;color:var(--accent-2);"></i>
+              <span style="font-size:11px;font-weight:700;">Connect Outlook</span>
+            </a>
+
+            <!-- Theme -->
+            <div class="header-chip">
+              <i data-lucide="palette" style="width:13px;height:13px;opacity:0.5;"></i>
+              <select x-model="theme" @change="applyTheme" style="background:none;border:none;outline:none;font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;font-family:var(--font);">
+                <option value="warm">Ivory &amp; Ink</option>
+                <option value="midnight">Midnight</option>
+                <option value="navy">Navy Gold</option>
+                <option value="cyber">Cyberpunk</option>
+              </select>
+            </div>
+
+            <!-- Avatar -->
+            <div class="avatar-btn">
+              OP
+              <span class="avatar-online"></span>
+            </div>
+
+          </div>
+        </header>
+
+        <!-- VIEW PANELS -->
+        <main class="view-area">
+          
+
+          <!-- Include Tab Contents Components -->
+          {% include 'components/overview.html' %}
+          {% include 'components/simulator.html' %}
+          {% include 'components/deficits.html' %}
+          {% include 'components/negotiations.html' %}
+          {% include 'components/inventory.html' %}
+          {% include 'components/activity_log.html' %}
+
+
+        </main>
+
+
+      </div>
+
+
+      <!-- Include Modals & Drawers Component -->
+      {% include 'components/modals.html' %}
+
+      <!-- Include Alpine App State Code -->
+      {% include 'components/app_js.html' %}

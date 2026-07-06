@@ -1,0 +1,416 @@
+<!-- ══════════════════════════════════════════════════════════════════════
+     Activity Log Tab — Full structured event log with uptime + IST clock
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" :class="{ 'active': activeTab === 'activity' }">
+
+  <!-- ── Header Bar ──────────────────────────────────────────────── -->
+  <div class="activity-header">
+    <div class="activity-header-left">
+      <h2 class="section-title">
+        <i data-lucide="activity" style="width:22px;height:22px;vertical-align:-4px;margin-right:8px;"></i>
+        Activity Log
+      </h2>
+      <p class="section-subtitle">Real-time event stream — every email, reply, quote and system action</p>
+    </div>
+
+    <div class="activity-header-right">
+      <!-- Server Uptime Clock -->
+      <div class="uptime-widget">
+        <div class="uptime-dot" :class="activityUptime > 0 ? 'dot-green' : 'dot-grey'"></div>
+        <div>
+          <div class="uptime-label">Server Active</div>
+          <div class="uptime-value" x-text="formatUptime(activityUptime)">0h 0m 0s</div>
+        </div>
+      </div>
+
+      <!-- Current IST Clock -->
+      <div class="ist-clock-widget">
+        <div class="ist-clock-label">Current Time (IST)</div>
+        <div class="ist-clock-value" x-text="activityCurrentTime || '—'">—</div>
+      </div>
+
+      <!-- Server Start Time -->
+      <div class="server-start-widget">
+        <div class="ist-clock-label">Server Started</div>
+        <div class="server-start-value" x-text="activityServerStart || '—'">—</div>
+      </div>
+
+      <!-- Refresh button -->
+      <button class="btn-icon-action" @click="loadActivityLog()" title="Refresh log">
+        <i data-lucide="refresh-cw" style="width:16px;height:16px;"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Filter Bar ──────────────────────────────────────────────── -->
+  <div class="activity-filter-bar">
+    <label class="filter-label">Filter by Event:</label>
+    <button class="evt-badge-filter" :class="activityFilter === '' ? 'active' : ''"
+            @click="activityFilter = ''">All</button>
+    <button class="evt-badge-filter evt-email-received" :class="activityFilter === 'EMAIL_RECEIVED' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'EMAIL_RECEIVED' ? '' : 'EMAIL_RECEIVED'">Email Received</button>
+    <button class="evt-badge-filter evt-quote-generated" :class="activityFilter === 'QUOTE_GENERATED' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'QUOTE_GENERATED' ? '' : 'QUOTE_GENERATED'">Quote Generated</button>
+    <button class="evt-badge-filter evt-customer-replied" :class="activityFilter === 'CUSTOMER_REPLIED' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'CUSTOMER_REPLIED' ? '' : 'CUSTOMER_REPLIED'">Customer Replied</button>
+    <button class="evt-badge-filter evt-negotiation" :class="activityFilter === 'NEGOTIATION_TRIGGERED' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'NEGOTIATION_TRIGGERED' ? '' : 'NEGOTIATION_TRIGGERED'">Negotiation</button>
+    <button class="evt-badge-filter evt-deficit" :class="activityFilter === 'DEFICIT_RAISED' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'DEFICIT_RAISED' ? '' : 'DEFICIT_RAISED'">Deficit</button>
+    <button class="evt-badge-filter evt-email-sent" :class="activityFilter === 'EMAIL_SENT' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'EMAIL_SENT' ? '' : 'EMAIL_SENT'">Email Sent</button>
+    <button class="evt-badge-filter evt-error" :class="activityFilter === 'ERROR' ? 'active' : ''"
+            @click="activityFilter = activityFilter === 'ERROR' ? '' : 'ERROR'">Error</button>
+
+    <!-- Entry count badge -->
+    <span class="activity-count-badge" x-text="filteredActivityLogs.length + ' events'"></span>
+  </div>
+
+  <!-- ── Event Table ─────────────────────────────────────────────── -->
+  <div class="activity-table-wrapper">
+    <table class="activity-table" x-show="filteredActivityLogs.length > 0">
+      <thead>
+        <tr>
+          <th style="width:155px;">Date &amp; Time (IST)</th>
+          <th style="width:165px;">Event</th>
+          <th style="width:175px;">Customer</th>
+          <th style="width:145px;">Invoice / ID</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="entry in filteredActivityLogs" :key="entry.id">
+          <tr class="activity-row" :class="getActivityRowClass(entry.event_type)">
+            <!-- Timestamp -->
+            <td class="activity-ts">
+              <span class="ts-date" x-text="formatActivityDate(entry.timestamp)"></span>
+              <span class="ts-time" x-text="formatActivityTime(entry.timestamp)"></span>
+            </td>
+            <!-- Event Badge -->
+            <td>
+              <span class="evt-badge" :class="getEventBadgeClass(entry.event_type)"
+                    x-text="formatEventLabel(entry.event_type)"></span>
+            </td>
+            <!-- Customer -->
+            <td class="activity-customer">
+              <span class="customer-name" x-text="entry.customer_name || '—'"></span>
+              <span class="customer-email" x-text="entry.customer_email || ''"></span>
+            </td>
+            <!-- Invoice ID -->
+            <td class="activity-invoice">
+              <span x-show="entry.invoice_id" class="invoice-chip"
+                    x-text="entry.invoice_id || '—'"></span>
+              <span x-show="!entry.invoice_id" class="text-muted">—</span>
+            </td>
+            <!-- Description -->
+            <td class="activity-desc" x-text="entry.description || '—'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+
+    <!-- Empty state -->
+    <div class="activity-empty" x-show="filteredActivityLogs.length === 0">
+      <i data-lucide="inbox" style="width:48px;height:48px;opacity:0.3;margin-bottom:12px;"></i>
+      <p>No activity logged yet.<br>Events will appear here as the system processes emails.</p>
+    </div>
+  </div>
+
+  <!-- ── Raw Listener Log Viewer (collapsible) ──────────────────── -->
+  <div class="raw-log-section">
+    <button class="raw-log-toggle" @click="showRawLog = !showRawLog">
+      <i data-lucide="terminal" style="width:15px;height:15px;margin-right:6px;vertical-align:-2px;"></i>
+      <span x-text="showRawLog ? 'Hide Raw Listener Log' : 'Show Raw Listener Log'"></span>
+      <i :data-lucide="showRawLog ? 'chevron-up' : 'chevron-down'"
+         style="width:15px;height:15px;margin-left:6px;vertical-align:-2px;"></i>
+    </button>
+
+    <div class="raw-log-container" x-show="showRawLog" x-transition>
+      <div class="raw-log-toolbar">
+        <span class="raw-log-label">
+          <i data-lucide="file-text" style="width:13px;height:13px;vertical-align:-1px;margin-right:4px;"></i>
+          data/email_listener.log
+        </span>
+        <button class="btn-tiny" @click="loadRawLog()">
+          <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Refresh
+        </button>
+      </div>
+      <pre class="raw-log-pre" id="raw-log-pre">
+        <template x-if="rawLogLines.length === 0">
+          <span class="raw-log-empty">No log lines yet — start the email listener to see output here.</span>
+        </template>
+        <template x-for="(line, idx) in rawLogLines" :key="idx">
+          <div class="raw-log-line" :class="getRawLineClass(line)" x-text="line"></div>
+        </template>
+      </pre>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     Activity Log Styles
+     ══════════════════════════════════════════════════════════════════════ -->
+<style>
+/* ── Header ─────────────────────────────────────────────────────── */
+.activity-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.activity-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* ── Uptime Widget ───────────────────────────────────────────────── */
+.uptime-widget {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+.uptime-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: pulse-dot 2s infinite;
+}
+.dot-green { background: #10b981; }
+.dot-grey  { background: #6b7280; animation: none; }
+@keyframes pulse-dot {
+  0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  50%      { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+}
+.uptime-label { font-size: 10px; color: var(--text-3); letter-spacing:.5px; text-transform:uppercase; }
+.uptime-value { font-size: 15px; font-weight: 700; color: #10b981; font-variant-numeric: tabular-nums; }
+
+/* ── IST Clock Widget ────────────────────────────────────────────── */
+.ist-clock-widget, .server-start-widget {
+  background: rgba(99,102,241,0.07);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+.ist-clock-label { font-size: 10px; color: var(--text-3); letter-spacing:.5px; text-transform:uppercase; }
+.ist-clock-value { font-size: 14px; font-weight: 700; color: #6366f1; font-variant-numeric: tabular-nums; }
+.server-start-value { font-size: 12px; font-weight: 600; color: #6366f1; }
+
+/* ── Filter Bar ──────────────────────────────────────────────────── */
+.activity-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.filter-label { font-size: 12px; color: var(--text-2); margin-right: 4px; flex-shrink:0; }
+.evt-badge-filter {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 20px;
+  padding: 3px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-2);
+  transition: all .15s;
+}
+.evt-badge-filter:hover { opacity: 1; color: var(--text-1); border-color: var(--text-2); }
+.evt-badge-filter.active { opacity: 1; color: #fff; }
+.evt-email-received { border-color: #3b82f6; }
+.evt-email-received.active { background: #3b82f6; }
+.evt-quote-generated { border-color: #10b981; }
+.evt-quote-generated.active { background: #10b981; }
+.evt-customer-replied { border-color: #f59e0b; }
+.evt-customer-replied.active { background: #f59e0b; color:#000 !important; }
+.evt-negotiation { border-color: #8b5cf6; }
+.evt-negotiation.active { background: #8b5cf6; }
+.evt-deficit { border-color: #ef4444; }
+.evt-deficit.active { background: #ef4444; }
+.evt-email-sent { border-color: #06b6d4; }
+.evt-email-sent.active { background: #06b6d4; }
+.evt-error { border-color: #f43f5e; }
+.evt-error.active { background: #f43f5e; }
+.activity-count-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  background: var(--bg-canvas);
+  border-radius: 12px;
+  padding: 2px 10px;
+}
+
+/* ── Table ───────────────────────────────────────────────────────── */
+.activity-table-wrapper {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.activity-table thead th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.activity-row {
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.activity-row:hover { background: rgba(154,118,69,0.04); }
+.activity-row td { padding: 9px 14px; vertical-align: middle; }
+
+/* Timestamp */
+.activity-ts { white-space: nowrap; }
+.ts-date { display: block; font-size: 12px; color: var(--text-3); }
+.ts-time { display: block; font-size: 13px; font-weight: 600; color: var(--text-1);
+           font-variant-numeric: tabular-nums; }
+
+/* Customer cell */
+.activity-customer { white-space: nowrap; }
+.customer-name  { display: block; font-weight: 600; color: var(--text-1); }
+.customer-email { display: block; font-size: 11px; color: var(--text-3); }
+
+/* Invoice chip */
+.invoice-chip {
+  display: inline-block;
+  background: rgba(99,102,241,0.12);
+  color: #6366f1;
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing:.3px;
+}
+
+/* Description */
+.activity-desc { color: var(--text-2); font-size: 12px; max-width: 380px; }
+
+/* Event badges */
+.evt-badge {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge-email-received   { background: rgba(59,130,246,.15);  color: #3b82f6; border: 1px solid rgba(59,130,246,.3); }
+.badge-quote-generated  { background: rgba(16,185,129,.15);  color: #10b981; border: 1px solid rgba(16,185,129,.3); }
+.badge-customer-replied { background: rgba(245,158,11,.15);  color: #f59e0b; border: 1px solid rgba(245,158,11,.3); }
+.badge-negotiation      { background: rgba(139,92,246,.15);  color: #8b5cf6; border: 1px solid rgba(139,92,246,.3); }
+.badge-deficit          { background: rgba(239,68,68,.15);   color: #ef4444; border: 1px solid rgba(239,68,68,.3); }
+.badge-email-sent       { background: rgba(6,182,212,.15);   color: #06b6d4; border: 1px solid rgba(6,182,212,.3); }
+.badge-human            { background: rgba(251,191,36,.15);  color: #f59e0b; border: 1px solid rgba(251,191,36,.3); }
+.badge-unmatched        { background: rgba(156,163,175,.12); color: var(--text-3); border: 1px solid var(--border); }
+.badge-error            { background: rgba(244,63,94,.15);   color: #f43f5e; border: 1px solid rgba(244,63,94,.3); }
+.badge-default          { background: rgba(255,255,255,.06); color: var(--text-2); border: 1px solid var(--border); }
+
+/* Row highlight by type */
+.row-error    { background: rgba(244,63,94,.02) !important; }
+.row-reply    { background: rgba(245,158,11,.015) !important; }
+.row-deficit  { background: rgba(239,68,68,.02) !important; }
+
+/* Empty state */
+.activity-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Raw Log ─────────────────────────────────────────────────────── */
+.raw-log-section { margin-top: 24px; }
+.raw-log-toggle {
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  transition: background .15s;
+}
+.raw-log-toggle:hover { background: var(--bg-canvas); color: var(--text-1); }
+.raw-log-container {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.raw-log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border);
+}
+.raw-log-label { font-size: 11px; color: var(--text-3); font-family: monospace; }
+.btn-tiny {
+  font-size: 11px;
+  padding: 3px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all .12s;
+}
+.btn-tiny:hover { background: var(--bg-canvas); color: var(--text-1); border-color: var(--text-2); }
+.raw-log-pre {
+  margin: 0;
+  padding: 14px 16px;
+  background: #0d0d12;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+  max-height: 420px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.raw-log-line { display: block; margin: 0; }
+.raw-line-error   { color: #f87171; }
+.raw-line-warn    { color: #fbbf24; }
+.raw-line-success { color: #34d399; }
+.raw-line-info    { color: #60a5fa; }
+.raw-line-default { color: #d1d5db; }
+.raw-log-empty { color: #4b5563; font-style: italic; }
+</style>

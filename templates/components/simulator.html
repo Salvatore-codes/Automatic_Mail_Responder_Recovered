@@ -1,0 +1,251 @@
+          <!-- TAB 2: LIVE SIMULATOR -->
+          <div class="tab-content" :class="{ 'active': activeTab === 'simulator' }">
+
+            <div class="ov-hero page-hero">
+              <div class="ov-hero-glow" aria-hidden="true"></div>
+              <div class="ov-hero-main">
+                <div class="ov-eyebrow">Sandbox</div>
+                <h1 class="ov-title">Live Simulator</h1>
+                <p class="ov-sub">Paste a customer enquiry and watch the engine parse, match, and price it in real time.</p>
+              </div>
+              <div class="ov-hero-side">
+                <div class="ov-pulse"><span class="ov-pulse-dot"></span> Live</div>
+              </div>
+            </div>
+
+            <div class="sim-layout">
+              
+              <!-- LEFT COLUMN: INPUT -->
+              <div class="section-card">
+                <div class="section-header">
+                  <h2 class="section-title">
+                    <i data-lucide="play" class="w-4 h-4" style="color:var(--accent)"></i> Enquiry Ingestion
+                  </h2>
+                </div>
+                <div style="padding:16px 18px; display:flex; flex-direction:column; gap:14px;">
+                  <div class="form-group">
+                    <label class="form-label">Order Enquiry Text</label>
+                    <textarea x-model="simText" class="form-control" style="min-height:160px;" placeholder="Paste customer enquiry email or WhatsApp message here…"></textarea>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Customer Email Address</label>
+                    <input type="email" x-model="simEmail" class="form-control" placeholder="customer@email.com" />
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Input Channel Source</label>
+                    <div class="toggle-row">
+                      <template x-for="ch in ['email', 'whatsapp', 'custom']">
+                        <button @click="simChannel = ch" class="toggle-opt" :class="simChannel === ch ? 'active' : ''" x-text="ch"></button>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Matching Algorithm</label>
+                    <div class="toggle-row">
+                      <button @click="simEngine = 'A'" class="toggle-opt" :class="simEngine === 'A' ? 'active' : ''">Engine A (Fuzzy)</button>
+                      <button @click="simEngine = 'B'" class="toggle-opt" :class="simEngine === 'B' ? 'active' : ''">Engine B (AI)</button>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Quick Presets</label>
+                    <div class="preset-row">
+                      <template x-for="(p, idx) in presets" :key="idx">
+                        <button @click="simText = p.text; simChannel = (idx === 1 ? 'whatsapp' : 'email')" class="btn-preset" x-text="p.label"></button>
+                      </template>
+                    </div>
+                  </div>
+
+                  <button @click="runPipeline" :disabled="simLoading" class="btn btn-primary btn-full" style="margin-top:4px;">
+                    <template x-if="simLoading"><div class="spinner"></div></template>
+                    <template x-if="!simLoading"><i data-lucide="play" class="w-4 h-4"></i></template>
+                    <span x-text="simLoading ? 'Processing...' : 'Ingest &amp; Match Order'"></span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- RIGHT COLUMN: RESULTS -->
+              <div class="flex flex-col gap-4">
+                
+                <!-- Metrics Bar -->
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+                  <div class="kpi-card" style="padding:14px 16px;">
+                    <span>Items Parsed</span>
+                    <strong x-text="simMetrics ? simMetrics.parsed_count : '—'"></strong>
+                  </div>
+                  <div class="kpi-card" style="padding:14px 16px;">
+                    <span>Match Rate</span>
+                    <strong style="color:var(--green);" x-text="simMetrics && simLines.length ? Math.round((simLines.filter(l => l.matched_sku_id !== 'UNKNOWN').length / simLines.length) * 100) + '%' : '—'"></strong>
+                  </div>
+                  <div class="kpi-card" style="padding:14px 16px;">
+                    <span>Search Time</span>
+                    <strong style="color:var(--accent-2);" x-text="simMetrics ? simMetrics.search_time_sec + 's' : '—'"></strong>
+                  </div>
+                  <div class="kpi-card" style="padding:14px 16px;">
+                    <span>API Cost</span>
+                    <strong style="color:var(--yellow);" x-text="simMetrics ? '$' + simMetrics.cost_usd : '—'"></strong>
+                  </div>
+                </div>
+
+                <!-- HITL Alert -->
+                <template x-if="simLines.some(l => l.confidence < 80 && l.matched_sku_id !== 'UNKNOWN')">
+                  <div class="p-3 px-5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex justify-between items-center text-amber-500 text-xs">
+                    <span class="font-bold flex items-center gap-1.5">⚠️ Low-confidence matches detected. Operator review suggested.</span>
+                    <button @click="openHitlModalFromSim" class="px-2.5 py-1 bg-amber-500 text-black font-bold rounded-lg text-[10px]">Review</button>
+                  </div>
+                </template>
+
+                <!-- Results Matrix Card -->
+                <template x-if="simMetrics">
+                  <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-3">
+                    <div class="flex justify-between items-center p-4 px-5 border-b border-[var(--border)] bg-[var(--bg-card2)]/50">
+                      <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-1)] flex items-center gap-2 m-0">
+                        <i data-lucide="table" class="w-4 h-4 text-[var(--accent)]"></i> Match Results Matrix
+                      </h3>
+                      <div class="flex gap-2">
+                        <button @click="simShowNegPanel = !simShowNegPanel" class="btn-micro px-2.5 py-1 flex items-center gap-1.5">
+                          <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Negotiate
+                        </button>
+                        <button @click="generatePdf" class="px-2.5 py-1 bg-[var(--accent)] text-white text-[11px] font-bold rounded-lg flex items-center gap-1.5">
+                          <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Generate Quote PDF
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <!-- Table -->
+                    <div class="overflow-x-auto max-w-full">
+                      <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
+                            <th class="p-3.5 border-b border-[var(--border)]">Customer Inquiry Line</th>
+                            <th class="p-3.5 border-b border-[var(--border)]">Matched Catalog SKU</th>
+                            <th class="p-3.5 border-b border(--border)">Qty</th>
+                            <th class="p-3.5 border-b border-[var(--border)]">Conf</th>
+                            <th class="p-3.5 border-b border-[var(--border)]">Stock</th>
+                            <th class="p-3.5 border-b border-[var(--border)]">Price</th>
+                            <th class="p-3.5 border-b border-[var(--border)]">Line Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="(line, idx) in simLines" :key="idx">
+                            <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/30">
+                              <td class="p-3.5 font-medium truncate max-w-[200px]" :title="line.original_line" x-text="line.original_line"></td>
+                              <td class="p-3.5">
+                                <template x-if="line.matched_sku_id === 'UNKNOWN'">
+                                  <span class="badge red">No match</span>
+                                </template>
+                                <template x-if="line.matched_sku_id !== 'UNKNOWN'">
+                                  <div>
+                                    <strong class="text-[var(--text-1)]" x-text="line.matched_sku_name"></strong>
+                                    <div class="text-[10px] text-[var(--text-2)] mt-0.5" x-text="line.matched_sku_id"></div>
+                                  </div>
+                                </template>
+                              <td class="p-3.5">
+                                <input type="number" x-model.number="line.quantity" min="0" class="bg-[var(--bg-input)] border border-[var(--border)] rounded text-xs px-2 py-1 w-16 text-center font-bold text-[var(--text-1)]" />
+                              </td>
+                              <td class="p-3.5">
+                                <div class="flex items-center gap-1.5">
+                                  <span x-text="line.confidence + '%'"></span>
+                                  <button x-show="line.confidence < 80 && line.matched_sku_id !== 'UNKNOWN'" @click="openHitl(idx, line)" class="btn-micro text-[9px] px-1 py-0 h-5">Override</button>
+                                </div>
+                              </td>
+                              <td class="p-3.5">
+                                <span class="badge" :class="line.matched_sku_id === 'UNKNOWN' ? 'gray' : (line.stock_avail === 0 ? 'red' : (line.stock_avail <= 5 ? 'yellow' : 'green'))" x-text="line.matched_sku_id === 'UNKNOWN' ? 'N/A' : (line.stock_avail === 0 ? 'Out of stock' : (line.stock_avail <= 5 ? 'Low ('+line.stock_avail+')' : 'In Stock'))"></span>
+                              </td>
+                              <td class="p-3.5">
+                                <input type="number" step="0.01" x-model.number="line.unit_price" min="0" class="bg-[var(--bg-input)] border border-[var(--border)] rounded text-xs px-2 py-1 w-24 text-right font-mono font-bold text-[var(--text-1)]" />
+                              </td>
+                              <td class="p-3.5 font-mono font-extrabold text-[var(--text-1)] text-right" x-text="fmt((line.unit_price || 0) * (line.quantity || 0))"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <!-- Totals calculations panel -->
+                    <div class="p-5 border-t border-[var(--border)] bg-[var(--bg-card2)]/20">
+                      <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div class="flex-1 w-full flex flex-col gap-2 max-w-sm">
+                          <div class="flex justify-between text-xs text-[var(--text-2)]">
+                            <span>Raw Subtotal:</span>
+                            <span class="font-mono font-bold text-[var(--text-1)]" x-text="fmt(simSubtotal)"></span>
+                          </div>
+                          <template x-if="simDiscountPct > 0">
+                            <div class="flex justify-between text-xs text-[var(--text-2)]">
+                              <span x-text="'CRM Custom Discount ('+Math.round(simDiscountPct*100)+'%):'"></span>
+                              <span class="font-mono font-bold text-rose-500" x-text="'−' + fmt(simSubtotal * simDiscountPct)"></span>
+                            </div>
+                          </template>
+                          <div class="flex justify-between text-xs text-[var(--text-2)]">
+                            <span>GST (18%):</span>
+                            <span class="font-mono font-bold text-[var(--text-1)]" x-text="fmt((simSubtotal * (1 - simDiscountPct)) * 0.18)"></span>
+                          </div>
+                          <div class="flex justify-between text-sm font-bold text-[var(--text-1)] border-t border-[var(--border)] pt-1.5 mt-1">
+                            <span>Grand Total:</span>
+                            <span class="font-mono text-base font-extrabold text-[var(--accent)]" x-text="fmt((simSubtotal * (1 - simDiscountPct)) * 1.18)"></span>
+                          </div>
+                        </div>
+                        
+                        <!-- UPI QR Code placeholder -->
+                        <div class="w-[280px] bg-[var(--bg-dark)] border border-[var(--border)] rounded-2xl p-4 flex flex-col items-center gap-2">
+                          <div class="w-24 h-24 bg-white rounded-lg p-1.5 flex items-center justify-center">
+                            <canvas id="simQrCanvas" class="max-h-full max-w-full"></canvas>
+                          </div>
+                          <div class="text-center">
+                            <strong class="text-[10px] tracking-wide text-[var(--text-1)] uppercase">PAY VIA UPI</strong>
+                            <p class="text-[9px] text-[var(--text-2)] m-0 mt-0.5">Scan to approve and pay matching balance</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- AI Negotiation chat panel -->
+                <div x-show="simShowNegPanel" x-collapse class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-3">
+                  <div class="flex justify-between items-center p-4 px-5 border-b border-[var(--border)] bg-[var(--bg-card2)]/50">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-1)] flex items-center gap-2 m-0">
+                      <i data-lucide="message-square" class="w-4 h-4 text-purple-500"></i> AI Negotiation Sandbox
+                    </h3>
+                    <span class="badge" :class="simNegStatus === 'Active' ? 'purple' : 'green'" x-text="simNegStatus"></span>
+                  </div>
+                  
+                  <div class="p-5 flex flex-col gap-4">
+                    <div class="flex items-center gap-2.5">
+                      <label class="text-[10px] font-bold text-[var(--text-2)] uppercase m-0">Target Discount (%)</label>
+                      <input type="number" x-model="simTargetDiscount" class="w-20 bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-1)] p-1.5 px-2.5 outline-none focus:border-[var(--accent)]" min="1" max="50" />
+                    </div>
+                    
+                    <!-- Chat box -->
+                    <div class="h-56 overflow-y-auto bg-[var(--bg-dark)] border border-[var(--border)]/70 rounded-xl p-4 flex flex-col gap-3">
+                      <template x-if="simChatHistory.length === 0">
+                        <div class="text-[var(--text-2)] italic text-center py-12 text-xs">Start the simulation dialogue by writing a message below.</div>
+                      </template>
+                      <template x-for="msg in simChatHistory">
+                        <div class="flex flex-col gap-1 text-xs" :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                          <span class="text-[9px] font-bold text-[var(--text-2)]" x-text="msg.role === 'user' ? 'Customer' : 'AI Assistant'"></span>
+                          <div class="p-2.5 rounded-xl max-w-sm" :class="msg.role === 'user' ? 'bg-[var(--accent)] text-white rounded-tr-none' : 'bg-[var(--bg-card2)] text-[var(--text-1)] rounded-tl-none border border-[var(--border)]'" x-text="msg.message"></div>
+                        </div>
+                      </template>
+                      <template x-if="simNegLoading">
+                        <div class="flex items-center gap-2 text-xs text-[var(--text-2)]">
+                          <div class="animate-spin rounded-full h-3 w-3 border-2 border-[var(--accent)] border-t-transparent"></div>
+                          <span>AI is drafting counter proposal...</span>
+                        </div>
+                      </template>
+                    </div>
+
+                    <div class="flex gap-2">
+                      <input type="text" x-model="simChatInput" @keydown.enter="sendSimNegMsg" class="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Write your counter offer or explain why…" />
+                      <button @click="sendSimNegMsg" class="px-4 bg-[var(--accent)] text-white text-xs font-bold rounded-xl hover:opacity-90 transition-all">Send</button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+

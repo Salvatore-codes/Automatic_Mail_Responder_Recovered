@@ -153,3 +153,18 @@ def test_customer_history_timeline():
     assert len(timeline) == 2
     assert timeline[0]["sender"] == "BOT"
     assert timeline[1]["sender"] == "customer"
+
+def test_negotiation_escalation_over_2_percent():
+    from src.negotiator import run_negotiation_step
+    
+    # 1. Under 2% -> APPROVED
+    res_under = run_negotiation_step("Can I get a 1.5% discount?", 1.5, [])
+    assert res_under["status"] == "APPROVED"
+    assert res_under["approved_discount"] == 1.5
+    
+    # 2. Over 2% -> PENDING_REVIEW with consideration message
+    res_over = run_negotiation_step("Can I get a 5% discount?", 5.0, [])
+    assert res_over["status"] == "PENDING_REVIEW"
+    assert res_over["approved_discount"] == 0.0
+    assert "under consideration by our officials" in res_over["reply"]
+
