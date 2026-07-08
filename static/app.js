@@ -169,7 +169,7 @@ function dashboardApp() {
     deficitsSortField: 'invoice_id',
     deficitsSortOrder: 'asc',
     deficitsPage: 1,
-    deficitsPageSize: 25,
+    deficitsPageSize: 10,
 
     setDeficitsSort(field) {
       if (this.deficitsSortField === field) {
@@ -208,7 +208,7 @@ function dashboardApp() {
     negSortField: 'invoice_id',
     negSortOrder: 'asc',
     negPage: 1,
-    negPageSize: 25,
+    negPageSize: 10,
 
     setNegSort(field) {
       if (this.negSortField === field) {
@@ -247,7 +247,7 @@ function dashboardApp() {
     catalogSortField: 'sku_id',
     catalogSortOrder: 'asc',
     catalogPage: 1,
-    catalogPageSize: 25,
+    catalogPageSize: 10,
 
     setCatalogSort(field) {
       if (this.catalogSortField === field) {
@@ -286,7 +286,7 @@ function dashboardApp() {
     activitySortField: 'timestamp',
     activitySortOrder: 'desc',
     activityPage: 1,
-    activityPageSize: 25,
+    activityPageSize: 10,
 
     setActivitySort(field) {
       if (this.activitySortField === field) {
