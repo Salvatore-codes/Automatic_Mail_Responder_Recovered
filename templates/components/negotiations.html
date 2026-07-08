@@ -45,27 +45,27 @@
 
               <!-- Table -->
               <div class="overflow-x-auto max-w-full">
-                <table class="w-full text-left text-xs border-collapse">
+                <table class="data-table">
                   <thead>
-                    <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
-                      <th class="p-3.5 border-b border-[var(--border)]">Invoice ID</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Channel</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Customer Name</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Quote Total</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Asked Discount</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Status</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Operator Actions</th>
+                    <tr>
+                      <th @click="setNegSort('invoice_id')" style="cursor:pointer; user-select:none;">Invoice ID <span x-text="negSortField === 'invoice_id' ? (negSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th>Channel</th>
+                      <th @click="setNegSort('customer_name')" style="cursor:pointer; user-select:none;">Customer Name <span x-text="negSortField === 'customer_name' ? (negSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setNegSort('grand_total')" style="cursor:pointer; user-select:none;">Quote Total <span x-text="negSortField === 'grand_total' ? (negSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setNegSort('discount_pct')" style="cursor:pointer; user-select:none;">Asked Discount <span x-text="negSortField === 'discount_pct' ? (negSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setNegSort('status')" style="cursor:pointer; user-select:none;">Status <span x-text="negSortField === 'status' ? (negSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th>Operator Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <template x-if="getFilteredNegotiations().length === 0">
+                    <template x-if="sortedNegotiations().length === 0">
                       <tr>
-                        <td colspan="7" class="p-12 text-center text-xs text-[var(--text-2)] italic">No escalated negotiations found.</td>
+                        <td colspan="7" style="text-align: center; font-style: italic; color: var(--text-3);">No escalated negotiations found.</td>
                       </tr>
                     </template>
-                    <template x-for="neg in getFilteredNegotiations()" :key="neg.invoice_id">
-                      <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/30">
-                        <td class="p-3.5 font-bold text-[var(--text-1)]" x-text="neg.invoice_id"></td>
+                    <template x-for="neg in paginatedNegotiations()" :key="neg.invoice_id">
+                      <tr>
+                        <td style="font-weight: bold; color: var(--text-1);" x-text="neg.invoice_id"></td>
                         <td class="p-3.5">
                           <span class="flex items-center gap-1.5 capitalize text-[10px] font-bold" x-text="neg.source || 'email'"></span>
                         </td>
@@ -83,7 +83,7 @@
                             <i data-lucide="history" class="w-3.5 h-3.5 mr-1 inline-block align-middle"></i> Logs
                           </button>
                           <template x-if="neg.status !== 'NEGOTIATION_RESOLVED'">
-                            <button @click="openResolveNeg(neg.invoice_id, neg.customer_name, neg.subtotal, neg.discount_pct)" class="px-2.5 py-1 bg-[var(--accent)] text-white text-[10px] font-bold rounded-lg flex items-center gap-1">
+                            <button @click="openResolveNeg(neg.invoice_id, neg.customer_name, neg.subtotal, neg.discount_pct)" class="btn-action-primary btn-action-primary-sm">
                               <i data-lucide="git-pull-request" class="w-3 h-3"></i> Decide
                             </button>
                           </template>
@@ -92,6 +92,16 @@
                     </template>
                   </tbody>
                 </table>
+              </div>
+
+              <!-- Pagination -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-2);">
+                <div x-text="`Showing ${paginatedNegotiations().length} of ${sortedNegotiations().length} records`"></div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button @click="if(negPage > 1) negPage--" :disabled="negPage === 1" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Prev</button>
+                  <span x-text="`Page ${negPage} of ${negTotalPages()}`"></span>
+                  <button @click="if(negPage < negTotalPages()) negPage++" :disabled="negPage === negTotalPages()" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Next</button>
+                </div>
               </div>
             </div>
 

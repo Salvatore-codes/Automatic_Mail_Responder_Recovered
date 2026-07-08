@@ -59,26 +59,38 @@
                   </select>
                   <input type="text" x-model="inventorySearch" @input="filterCatalog" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Search SKU ID or Name..." />
                   <button @click="loadCatalog" class="btn-micro px-2.5 py-1"><i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh</button>
+                  <!-- Export Menu -->
+                  <div class="export-container" x-data="{ open: false }" @click.away="open = false">
+                    <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:5px; height:100%; padding: 4px 10px; font-size:11px; border-radius: var(--r-sm);">
+                      <i data-lucide="download" style="width:12px; height:12px;"></i>
+                      <span>Export</span>
+                    </button>
+                    <div x-show="open" class="export-menu" style="display:none; right:0;">
+                      <button @click="exportInventoryReport('csv'); open = false;" class="export-item">CSV</button>
+                      <button @click="exportInventoryReport('xlsx'); open = false;" class="export-item">Excel (.xlsx)</button>
+                      <button @click="exportInventoryReport('pdf'); open = false;" class="export-item">PDF Document</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <!-- Table -->
               <div class="overflow-x-auto max-w-full">
-                <table class="w-full text-left text-xs border-collapse">
+                <table class="data-table">
                   <thead>
-                    <tr class="bg-[var(--bg-card2)]/20 text-[var(--text-2)]">
-                      <th class="p-3.5 border-b border-[var(--border)]">#</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">SKU ID</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Product Name</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Category</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Price (Base)</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Stock Level</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Status</th>
-                      <th class="p-3.5 border-b border-[var(--border)]">Actions</th>
+                    <tr>
+                      <th>#</th>
+                      <th @click="setCatalogSort('sku_id')" style="cursor:pointer; user-select:none;">SKU ID <span x-text="catalogSortField === 'sku_id' ? (catalogSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setCatalogSort('sku_name')" style="cursor:pointer; user-select:none;">Product Name <span x-text="catalogSortField === 'sku_name' ? (catalogSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setCatalogSort('category')" style="cursor:pointer; user-select:none;">Category <span x-text="catalogSortField === 'category' ? (catalogSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setCatalogSort('price')" style="cursor:pointer; user-select:none;">Price (Base) <span x-text="catalogSortField === 'price' ? (catalogSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th @click="setCatalogSort('stock')" style="cursor:pointer; user-select:none;">Stock Level <span x-text="catalogSortField === 'stock' ? (catalogSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+                      <th>Status</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <template x-if="filteredCatalog.length === 0">
+                    <template x-if="sortedCatalog().length === 0">
                       <tr>
                         <td colspan="8" class="p-0">
                           <div class="table-empty">
@@ -89,9 +101,9 @@
                         </td>
                       </tr>
                     </template>
-                    <template x-for="(sku, idx) in filteredCatalog" :key="sku.sku_id">
-                      <tr class="border-b border-[var(--border)]/70 hover:bg-[var(--bg-card2)]/30">
-                        <td class="p-3.5 text-[var(--text-2)]" x-text="idx + 1"></td>
+                    <template x-for="(sku, idx) in paginatedCatalog()" :key="sku.sku_id">
+                      <tr>
+                        <td class="p-3.5 text-[var(--text-2)]" x-text="(catalogPage - 1) * catalogPageSize + idx + 1"></td>
                         <td class="p-3.5 font-bold font-mono" x-text="sku.sku_id"></td>
                         <td class="p-3.5"><strong x-text="sku.sku_name"></strong></td>
                         <td class="p-3.5 text-[var(--text-2)]" x-text="sku.category"></td>
@@ -103,7 +115,7 @@
                           <span class="badge font-bold" :class="sku.stock === 0 ? 'red' : (sku.stock <= 5 ? 'yellow' : 'green')" x-text="sku.stock === 0 ? 'Out of stock' : (sku.stock <= 5 ? 'Low Stock' : 'In Stock')"></span>
                         </td>
                         <td class="p-3.5">
-                          <button @click="openStockModal(sku.sku_id, sku.sku_name, sku.stock)" class="px-2.5 py-1 bg-[var(--accent)] text-white font-bold rounded-lg text-[10px] flex items-center gap-1.5">
+                          <button @click="openStockModal(sku.sku_id, sku.sku_name, sku.stock)" class="btn-action-primary btn-action-primary-sm">
                             <i data-lucide="edit" class="w-3.5 h-3.5"></i> Update Stock
                           </button>
                         </td>
@@ -111,6 +123,16 @@
                     </template>
                   </tbody>
                 </table>
+              </div>
+
+              <!-- Pagination -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-2);">
+                <div x-text="`Showing ${paginatedCatalog().length} of ${sortedCatalog().length} records`"></div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button @click="if(catalogPage > 1) catalogPage--" :disabled="catalogPage === 1" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Prev</button>
+                  <span x-text="`Page ${catalogPage} of ${catalogTotalPages()}`"></span>
+                  <button @click="if(catalogPage < catalogTotalPages()) catalogPage++" :disabled="catalogPage === catalogTotalPages()" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Next</button>
+                </div>
               </div>
             </div>
 

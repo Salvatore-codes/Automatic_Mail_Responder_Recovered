@@ -50,7 +50,13 @@ def _run_ingestion(text, catalog, client, tenant_id):
             
     # Default fallback to Engine A (Local Free Fuzzy Matcher)
     print(f"[Ingestion Engine] Using Engine A (Local Fuzzy) for parsing.")
-    return run_scenario_free(text, catalog, gemini_client=client)
+    
+    # Strip prior conversation history if injected to avoid parsing historical quotes/items
+    parse_text = text
+    if "[Customer's latest message:]" in text:
+        parse_text = text.split("[Customer's latest message:]")[-1].strip()
+        
+    return run_scenario_free(parse_text, catalog, gemini_client=client)
 
 # Helper: Extract phone number from email body
 def extract_phone_number(body_text):
@@ -96,7 +102,10 @@ def parse_mock_email(file_path):
     body_start = re.search(r'^Body:\s*$', content, re.MULTILINE | re.IGNORECASE)
     
     sender = from_match.group(1).strip() if from_match else "walkin_retail@guest.com"
-    subject = sub_match.group(1).strip() if sub_match else "Order Enquiry"
+    subject = sub_match.group(1).strip() if sub_match else ""
+    if not subject or subject.lower() in ("(no subject)", "no subject", "(no-subject)", "no-subject"):
+        subject = "Order Enquiry"
+    
     
     # Generate unique Message-ID if missing from header
     if msg_id_match:
@@ -125,7 +134,17 @@ def strip_email_history(body_text):
     if not body_text:
         return ""
 
-    lines = body_text.split('\n')
+    # Preserve any [From attachment '...'] content block appended to the body
+    attachment_parts = []
+    if "[From attachment" in body_text:
+        parts = body_text.split("[From attachment")
+        body_text_clean_of_attachments = parts[0]
+        for p in parts[1:]:
+            attachment_parts.append("[From attachment" + p)
+    else:
+        body_text_clean_of_attachments = body_text
+
+    lines = body_text_clean_of_attachments.split('\n')
     cleaned_lines = []
 
     # Patterns that indicate the START of thread history / bot reply / footer.
@@ -177,6 +196,10 @@ def strip_email_history(body_text):
     # first 1500 chars to avoid sending entire thread history to Gemini
     if len(result) > 1500:
         result = result[:1500]
+
+    # Re-append preserved attachment content blocks
+    if attachment_parts:
+        result = result + "\n\n" + "\n\n".join(attachment_parts)
 
     return result
 
@@ -289,7 +312,7 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     if unavailable_items:
         names = ", ".join(unavailable_names)
         body.append("")
-        body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation ({names}). Reply to this email if you would like them back-ordered.")
+        body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names}).")
     body.append("")
     body.append("If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help.")
     body.append("")
@@ -371,9 +394,9 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         if unavailable_items:
             names_esc = html.escape(", ".join(unavailable_names))
             if customer_name == "Manoranjith":
-                html_lines.append(f"<p><b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation ({names_esc}).</p>")
+                html_lines.append(f"<p><b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names_esc}).</p>")
             else:
-                html_lines.append(f"<p><b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock and not included: {names_esc}.</p>")
+                html_lines.append(f"<p><b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock but included as made-to-order: {names_esc}.</p>")
     else:
         html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
     html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
@@ -468,10 +491,39 @@ def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None, sys
     return plain_text, html_text
 
 def is_negotiation_msg(text):
-    """Checks if the text contains negotiation-related keywords."""
-    negotiation_keywords = ["discount", "off", "cheaper", "reduce", "less", "negotiat", "rate", "%", "deal", "better", "lower", "offer"]
+    """Checks if the text contains negotiation-related keywords with word boundaries and phrase detection."""
+    if not text:
+        return False
     text_lower = text.lower()
-    return any(kw in text_lower for kw in negotiation_keywords)
+    
+    # 1. Keywords that must match as full words
+    word_keywords = [
+        r"discounts?", r"cheaper", r"reductions?", r"reduce", 
+        r"negotiat\w*", r"deals?", r"concessions?"
+    ]
+    # Check if any full word keyword matches
+    for kw in word_keywords:
+        if re.search(r'\b' + kw + r'\b', text_lower):
+            return True
+            
+    # 2. Percentage match: e.g. "10%" or "10 %" or "10 percent"
+    if re.search(r'\b\d+(?:\.\d+)?\s*(?:%|percent)\b', text_lower):
+        return True
+        
+    # 3. Specific price reduction phrases
+    phrases = [
+        r"better\s+(?:price|rate|deal|offer)",
+        r"lower\s+(?:price|rate|cost|amount|total)",
+        r"less\s+(?:price|money|cost|amount)",
+        r"give\s+(?:me\s+)?(?:a\s+)?(?:better\s+)?(?:price|discount|deal)",
+        r"make\s+(?:it\s+)?cheaper",
+        r"price\s+(?:is\s+)?too\s+high"
+    ]
+    for phrase in phrases:
+        if re.search(phrase, text_lower):
+            return True
+            
+    return False
 
 def is_human_request(text):
     """Checks if the text contains requests for human related action."""
@@ -578,6 +630,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             crm_path = os.path.join(project_root, "data", "crm_customers.json")
 
     body_clean = strip_email_history(body)
+    latest_customer_message = body_clean
 
     # ── Thread Context Injection ──────────────────────────────────────────────
     # If the caller provided prior conversation history (for customer replies),
@@ -595,13 +648,14 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
     # Determine if we should cap quantities based on stock availability
 
     # (Only cap if we have an attachment AND the customer did NOT write additional product info in the body)
-    has_attachment = "[From attachment" in body
+    has_attachment = "[From attachment" in latest_customer_message
     cap_by_stock = False
     override_qty = None
     
     if has_attachment:
-        # Split body to separate original text from attachment text
-        parts = body.split("[From attachment")
+        cap_by_stock = True
+        # Split latest_customer_message to separate original text from attachment text
+        parts = latest_customer_message.split("[From attachment")
         email_text_only = parts[0].strip()
         
         override_qty = extract_global_quantity_override(email_text_only)
@@ -610,8 +664,8 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         body_lines = run_scenario_free(email_text_only, catalog, gemini_client=client)
         body_has_products = any(l["matched_sku_id"] != "UNKNOWN" for l in body_lines)
         
-        if not body_has_products and override_qty is None:
-            cap_by_stock = True
+        if body_has_products or override_qty is not None:
+            cap_by_stock = False
     
     import email.utils
     display_name, email_addr = email.utils.parseaddr(sender)
@@ -707,11 +761,18 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
 
     # Process conversational thread replies if we have the quotation metadata
     if meta and existing_invoice_id:
-        # 1. Check if this is a negotiation request (takes priority!)
-        if is_negotiation_msg(body_clean):
-            requested_discount = extract_requested_discount(body_clean)
+        # Run ingestion first to see if they are modifying/adding products
+        matched_lines = _run_ingestion(latest_customer_message, catalog, client, tenant_id)
+        has_valid_matches = matched_lines and any(
+            line['matched_sku_id'] != "UNKNOWN" and line['confidence'] >= 80.0 
+            for line in matched_lines
+        )
+        
+        # 1. Check if this is a negotiation request (takes priority ONLY if they are not adding/modifying products)
+        if is_negotiation_msg(latest_customer_message) and not has_valid_matches:
+            requested_discount = extract_requested_discount(latest_customer_message)
             chat_history = meta.get("chat_history", [])
-            chat_history.append({"sender": "customer", "text": body_clean})
+            chat_history.append({"sender": "customer", "text": latest_customer_message})
             
             # Setup GenAI client for live mode if API key is valid
             api_key = os.environ.get("GEMINI_API_KEY")
@@ -727,7 +788,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             
             from src.negotiator import run_negotiation_step
             neg_result = run_negotiation_step(
-                customer_message=body_clean,
+                customer_message=latest_customer_message,
                 requested_discount=requested_discount,
                 chat_history=chat_history,
                 is_live=is_live,
@@ -801,7 +862,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 try:
                     from src.database_sqlite import update_quotation_status, log_chat_msg
                     update_quotation_status(existing_invoice_id, "NEGOTIATION_APPROVED", new_discount_pct, tenant_id=tenant_id)
-                    log_chat_msg(existing_invoice_id, "customer", body_clean, tenant_id=tenant_id)
+                    log_chat_msg(existing_invoice_id, "customer", latest_customer_message, tenant_id=tenant_id)
                     log_chat_msg(existing_invoice_id, "ai", reply_text, tenant_id=tenant_id)
                 except Exception as e:
                     print(f"[Warning] SQLite logging failed: {e}")
@@ -841,7 +902,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                     from src.database_sqlite import update_quotation_status, log_chat_msg
                     db_status = "PENDING_REVIEW" if status == "PENDING_REVIEW" else f"NEGOTIATION_{status}"
                     update_quotation_status(existing_invoice_id, db_status, tenant_id=tenant_id)
-                    log_chat_msg(existing_invoice_id, "customer", body_clean, tenant_id=tenant_id)
+                    log_chat_msg(existing_invoice_id, "customer", latest_customer_message, tenant_id=tenant_id)
                     log_chat_msg(existing_invoice_id, "ai", reply_text, tenant_id=tenant_id)
                 except Exception as e:
                     print(f"[Warning] SQLite logging failed: {e}")
@@ -858,7 +919,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
             return EmailResponseTuple(reply_subject, reply_payload, pdf_out_path, db_status, existing_invoice_id)
             
         # 2. Check if the customer is modifying the quotation items (high-confidence items only!)
-        matched_lines = _run_ingestion(body_clean, catalog, client, tenant_id)
+        # We already computed matched_lines above!
 
         # ── Deduplicate: merge rows with the same SKU ID, summing quantities ──
         _dedup_map2 = {}
@@ -993,7 +1054,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 from src.database_sqlite import log_chat_msg
                 try:
                     if not skip_initial_customer_log:
-                        log_chat_msg(existing_invoice_id, "CUSTOMER", body_clean, tenant_id=tenant_id)
+                        log_chat_msg(existing_invoice_id, "CUSTOMER", latest_customer_message, tenant_id=tenant_id)
                     plain_reply = reply_body[0] if isinstance(reply_body, tuple) else str(reply_body)
                     log_chat_msg(existing_invoice_id, "BOT", plain_reply, tenant_id=tenant_id)
                 except Exception as _ce:
@@ -1007,7 +1068,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         else:
             # Handle general conversational enquiry
             chat_history = meta.get("chat_history", [])
-            chat_history.append({"sender": "customer", "text": body_clean})
+            chat_history.append({"sender": "customer", "text": latest_customer_message})
             
             api_key = os.environ.get("GEMINI_API_KEY")
             client = None
@@ -1034,7 +1095,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 Here is the conversation history:
                 {history_formatted}
                 
-                Customer's latest reply: "{body_clean}"
+                Customer's latest reply: "{latest_customer_message}"
                 
                 Write a concise, polite, and professional response. If they are confirming the order, thank them and let them know the team will prepare the final invoice for payment. If they are asking a product question, answer it if you can based on the items, or politely state you are forwarding this to a salesperson.
                 """
@@ -1389,6 +1450,42 @@ def extract_text_via_local_ocr(payload, ext):
                 os.remove(temp_path)
             except Exception:
                 pass
+def extract_text_from_pdf(pdf_bytes):
+    """
+    Extracts text from PDF bytes using pypdf.
+    If no text is found (e.g. scanned PDF), attempts to extract images from pages
+    and runs local OCR on each extracted image.
+    """
+    import pypdf
+    from io import BytesIO
+    import os
+    try:
+        reader = pypdf.PdfReader(BytesIO(pdf_bytes))
+        text_parts = []
+        for i, page in enumerate(reader.pages):
+            page_text = page.extract_text()
+            if page_text and page_text.strip():
+                text_parts.append(page_text)
+            
+            # Extract images and run OCR for scanned/image PDFs
+            try:
+                if hasattr(page, "images"):
+                    for img_idx, image_file_object in enumerate(page.images):
+                        img_data = image_file_object.data
+                        img_name = image_file_object.name
+                        _, img_ext = os.path.splitext(img_name)
+                        if not img_ext:
+                            img_ext = ".png"
+                        ocr_text = extract_text_via_local_ocr(img_data, img_ext)
+                        if ocr_text and ocr_text.strip():
+                            text_parts.append(ocr_text)
+            except Exception as img_err:
+                print(f"[PDF OCR] Warning: Failed to extract images from page {i}: {img_err}")
+                
+        return "\n".join(text_parts)
+    except Exception as e:
+        print(f"[PDF OCR] Error parsing PDF: {e}")
+        return ""
 
 
 def extract_text_from_attachments(msg):
@@ -1562,6 +1659,12 @@ def extract_text_from_attachments(msg):
             print(f"[Attachment] Gemini not available or failed. Falling back to local OCR for '{display_filename}'...")
             extracted = extract_text_via_local_ocr(payload, ext)
 
+        # 3. Local Fallback for PDFs if Gemini is not available or failed
+        is_pdf = ext == ".pdf" or content_type == "application/pdf"
+        if (not extracted or extracted.upper() == "NONE") and is_pdf:
+            print(f"[Attachment] Gemini not available or failed. Falling back to local PDF/OCR extraction for '{display_filename}'...")
+            extracted = extract_text_from_pdf(payload)
+
         if extracted and extracted.upper() != "NONE":
             print(f"[Attachment] Extracted text from '{display_filename}':\n{extracted[:300]}...")
             extracted_texts.append(f"[From attachment '{display_filename}']:\n{extracted}")
@@ -1654,6 +1757,7 @@ def fetch_outlook_messages(access_token, email_user):
     filter_str = f"isDraft eq false and receivedDateTime ge {since}"
     encoded_filter = urllib.parse.quote(filter_str)
     url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages?$filter={encoded_filter}&$orderby=receivedDateTime desc&$top=50&$select=id,internetMessageId,subject,from,body,receivedDateTime,hasAttachments,isDraft"
+    url = url.replace(" ", "%20")
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
@@ -1991,6 +2095,12 @@ def extract_outlook_attachment_text(payload, filename, content_type):
         print(f"[Attachment] Gemini not available or failed. Falling back to local OCR for Outlook attachment '{display_filename}'...")
         extracted = extract_text_via_local_ocr(payload, ext)
 
+    # 3. Local Fallback for PDFs if Gemini is not available or failed
+    is_pdf = ext == ".pdf" or (content_type and content_type == "application/pdf")
+    if (not extracted or extracted.upper() == "NONE") and is_pdf:
+        print(f"[Attachment] Gemini not available or failed. Falling back to local PDF/OCR extraction for Outlook attachment '{display_filename}'...")
+        extracted = extract_text_from_pdf(payload)
+
     if extracted and extracted != "NONE":
         return extracted
 
@@ -2102,15 +2212,23 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
         received_at_utc = msg.get("receivedDateTime")
         received_at = format_graph_datetime(received_at_utc)
         
+        sender_email = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+        sender_name = msg.get("from", {}).get("emailAddress", {}).get("name", sender_email)
+        
         if internet_msg_id:
-            from src.database_sqlite import is_message_processed
+            from src.database_sqlite import is_message_processed, log_processed_message
             if is_message_processed(internet_msg_id, tenant_id=tenant_id):
                 mark_outlook_message_read(token, email_user, msg_id)
                 continue
-
-        sender_email = msg.get("from", {}).get("emailAddress", {}).get("address", "")
-        sender_name = msg.get("from", {}).get("emailAddress", {}).get("name", sender_email)
-        subject = msg.get("subject", "Order Enquiry")
+            
+            # Atomic lock claim
+            if not log_processed_message(internet_msg_id, "PROCESSING", received_at=received_at, tenant_id=tenant_id, customer_name=sender_name, customer_email=sender_email):
+                print(f"[Outlook Listener] Race condition avoided: message {internet_msg_id} is already being processed by another instance.")
+                mark_outlook_message_read(token, email_user, msg_id)
+                continue
+        subject = msg.get("subject")
+        if not subject or not subject.strip() or subject.strip().lower() in ("(no subject)", "no subject", "(no-subject)", "no-subject"):
+            subject = "Order Enquiry"
 
         if sender_email.lower() == email_user.lower():
             # ALWAYS skip emails sent from our own inbox — unconditionally.
@@ -2145,7 +2263,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                         file_data = base64.b64decode(content_bytes_b64)
                         text = extract_outlook_attachment_text(file_data, name, content_type)
                         if text:
-                            attachment_text += f"\n[Attachment: {name}]\n{text}\n"
+                            attachment_text += f"\n[From attachment '{name}']:\n{text}\n"
                     except Exception as ae:
                         print(f"[Outlook Attachment] Warning: Failed to parse attachment {name}: {ae}")
 
@@ -2250,7 +2368,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
         if needs_relevance_check:
             # Bug 11 fix: Never block emails with explicit QTN references in the subject
             subj_has_qtn_ref = bool(re.search(r'\[Quotation\s+#|QTN-[A-Z0-9\-]+', subject, re.IGNORECASE))
-            if not subj_has_qtn_ref and not is_subject_relevant(subject, sender_email, crm_emails):
+            if not subj_has_qtn_ref and not is_customer_reply and not is_subject_relevant(subject, sender_email, crm_emails):
                 print(f"[Outlook Filter] Skipped irrelevant subject from {sender_email} (Subject: {subject})")
                 if internet_msg_id:
                     from src.database_sqlite import log_processed_message
@@ -2384,7 +2502,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                     proc_invoice_id = _qtn_match.group(1)
 
             if status == "UNPARSED_NOTICE":
-                print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Logging to unmatched_items.")
+                print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Logging to unmatched_items (No reply generated).")
                 try:
                     from src.database_sqlite import log_unmatched_item, log_activity
                     # Prepend Subject, Sender, and Attachments to body for rich preview in simulator
@@ -2411,6 +2529,13 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 except Exception as ue:
                     print(f"[Warning] Failed to log unmatched live enquiry: {ue}")
                     proc_invoice_id = "UNMATCHED"
+                
+                # Log processed message reference, mark as read, and skip sending reply
+                if internet_msg_id:
+                    from src.database_sqlite import log_processed_message
+                    log_processed_message(internet_msg_id, proc_invoice_id, received_at=received_at, customer_name=sender_name, customer_email=sender_email, tenant_id=tenant_id)
+                mark_outlook_message_read(token, email_user, msg_id)
+                continue
             else:
                 # Log QUOTE_GENERATED or other statuses to activity log
                 try:
@@ -2939,7 +3064,10 @@ def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True, invoic
                 line["stock_avail"] = stock_avail
                 
                 if req_qty > stock_avail:
-                    line["quantity"] = 0 # Exclude from quotation entirely since requested qty exceeds stock
+                    if cap_by_stock:
+                        line["quantity"] = 0 # Exclude from quotation entirely since requested qty exceeds stock
+                    else:
+                        line["quantity"] = req_qty
                     line["deficit"] = req_qty - stock_avail
                     deficit_lines.append(line)
                 else:
@@ -3326,7 +3454,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 needs_relevance_check = (blocklist_result == "NEEDS_AI") or (blocklist_result == "ACCEPT_CRM" and not is_customer_reply)
                 if needs_relevance_check:
                     # Fast relevance check on subject before using AI API
-                    if not is_subject_relevant(subject, sender, crm_emails):
+                    if not is_customer_reply and not is_subject_relevant(subject, sender, crm_emails):
                         print(f"[Email Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) [Fast Subject Check]")
                         if os.path.exists(file_path):
                             os.remove(file_path)
@@ -3463,19 +3591,21 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
 
                 # --- Handle mixed matched/unmatched items (customer asks for products not in the catalog) ---
                 if status in ["QUOTE_GENERATED", "QUOTE_UPDATED"]:
-                    has_attachment = "[From attachment" in body
+                    clean_body_for_deficits = strip_email_history(body)
+                    has_attachment = "[From attachment" in clean_body_for_deficits
                     cap_by_stock = False
                     override_qty = None
                     if has_attachment:
-                        parts = body.split("[From attachment")
+                        cap_by_stock = True
+                        parts = clean_body_for_deficits.split("[From attachment")
                         email_text_only = parts[0].strip()
                         override_qty = extract_global_quantity_override(email_text_only)
                         body_lines = run_scenario_free(email_text_only, catalog)
                         body_has_products = any(l["matched_sku_id"] != "UNKNOWN" for l in body_lines)
-                        if not body_has_products and override_qty is None:
-                            cap_by_stock = True
+                        if body_has_products or override_qty is not None:
+                            cap_by_stock = False
 
-                    matched_lines = run_scenario_free(body, catalog)
+                    matched_lines = run_scenario_free(clean_body_for_deficits, catalog)
                     if override_qty is not None:
                         for line in matched_lines:
                             if line['matched_sku_id'] != "UNKNOWN":
@@ -3531,7 +3661,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
 
                 # --- Handle UNPARSED_NOTICE: log unmatched items + alert master ---
                 if status == "UNPARSED_NOTICE":
-                    print(f"[Unmatched] No valid SKU matches for mock enquiry from {sender}. Logging & alerting master.")
+                    print(f"[Unmatched] No valid SKU matches for mock enquiry from {sender}. Logging & alerting master (No reply generated).")
                     try:
                         from src.database_sqlite import log_unmatched_item
                         log_unmatched_item(
@@ -3565,6 +3695,32 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                             f"Trofeo Auto-bot"
                         )
                         send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_unmatch_notif, body_unmatch_notif)
+                    
+                    # Log processed message reference, log activity, and skip writing reply file
+                    log_invoice_ref = "UNMATCHED"
+                    if msg_id:
+                        from src.database_sqlite import log_processed_message
+                        try:
+                            from src.database_sqlite import get_connection
+                            _rc = get_connection(tenant_id)
+                            _row = _rc.execute(
+                                "SELECT id FROM unmatched_items WHERE customer_email = ? ORDER BY id DESC LIMIT 1",
+                                (sender,)
+                            ).fetchone()
+                            log_invoice_ref = f"UNMATCHED_{_row[0]}" if _row else "UNMATCHED"
+                        except Exception:
+                            log_invoice_ref = "UNMATCHED"
+                        log_processed_message(msg_id, log_invoice_ref, received_at=received_at, tenant_id=tenant_id)
+                    
+                    try:
+                        from src.database_sqlite import log_activity
+                        log_activity("UNMATCHED_ENQUIRY", invoice_id=log_invoice_ref,
+                            customer_name=sender_name, customer_email=sender,
+                            description=f"Items not found in catalog (Subject: {subject[:80]})",
+                            tenant_id=tenant_id)
+                    except Exception:
+                        pass
+                    continue
 
                 # Check reply mode setting
                 from src.database_sqlite import get_setting, update_quotation_status, log_chat_msg
@@ -3860,7 +4016,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     needs_relevance_check = (blocklist_result == "NEEDS_AI") or (blocklist_result == "ACCEPT_CRM" and not is_customer_reply)
                     if needs_relevance_check:
                         # Fast relevance check on subject before using AI API
-                        if not is_subject_relevant(subject, sender, crm_emails):
+                        if not is_customer_reply and not is_subject_relevant(subject, sender, crm_emails):
                             print(f"[Email Filter] Skipped irrelevant email subject from {sender} (Subject: {subject}) [Fast Subject Check]")
                             mail.store(m_id, '+FLAGS', '\\Seen')
                             if msg_id:
@@ -4119,19 +4275,21 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
 
                     # --- Handle mixed matched/unmatched items ---
                     if status in ["QUOTE_GENERATED", "QUOTE_UPDATED"]:
-                        has_attachment = "[From attachment" in body
+                        clean_body_for_deficits = strip_email_history(body)
+                        has_attachment = "[From attachment" in clean_body_for_deficits
                         cap_by_stock = False
                         override_qty = None
                         if has_attachment:
-                            parts = body.split("[From attachment")
+                            cap_by_stock = True
+                            parts = clean_body_for_deficits.split("[From attachment")
                             email_text_only = parts[0].strip()
                             override_qty = extract_global_quantity_override(email_text_only)
                             body_lines = run_scenario_free(email_text_only, catalog)
                             body_has_products = any(l["matched_sku_id"] != "UNKNOWN" for l in body_lines)
-                            if not body_has_products and override_qty is None:
-                                cap_by_stock = True
+                            if body_has_products or override_qty is not None:
+                                cap_by_stock = False
 
-                        matched_lines = run_scenario_free(body, catalog)
+                        matched_lines = run_scenario_free(clean_body_for_deficits, catalog)
                         if override_qty is not None:
                             for line in matched_lines:
                                 if line['matched_sku_id'] != "UNKNOWN":

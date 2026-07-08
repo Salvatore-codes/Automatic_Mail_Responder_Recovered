@@ -22,8 +22,31 @@ import datetime
 # Record when the server process started
 _SERVER_START_TIME = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
 
+# Paths setup
+project_root = os.path.dirname(os.path.dirname(__file__))
+static_dir = os.path.join(project_root, "static")
+quotes_dir = os.path.join(static_dir, "quotes")
+templates = Jinja2Templates(directory=os.path.join(project_root, "templates"))
+
 # 1. Initialize FastAPI app
-app = FastAPI(title="Trofeo Hardware Automated SKU Matcher API")
+from contextlib import asynccontextmanager
+import sys
+import subprocess
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[System] Starting Email Listener background process...")
+    cmd = [sys.executable, os.path.join(project_root, "run_email_listener.py")]
+    process = subprocess.Popen(cmd, cwd=project_root)
+    yield
+    print("[System] Stopping Email Listener background process...")
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+app = FastAPI(title="Trofeo Hardware Automated SKU Matcher API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,12 +55,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Paths setup
-project_root = os.path.dirname(os.path.dirname(__file__))
-static_dir = os.path.join(project_root, "static")
-quotes_dir = os.path.join(static_dir, "quotes")
-templates = Jinja2Templates(directory=os.path.join(project_root, "templates"))
 
 # Ensure static and quotes directory exist
 os.makedirs(quotes_dir, exist_ok=True)
@@ -119,6 +136,28 @@ async def get_tenants():
 async def process_order(req: ProcessRequest):
     start_time = time.time()
     
+    text = req.text
+    # Check if text is a base64 encoded data URI (e.g. data:image/png;base64,... or data:application/pdf;base64,...)
+    if text.startswith("data:") and ";base64," in text:
+        try:
+            header, base64_data = text.split(";base64,", 1)
+            content_type = header.split(":", 1)[1]
+            import base64
+            payload = base64.b64decode(base64_data)
+            
+            ext = ".png"
+            if "pdf" in content_type:
+                ext = ".pdf"
+            elif "jpeg" in content_type or "jpg" in content_type:
+                ext = ".jpg"
+                
+            from src.email_listener import extract_outlook_attachment_text
+            extracted_text = extract_outlook_attachment_text(payload, f"uploaded_file{ext}", content_type)
+            if extracted_text:
+                text = extracted_text
+        except Exception as e:
+            print(f"[Base64 Ingestion] Error decoding base64 data: {e}")
+
     # 1. CRM Lookup
     customers = load_tenant_crm_customers(req.tenant_id)
     cust_profile = customers.get(req.customer_email, {"name": "Walk-in Retail Client", "tier": "retail", "discount": 0.0})
@@ -131,10 +170,10 @@ async def process_order(req: ProcessRequest):
     
     if req.engine == "A":
         # Scenario A (Free Fuzzy)
-        matched_lines = run_scenario_free(req.text, catalog)
+        matched_lines = run_scenario_free(text, catalog)
     else:
         # Scenario B (Paid AI Hybrid)
-        matched_lines = run_scenario_hybrid(req.text, catalog, input_type=req.input_type)
+        matched_lines = run_scenario_hybrid(text, catalog, input_type=req.input_type)
         
     search_time = time.time() - start_time
     
@@ -142,6 +181,64 @@ async def process_order(req: ProcessRequest):
     cost = 0.0014 if req.engine == "B" else 0.0
     
     return {
+        "extracted_text": text if text != req.text else None,
+        "matched_lines": matched_lines,
+        "discount_pct": cust_profile["discount"],
+        "customer_name": cust_profile["name"],
+        "metrics": {
+            "parsed_count": len(matched_lines),
+            "search_time_sec": round(search_time, 4),
+            "cost_usd": cost
+        }
+    }
+
+from fastapi import File, UploadFile, Form
+
+@app.post("/api/process-file")
+async def process_order_file(
+    file: UploadFile = File(...),
+    engine: str = Form("A"),
+    customer_email: str = Form(""),
+    input_type: str = Form("custom"),
+    tenant_id: str = Form("default")
+):
+    start_time = time.time()
+    
+    payload = await file.read()
+    filename = file.filename
+    content_type = file.content_type
+    
+    from src.email_listener import extract_outlook_attachment_text
+    extracted_text = extract_outlook_attachment_text(payload, filename, content_type)
+    
+    if not extracted_text:
+        # Fallback for text files
+        if content_type and content_type.startswith("text/"):
+            try:
+                extracted_text = payload.decode('utf-8', errors='ignore')
+            except Exception:
+                extracted_text = payload.decode('latin-1', errors='ignore')
+                
+    if not extracted_text:
+        raise HTTPException(status_code=400, detail="Could not extract any text or items from the uploaded file.")
+        
+    # Ingestion Pipeline
+    customers = load_tenant_crm_customers(tenant_id)
+    cust_profile = customers.get(customer_email, {"name": "Walk-in Retail Client", "tier": "retail", "discount": 0.0})
+    
+    catalog = get_tenant_catalog(tenant_id)
+    
+    matched_lines = []
+    if engine == "A":
+        matched_lines = run_scenario_free(extracted_text, catalog)
+    else:
+        matched_lines = run_scenario_hybrid(extracted_text, catalog, input_type=input_type)
+        
+    search_time = time.time() - start_time
+    cost = 0.0014 if engine == "B" else 0.0
+    
+    return {
+        "extracted_text": extracted_text,
         "matched_lines": matched_lines,
         "discount_pct": cust_profile["discount"],
         "customer_name": cust_profile["name"],
@@ -321,12 +418,36 @@ async def get_quote_pdf(invoice_id: str, tenant_id: str = "default"):
         path1 = os.path.join(quotes_dir, filename)
         path2 = os.path.join(project_root, "mock_outbox", filename)
 
+    # Fetch customer name from database for clean download naming
+    customer_name = "Customer"
+    try:
+        from src.database_sqlite import get_connection
+        conn = get_connection(tenant_id)
+        row = conn.execute("SELECT customer_name FROM quotations WHERE invoice_id = ?", (invoice_id,)).fetchone()
+        conn.close()
+        if row and row["customer_name"]:
+            customer_name = row["customer_name"]
+    except Exception:
+        pass
+        
+    safe_cust_name = "".join(c for c in str(customer_name) if c.isalnum() or c in ("_", "-")).strip()
+    if not safe_cust_name:
+        safe_cust_name = "Customer"
+    download_filename = f"Quotation_{safe_inv_id}_{safe_cust_name}.pdf"
+    
+    headers = {
+        "Content-Disposition": f"inline; filename=\"{download_filename}\"",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
+
     if os.path.exists(path1):
-        return FileResponse(path1)
+        return FileResponse(path1, headers=headers)
         
     # 2. Check mock_outbox/
     if os.path.exists(path2):
-        return FileResponse(path2)
+        return FileResponse(path2, headers=headers)
         
     raise HTTPException(status_code=404, detail="Quotation PDF file not found.")
 

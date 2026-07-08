@@ -47,7 +47,8 @@
           </div>
           <div class="flex justify-end border-t border-[var(--border)] pt-3 mt-1 gap-2">
             <button @click="showResolveDeficit = false" class="btn-micro px-4 py-1.5 text-xs">Cancel</button>
-            <button @click="handleResolveDeficit" :disabled="resolvingDeficit" class="px-4 py-1.5 bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5">
+            <button @click="handleResolveDeficit" :disabled="resolvingDeficit" 
+                    style="background:#f43f5e; color:white; border:none; border-radius:12px; padding:6px 16px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
               <template x-if="resolvingDeficit"><div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div></template>
               <span x-text="resolvingDeficit ? 'Resolving...' : 'Update & Send Quote'"></span>
             </button>
@@ -110,8 +111,8 @@
 
           <div class="flex justify-end border-t border-[var(--border)] pt-3 mt-1 gap-2">
             <button @click="showResolveNeg = false" class="btn-micro px-4 py-1.5 text-xs">Cancel</button>
-            <button @click="submitResolution('counter')" :disabled="submittingResolution" class="px-4 py-1.5 bg-amber-500 text-black font-bold rounded-xl text-xs">Send Counter</button>
-            <button @click="submitResolution('approve')" :disabled="submittingResolution" class="px-4 py-1.5 bg-emerald-500 text-white font-bold rounded-xl text-xs">Approve</button>
+            <button @click="submitResolution('counter')" :disabled="submittingResolution" style="background:#f59e0b; color:black; border:none; border-radius:12px; padding:6px 16px; font-size:12px; font-weight:700; cursor:pointer;">Send Counter</button>
+            <button @click="submitResolution('approve')" :disabled="submittingResolution" style="background:#10b981; color:white; border:none; border-radius:12px; padding:6px 16px; font-size:12px; font-weight:700; cursor:pointer;">Approve</button>
           </div>
         </div>
       </div>
@@ -135,7 +136,7 @@
           </div>
           <div class="flex justify-end border-t border-[var(--border)] pt-3 mt-1 gap-2">
             <button @click="showStockModal = false" class="btn-micro px-4 py-1.5 text-xs">Cancel</button>
-            <button @click="updateStock" :disabled="updatingStock" class="px-4 py-1.5 bg-[var(--accent)] text-white font-bold rounded-xl text-xs flex items-center gap-1.5">
+            <button @click="updateStock" :disabled="updatingStock" class="btn-action-primary btn-action-primary-md">
               <template x-if="updatingStock"><div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div></template>
               <span x-text="updatingStock ? 'Saving...' : 'Save Stock Level'"></span>
             </button>
@@ -195,7 +196,7 @@
 
           <div class="flex justify-end border-t border-[var(--border)] pt-3 mt-1 gap-2">
             <template x-if="chatInvoiceId && !chatInvoiceId.startsWith('UNMATCHED_')">
-              <a :href="`/api/quote/pdf/${chatInvoiceId}?tenant_id=${selectedTenant}`" target="_blank" class="px-4 py-1.5 bg-[var(--accent)] text-white font-bold rounded-xl text-xs flex items-center gap-1.5">
+              <a :href="`/api/quote/pdf/${chatInvoiceId}?tenant_id=${selectedTenant}`" target="_blank" class="btn-action-primary btn-action-primary-md" style="text-decoration:none;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>
                 <span>View PDF</span>
               </a>
@@ -312,7 +313,7 @@
               <div class="flex justify-end gap-2 border-t border-[var(--border)] pt-4 mt-2">
                 <button @click="showUnmatchedModal = false" class="btn-micro px-4 py-2 text-xs">Cancel</button>
                 <button @click="submitManualReply()" :disabled="sendingManualReply"
-                        class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition">
+                        style="background:#059669; color:white; border:none; border-radius:12px; padding:8px 20px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
                   <template x-if="sendingManualReply">
                     <div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div>
                   </template>

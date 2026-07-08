@@ -106,8 +106,8 @@
             <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;">
               <button 
                 @click="settings.reply_mode = 'auto'; saveSettings();"
-                style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
-                :style="settings.reply_mode === 'auto' ? 'background:var(--green); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                class="switcher-btn"
+                :class="settings.reply_mode === 'auto' ? 'active-auto' : ''"
                 title="Full Auto-Pilot Mode (Auto-Reply)"
               >
                 <i data-lucide="bot" style="width:11px; height:11px;"></i>
@@ -115,8 +115,8 @@
               </button>
               <button 
                 @click="settings.reply_mode = 'manual'; saveSettings();"
-                style="border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font); outline:none;"
-                :style="settings.reply_mode === 'manual' ? 'background:var(--yellow); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                class="switcher-btn"
+                :class="settings.reply_mode === 'manual' ? 'active-manual' : ''"
                 title="Human-in-the-Loop Mode (Manual-Reply)"
               >
                 <i data-lucide="user" style="width:11px; height:11px;"></i>
@@ -128,8 +128,8 @@
             <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;" title="Select Ingestion Engine">
               <button 
                 @click="settings.ingestion_engine = 'A'; saveSettings();"
-                style="border:none; border-radius:6px; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all 0.2s; font-family:var(--font); outline:none;"
-                :style="settings.ingestion_engine === 'A' ? 'background:var(--accent-2); color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                class="switcher-btn"
+                :class="settings.ingestion_engine === 'A' ? 'active-engine-a' : ''"
                 title="Engine A: Free local rule-based / fuzzy search"
               >
                 <i data-lucide="zap-off" style="width:11px; height:11px;"></i>
@@ -137,8 +137,8 @@
               </button>
               <button 
                 @click="settings.ingestion_engine = 'B'; saveSettings();"
-                style="border:none; border-radius:6px; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all 0.2s; font-family:var(--font); outline:none;"
-                :style="settings.ingestion_engine === 'B' ? 'background:var(--accent-cyan); color:#000; box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:transparent; color:var(--text-2);'"
+                class="switcher-btn"
+                :class="settings.ingestion_engine === 'B' ? 'active-engine-b' : ''"
                 title="Engine B: AI Hybrid parsing via Gemini API (Free tier)"
               >
                 <i data-lucide="sparkles" style="width:11px; height:11px;" :style="settings.ingestion_engine === 'B' ? 'color:#000;' : ''"></i>
@@ -182,7 +182,6 @@
 
           <!-- Include Tab Contents Components -->
           {% include 'components/overview.html' %}
-          {% include 'components/simulator.html' %}
           {% include 'components/deficits.html' %}
           {% include 'components/negotiations.html' %}
           {% include 'components/inventory.html' %}

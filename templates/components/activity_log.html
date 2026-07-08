@@ -36,9 +36,22 @@
       </div>
 
       <!-- Refresh button -->
-      <button class="btn-icon-action" @click="loadActivityLog()" title="Refresh log">
+      <button class="btn-icon-action" @click="loadActivityLog()" title="Refresh log" style="margin-right:4px;">
         <i data-lucide="refresh-cw" style="width:16px;height:16px;"></i>
       </button>
+
+      <!-- Export Menu -->
+      <div class="export-container" x-data="{ open: false }" @click.away="open = false">
+        <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:5px; height:32px; padding: 0 12px; font-size:12px; border-radius: var(--r-md);">
+          <i data-lucide="download" style="width:13px; height:13px;"></i>
+          <span>Export Logs</span>
+        </button>
+        <div x-show="open" class="export-menu" style="display:none; right:0;">
+          <button @click="exportActivityLogs('csv'); open = false;" class="export-item">CSV</button>
+          <button @click="exportActivityLogs('xlsx'); open = false;" class="export-item">Excel (.xlsx)</button>
+          <button @click="exportActivityLogs('pdf'); open = false;" class="export-item">PDF Document</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -63,23 +76,23 @@
             @click="activityFilter = activityFilter === 'ERROR' ? '' : 'ERROR'">Error</button>
 
     <!-- Entry count badge -->
-    <span class="activity-count-badge" x-text="filteredActivityLogs.length + ' events'"></span>
+    <span class="activity-count-badge" x-text="sortedActivityLogs().length + ' events'"></span>
   </div>
 
   <!-- ── Event Table ─────────────────────────────────────────────── -->
   <div class="activity-table-wrapper">
-    <table class="activity-table" x-show="filteredActivityLogs.length > 0">
+    <table class="activity-table" x-show="sortedActivityLogs().length > 0">
       <thead>
         <tr>
-          <th style="width:155px;">Date &amp; Time (IST)</th>
-          <th style="width:165px;">Event</th>
-          <th style="width:175px;">Customer</th>
-          <th style="width:145px;">Invoice / ID</th>
+          <th @click="setActivitySort('timestamp')" style="width:155px; cursor:pointer; user-select:none;">Date &amp; Time (IST) <span x-text="activitySortField === 'timestamp' ? (activitySortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+          <th @click="setActivitySort('event_type')" style="width:165px; cursor:pointer; user-select:none;">Event <span x-text="activitySortField === 'event_type' ? (activitySortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+          <th @click="setActivitySort('customer_name')" style="width:175px; cursor:pointer; user-select:none;">Customer <span x-text="activitySortField === 'customer_name' ? (activitySortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
+          <th @click="setActivitySort('invoice_id')" style="width:145px; cursor:pointer; user-select:none;">Invoice / ID <span x-text="activitySortField === 'invoice_id' ? (activitySortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
           <th>Description</th>
         </tr>
       </thead>
       <tbody>
-        <template x-for="entry in filteredActivityLogs" :key="entry.id">
+        <template x-for="entry in paginatedActivityLogs()" :key="entry.id">
           <tr class="activity-row" :class="getActivityRowClass(entry.event_type)">
             <!-- Timestamp -->
             <td class="activity-ts">
@@ -110,9 +123,19 @@
     </table>
 
     <!-- Empty state -->
-    <div class="activity-empty" x-show="filteredActivityLogs.length === 0">
+    <div class="activity-empty" x-show="sortedActivityLogs().length === 0">
       <i data-lucide="inbox" style="width:48px;height:48px;opacity:0.3;margin-bottom:12px;"></i>
       <p>No activity logged yet.<br>Events will appear here as the system processes emails.</p>
+    </div>
+
+    <!-- Pagination -->
+    <div x-show="sortedActivityLogs().length > 0" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-2);">
+      <div x-text="`Showing ${paginatedActivityLogs().length} of ${sortedActivityLogs().length} records`"></div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button @click="if(activityPage > 1) activityPage--" :disabled="activityPage === 1" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Prev</button>
+        <span x-text="`Page ${activityPage} of ${activityTotalPages()}`"></span>
+        <button @click="if(activityPage < activityTotalPages()) activityPage++" :disabled="activityPage === activityTotalPages()" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Next</button>
+      </div>
     </div>
   </div>
 
@@ -126,14 +149,27 @@
     </button>
 
     <div class="raw-log-container" x-show="showRawLog" x-transition>
-      <div class="raw-log-toolbar">
+      <div class="raw-log-toolbar" style="display:flex; justify-content:space-between; align-items:center;">
         <span class="raw-log-label">
           <i data-lucide="file-text" style="width:13px;height:13px;vertical-align:-1px;margin-right:4px;"></i>
           data/email_listener.log
         </span>
-        <button class="btn-tiny" @click="loadRawLog()">
-          <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Refresh
-        </button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="btn-tiny" @click="loadRawLog()">
+            <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Refresh
+          </button>
+          <!-- Raw Log Export Menu -->
+          <div class="export-container" x-data="{ open: false }" @click.away="open = false">
+            <button @click="open = !open" class="btn-tiny" style="display:flex; align-items:center; gap:4px; padding:3px 8px; font-size:11px;">
+              <i data-lucide="download" style="width:11px; height:11px;"></i>
+              <span>Export</span>
+            </button>
+            <div x-show="open" class="export-menu" style="display:none; right:0; min-width:110px;">
+              <button @click="exportRawLog('txt'); open = false;" class="export-item" style="padding:6px 10px; font-size:11.5px;">TXT File</button>
+              <button @click="exportRawLog('pdf'); open = false;" class="export-item" style="padding:6px 10px; font-size:11.5px;">PDF Document</button>
+            </div>
+          </div>
+        </div>
       </div>
       <pre class="raw-log-pre" id="raw-log-pre">
         <template x-if="rawLogLines.length === 0">

@@ -2,7 +2,6 @@ function dashboardApp() {
   return {
     tabs: [
       { id: 'overview', label: 'Overview', icon: 'layout-dashboard', badge: null, badgeColor: 'blue', description: 'View executive operational analytics, service health status, and live email queues.' },
-      { id: 'simulator', label: 'Live Simulator', icon: 'zap', badge: null, badgeColor: 'blue', description: 'Simulate incoming customer quote request emails and test AI parsing.' },
       { id: 'deficits', label: 'Deficits', icon: 'package', badge: 0, badgeColor: 'red', description: 'Manage raw material/item deficits and match alternatives for outstanding orders.' },
       { id: 'negotiations', label: 'Negotiations', icon: 'message-square-text', badge: 0, badgeColor: 'yellow', description: 'Review, counter-offer, or resolve discount requests escalated by the AI.' },
       { id: 'inventory', label: 'Full Inventory', icon: 'warehouse', badge: null, badgeColor: 'blue', description: 'View current stock levels, base prices, and catalog items.' },
@@ -19,6 +18,7 @@ function dashboardApp() {
     
     // Tab 1: Overview
     overviewData: {},
+    overviewSubTab: 'pipeline',
     newMails: [],
     respondedMails: [],
     repliedMails: [],
@@ -161,6 +161,162 @@ function dashboardApp() {
     rawLogLines: [],
     _activityTimer: null,
     _uptimeTicker: null,
+
+    // Deficits sorting & pagination
+    deficitsSortField: 'invoice_id',
+    deficitsSortOrder: 'asc',
+    deficitsPage: 1,
+    deficitsPageSize: 25,
+
+    setDeficitsSort(field) {
+      if (this.deficitsSortField === field) {
+        this.deficitsSortOrder = this.deficitsSortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.deficitsSortField = field;
+        this.deficitsSortOrder = 'asc';
+      }
+      this.deficitsPage = 1;
+    },
+
+    sortedDeficits() {
+      const field = this.deficitsSortField;
+      const order = this.deficitsSortOrder === 'asc' ? 1 : -1;
+      return [...this.getFilteredDeficits()].sort((a, b) => {
+        let valA = a[field] ?? '';
+        let valB = b[field] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return -1 * order;
+        if (valA > valB) return 1 * order;
+        return 0;
+      });
+    },
+
+    paginatedDeficits() {
+      const start = (this.deficitsPage - 1) * this.deficitsPageSize;
+      return this.sortedDeficits().slice(start, start + this.deficitsPageSize);
+    },
+
+    deficitsTotalPages() {
+      return Math.ceil(this.sortedDeficits().length / this.deficitsPageSize) || 1;
+    },
+
+    // Negotiations sorting & pagination
+    negSortField: 'invoice_id',
+    negSortOrder: 'asc',
+    negPage: 1,
+    negPageSize: 25,
+
+    setNegSort(field) {
+      if (this.negSortField === field) {
+        this.negSortOrder = this.negSortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.negSortField = field;
+        this.negSortOrder = 'asc';
+      }
+      this.negPage = 1;
+    },
+
+    sortedNegotiations() {
+      const field = this.negSortField;
+      const order = this.negSortOrder === 'asc' ? 1 : -1;
+      return [...this.getFilteredNegotiations()].sort((a, b) => {
+        let valA = a[field] ?? '';
+        let valB = b[field] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return -1 * order;
+        if (valA > valB) return 1 * order;
+        return 0;
+      });
+    },
+
+    paginatedNegotiations() {
+      const start = (this.negPage - 1) * this.negPageSize;
+      return this.sortedNegotiations().slice(start, start + this.negPageSize);
+    },
+
+    negTotalPages() {
+      return Math.ceil(this.sortedNegotiations().length / this.negPageSize) || 1;
+    },
+
+    // Inventory sorting & pagination
+    catalogSortField: 'sku_id',
+    catalogSortOrder: 'asc',
+    catalogPage: 1,
+    catalogPageSize: 25,
+
+    setCatalogSort(field) {
+      if (this.catalogSortField === field) {
+        this.catalogSortOrder = this.catalogSortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.catalogSortField = field;
+        this.catalogSortOrder = 'asc';
+      }
+      this.catalogPage = 1;
+    },
+
+    sortedCatalog() {
+      const field = this.catalogSortField;
+      const order = this.catalogSortOrder === 'asc' ? 1 : -1;
+      return [...this.filteredCatalog].sort((a, b) => {
+        let valA = a[field] ?? '';
+        let valB = b[field] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return -1 * order;
+        if (valA > valB) return 1 * order;
+        return 0;
+      });
+    },
+
+    paginatedCatalog() {
+      const start = (this.catalogPage - 1) * this.catalogPageSize;
+      return this.sortedCatalog().slice(start, start + this.catalogPageSize);
+    },
+
+    catalogTotalPages() {
+      return Math.ceil(this.sortedCatalog().length / this.catalogPageSize) || 1;
+    },
+
+    // Activity Log sorting & pagination
+    activitySortField: 'timestamp',
+    activitySortOrder: 'desc',
+    activityPage: 1,
+    activityPageSize: 25,
+
+    setActivitySort(field) {
+      if (this.activitySortField === field) {
+        this.activitySortOrder = this.activitySortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.activitySortField = field;
+        this.activitySortOrder = 'asc';
+      }
+      this.activityPage = 1;
+    },
+
+    sortedActivityLogs() {
+      const field = this.activitySortField;
+      const order = this.activitySortOrder === 'asc' ? 1 : -1;
+      return [...this.filteredActivityLogs].sort((a, b) => {
+        let valA = a[field] ?? '';
+        let valB = b[field] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return -1 * order;
+        if (valA > valB) return 1 * order;
+        return 0;
+      });
+    },
+
+    paginatedActivityLogs() {
+      const start = (this.activityPage - 1) * this.activityPageSize;
+      return this.sortedActivityLogs().slice(start, start + this.activityPageSize);
+    },
+
+    activityTotalPages() {
+      return Math.ceil(this.sortedActivityLogs().length / this.activityPageSize) || 1;
+    },
 
     async safeFetch(url, options = {}) {
       try {
@@ -367,13 +523,42 @@ function dashboardApp() {
       }
     },
 
+    getFilteredList(list) {
+      if (!list) return [];
+      const query = this.invoiceFilter.toLowerCase().trim();
+      if (!query) return list;
+      return list.filter(item => {
+        const eventLabel = item.event_type ? (this.formatEventLabel(item.event_type) || '').toLowerCase() : '';
+        const eventType = (item.event_type || '').toLowerCase();
+        return (
+          (item.customer_name || '').toLowerCase().includes(query) ||
+          (item.customer_email || '').toLowerCase().includes(query) ||
+          (item.invoice_id || '').toLowerCase().includes(query) ||
+          (item.description || '').toLowerCase().includes(query) ||
+          (item.original_body || '').toLowerCase().includes(query) ||
+          (item.sku_name || '').toLowerCase().includes(query) ||
+          (item.sku_id || '').toLowerCase().includes(query) ||
+          (item.category || '').toLowerCase().includes(query) ||
+          (item.status || '').toLowerCase().includes(query) ||
+          (item.timestamp || '').toLowerCase().includes(query) ||
+          (item.created_at || '').toLowerCase().includes(query) ||
+          eventLabel.includes(query) ||
+          eventType.includes(query)
+        );
+      });
+    },
+
     getFilteredDeficits() {
       const query = this.invoiceFilter.toLowerCase().trim();
       if (!query) return this.deficits;
       return this.deficits.filter(d => 
         (d.invoice_id || '').toLowerCase().includes(query) || 
         (d.sku_name || '').toLowerCase().includes(query) || 
-        (d.customer_name || '').toLowerCase().includes(query)
+        (d.sku_id || '').toLowerCase().includes(query) || 
+        (d.customer_name || '').toLowerCase().includes(query) ||
+        (d.customer_email || '').toLowerCase().includes(query) ||
+        (d.status || '').toLowerCase().includes(query) ||
+        (d.created_at || '').toLowerCase().includes(query)
       );
     },
 
@@ -383,7 +568,9 @@ function dashboardApp() {
       return this.negotiationsList.filter(n => 
         (n.invoice_id || '').toLowerCase().includes(query) || 
         (n.customer_name || '').toLowerCase().includes(query) || 
-        (n.customer_email || '').toLowerCase().includes(query)
+        (n.customer_email || '').toLowerCase().includes(query) ||
+        (n.status || '').toLowerCase().includes(query) ||
+        (n.created_at || '').toLowerCase().includes(query)
       );
     },
 
@@ -1405,8 +1592,262 @@ function dashboardApp() {
     },
 
     get filteredActivityLogs() {
-      if (!this.activityFilter) return this.activityLogs;
-      return this.activityLogs.filter(e => e.event_type === this.activityFilter);
+      let logs = this.activityLogs || [];
+      if (this.activityFilter) {
+        logs = logs.filter(e => e.event_type === this.activityFilter);
+      }
+      const query = this.invoiceFilter.toLowerCase().trim();
+      if (!query) return logs;
+      return logs.filter(e => 
+        (e.customer_name || '').toLowerCase().includes(query) ||
+        (e.customer_email || '').toLowerCase().includes(query) ||
+        (e.invoice_id || '').toLowerCase().includes(query) ||
+        (e.description || '').toLowerCase().includes(query) ||
+        (e.event_type || '').toLowerCase().includes(query)
+      );
+    },
+
+    // ── Export Report Helpers ────────────────────────────────────────────────
+    executeExport(format, title, filename, headers, rows) {
+      if (format === 'pdf') {
+        this.exportToPdf(title, headers, rows);
+      } else {
+        this.exportToCsv(filename + (format === 'xlsx' ? '_excel.csv' : '.csv'), headers, rows);
+      }
+    },
+    
+    exportToCsv(filename, headers, rows) {
+      const escape = val => {
+        if (val === null || val === undefined) return '';
+        let str = String(val).replace(/"/g, '""');
+        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+          str = `"${str}"`;
+        }
+        return str;
+      };
+      
+      const csvContent = "\uFEFF" + [
+        headers.map(escape).join(','),
+        ...rows.map(row => row.map(escape).join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+    
+    exportToPdf(title, headers, rows) {
+      const printWindow = window.open('', '_blank');
+      const html = `
+        <html>
+          <head>
+            <title>${title}</title>
+            <style>
+              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 30px; color: #333; }
+              h1 { font-size: 20px; margin-bottom: 5px; border-bottom: 2px solid #b08a4a; padding-bottom: 8px; color: #111; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+              th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; }
+              th { background-color: #f7f7f7; font-weight: bold; color: #111; }
+              tr:nth-child(even) { background-color: #fafafa; }
+              .footer { margin-top: 40px; font-size: 10px; color: #777; border-top: 1px solid #eee; padding-top: 10px; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <h1>${title}</h1>
+            <p style="font-size: 11px; color: #666; margin-top: 5px;">Report Generated: ${new Date().toLocaleString()}</p>
+            <table>
+              <thead>
+                <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+              </thead>
+              <tbody>
+                ${rows.map(row => `<tr>${row.map(cell => `<td>${cell !== null && cell !== undefined ? cell : ''}</td>`).join('')}</tr>`).join('')}
+              </tbody>
+            </table>
+            <div class="footer">
+              Trofeo Hardware Admin Command Center &bull; Automated Operations Report
+            </div>
+            <script>
+              window.onload = function() {
+                window.print();
+                setTimeout(function() { window.close(); }, 500);
+              };
+            </script>
+          </body>
+        </html>
+      `;
+      printWindow.document.write(html);
+      printWindow.document.close();
+    },
+
+    exportStageWise(format) {
+      const headers = ['Stage', 'Invoice ID', 'Customer Name', 'Customer Email', 'Description/Details', 'Timestamp'];
+      const rows = [];
+      
+      this.getFilteredList(this.newMails).forEach(m => {
+        rows.push(['New Mail', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', m.description || '—', m.timestamp || '—']);
+      });
+      this.getFilteredList(this.respondedMails).forEach(m => {
+        rows.push(['Responded', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', m.status || '—', m.timestamp || '—']);
+      });
+      this.getFilteredList(this.repliedMails).forEach(m => {
+        rows.push(['Reply (Email)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Customer Replied', m.timestamp || '—']);
+      });
+      this.getFilteredList(this.negotiations).forEach(m => {
+        rows.push(['Reply (Negotiation)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Requested: ${Math.round(m.discount_pct*100)}%`, m.created_at || '—']);
+      });
+      this.getFilteredList(this.rejectedMails).forEach(m => {
+        rows.push(['Rejected', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Quotation Rejected', m.created_at || '—']);
+      });
+      this.getFilteredList(this.pendingDeficits).forEach(m => {
+        rows.push(['Pending (Deficit)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Shortage: ${m.deficit_qty} units of ${m.sku_name}`, m.created_at || '—']);
+      });
+      this.getFilteredList(this.pendingReviews).forEach(m => {
+        rows.push(['Pending (Draft Review)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Draft Amount: ₹${m.grand_total}`, m.created_at || '—']);
+      });
+      this.getFilteredList(this.pendingUnmatched).forEach(m => {
+        rows.push(['Pending (Unmatched)', '—', m.customer_name || '—', m.customer_email || '—', m.original_body || '—', m.created_at || '—']);
+      });
+
+      const title = 'Stage-Wise Pipeline Report';
+      const filename = 'stage_wise_pipeline_report';
+      this.executeExport(format, title, filename, headers, rows);
+    },
+
+    exportDispatcher(format) {
+      const headers = ['Metric', 'Count / Value', 'Percentage'];
+      const metrics = this.overviewData.metrics || {};
+      const rows = [
+        ['Auto-Responded Enquiries', metrics.auto_responded || 0, `${Math.round(metrics.tool_efficiency_pct || 0)}%`],
+        ['Human Review Enquiries', metrics.pending_approval || 0, `${Math.round(metrics.human_intervention_pct || 0)}%`],
+        ['Total Enquiries Received', metrics.total_received || 0, '100%']
+      ];
+      
+      const title = 'Operations Dispatcher Split Report';
+      const filename = 'operations_dispatcher_report';
+      this.executeExport(format, title, filename, headers, rows);
+    },
+
+    exportFunnel(format) {
+      const headers = ['Conversion Stage / Customer / Invoice', 'Details', 'Quote Count', 'Value (INR)'];
+      const rows = [];
+      
+      const funnel = this.analyticsData.funnel || {};
+      rows.push(['CONVERSION FUNNEL STAGES', '', '', '']);
+      rows.push(['  Total Ingested Enquiries', 'All-time received', '', funnel.total_received || 0]);
+      rows.push(['  Converted (Quotes Sent)', 'Successful quotes', '', funnel.converted || 0]);
+      rows.push(['  Leakage (Unmatched/Rejected)', 'Lost opportunities', '', (funnel.unmatched || 0) + (funnel.rejected || 0)]);
+      rows.push(['', '', '', '']);
+      
+      rows.push(['TOP CUSTOMERS', '', '', '']);
+      (this.analyticsData.top_customers || []).forEach(c => {
+        rows.push([`  ${c.customer_name}`, c.customer_email, c.quote_count, c.total_value]);
+      });
+      rows.push(['', '', '', '']);
+      
+      rows.push(['TOP QUOTATIONS', '', '', '']);
+      (this.analyticsData.top_quotations || []).forEach(q => {
+        rows.push([`  ${q.invoice_id}`, q.customer_name, q.created_at, q.grand_total]);
+      });
+      
+      const title = 'Conversion Funnel & Sales Intelligence Report';
+      const filename = 'conversion_funnel_report';
+      this.executeExport(format, title, filename, headers, rows);
+    },
+
+    exportEnquiries(format, type) {
+      const list = type === 'today' ? this.todayMails : this.yesterdayMails;
+      const headers = ['Customer Name', 'Customer Email', 'Subject/Details', 'Timestamp', 'Status'];
+      const rows = this.getFilteredList(list).map(m => [
+        m.customer_name || '—',
+        m.customer_email || '—',
+        m.description || '—',
+        m.timestamp || '—',
+        m.status || '—'
+      ]);
+      
+      const title = type === 'today' ? "Today's Enquiries Report" : "Yesterday's Enquiries Report";
+      const filename = type === 'today' ? 'todays_enquiries_report' : 'yesterdays_enquiries_report';
+      this.executeExport(format, title, filename, headers, rows);
+    },
+
+    exportInventoryReport(format) {
+      const headers = ['SKU ID', 'Product Description', 'Category', 'Stock Level', 'Unit Price (INR)'];
+      const rows = this.filteredCatalog.map(sku => [
+        sku.sku_id || '—',
+        sku.name || '—',
+        sku.category || '—',
+        sku.stock !== null && sku.stock !== undefined ? sku.stock : '0',
+        sku.price !== null && sku.price !== undefined ? sku.price : '0.00'
+      ]);
+      
+      const title = 'Inventory & Catalog Report';
+      const filename = 'inventory_catalog_report';
+      this.executeExport(format, title, filename, headers, rows);
+    },
+
+    exportActivityLogs(format) {
+      const activeFilterLabel = this.activityFilter ? this.formatEventLabel(this.activityFilter) : 'All Events';
+      const headers = ['Timestamp', 'Event Type', 'Customer Name', 'Customer Email', 'Invoice/Ref ID', 'Description'];
+      const rows = this.filteredActivityLogs.map(e => [
+        e.timestamp || '—',
+        this.formatEventLabel(e.event_type) || e.event_type || '—',
+        e.customer_name || '—',
+        e.customer_email || '—',
+        e.invoice_id || '—',
+        e.description || '—'
+      ]);
+      
+      const title = `System Activity Logs Report - ${activeFilterLabel}`;
+      const filename = `activity_logs_${activeFilterLabel.toLowerCase().replace(/\s+/g, '_')}`;
+      this.executeExport(format, title, filename, headers, rows);
+    },
+
+    exportRawLog(format) {
+      if (format === 'txt') {
+        const content = this.rawLogLines.join('\n');
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", "email_listener.log");
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else if (format === 'pdf') {
+        const printWindow = window.open('', '_blank');
+        const html = `
+          <html>
+            <head>
+              <title>Email Listener Logs (Raw)</title>
+              <style>
+                body { font-family: monospace; font-size: 10px; padding: 20px; color: #111; background: #fff; }
+                h1 { font-family: sans-serif; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; }
+                pre { white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
+              </style>
+            </head>
+            <body>
+              <h1>Email Listener Logs (data/email_listener.log)</h1>
+              <p style="font-family:sans-serif; font-size: 10px; color: #666; margin-top: -5px; margin-bottom: 15px;">Generated on: ${new Date().toLocaleString()}</p>
+              <pre>${this.rawLogLines.join('\n')}</pre>
+              <script>
+                window.onload = function() {
+                  window.print();
+                  setTimeout(function() { window.close(); }, 500);
+                };
+              </script>
+            </body>
+          </html>
+        `;
+        printWindow.document.write(html);
+        printWindow.document.close();
+      }
     }
   };
 }

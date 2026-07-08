@@ -172,7 +172,17 @@ def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_i
     grand_total = net_subtotal + tax_amt
 
     # 3. Build ReportLab Doc
-    doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=40, rightMargin=40, topMargin=40, bottomMargin=40)
+    pdf_title = f"Quotation {invoice_id} for {customer_name}" if customer_name else f"Quotation {invoice_id}"
+    doc = SimpleDocTemplate(
+        output_path, 
+        pagesize=letter, 
+        leftMargin=40, 
+        rightMargin=40, 
+        topMargin=40, 
+        bottomMargin=40,
+        title=pdf_title,
+        author="Trofeo Solution"
+    )
     styles = getSampleStyleSheet()
     
     # Custom styles — use registered Unicode TTF font so ₹ renders correctly
@@ -199,7 +209,7 @@ def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_i
         parent=styles['Heading2'],
         fontName=_FONT_BOLD,
         fontSize=12,
-        textColor=colors.HexColor('#1E293B'),
+        textColor=colors.HexColor('#8E2D98'),
         spaceBefore=10,
         spaceAfter=6
     )
@@ -287,7 +297,7 @@ def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_i
         # Draw Table
         t = Table(table_data, colWidths=[310, 50, 80, 80])
         t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1E293B')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#8E2D98')),
             ('ALIGN', (0,0), (-1,-1), 'LEFT'),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('BOTTOMPADDING', (0,0), (-1,0), 6),

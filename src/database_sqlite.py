@@ -381,38 +381,64 @@ def is_message_processed(message_id, tenant_id=None):
     return row is not None
 
 def log_processed_message(message_id, invoice_id, received_at=None, tenant_id=None, customer_name=None, customer_email=None):
-    """Logs a processed Message-ID mapping it to the quotation sequence number."""
+    """Logs a processed Message-ID mapping it to the quotation sequence number.
+    Returns True if successfully logged/inserted, or False if unique constraint failed (already locked by another process).
+    """
     if not message_id:
-        return
+        return False
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     
-    # Check if row already exists to avoid resetting processed_at
-    cursor.execute("SELECT 1 FROM processed_messages WHERE message_id = ?", (message_id.strip(),))
-    exists = cursor.fetchone() is not None
-    
-    if exists:
-        if received_at:
-            cursor.execute("""
-            UPDATE processed_messages 
-            SET invoice_id = ?, received_at = ?, customer_name = ?, customer_email = ?
-            WHERE message_id = ?
-            """, (invoice_id, received_at, customer_name, customer_email, message_id.strip()))
-        else:
-            cursor.execute("""
-            UPDATE processed_messages 
-            SET invoice_id = ?, customer_name = ?, customer_email = ?
-            WHERE message_id = ?
-            """, (invoice_id, customer_name, customer_email, message_id.strip()))
-    else:
-        now_str = get_now_ist_str()
-        cursor.execute("""
-        INSERT INTO processed_messages (message_id, invoice_id, received_at, customer_name, customer_email, processed_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (message_id.strip(), invoice_id, received_at, customer_name, customer_email, now_str))
+    try:
+        # Check if row already exists to avoid resetting processed_at
+        cursor.execute("SELECT invoice_id FROM processed_messages WHERE message_id = ?", (message_id.strip(),))
+        row = cursor.fetchone()
+        exists = row is not None
         
-    conn.commit()
-    conn.close()
+        if exists:
+            # If we are trying to acquire the lock ("PROCESSING") but it already exists, return False
+            if invoice_id == "PROCESSING":
+                conn.close()
+                return False
+            
+            if received_at:
+                cursor.execute("""
+                UPDATE processed_messages 
+                SET invoice_id = ?, received_at = ?, customer_name = ?, customer_email = ?
+                WHERE message_id = ?
+                """, (invoice_id, received_at, customer_name, customer_email, message_id.strip()))
+            else:
+                cursor.execute("""
+                UPDATE processed_messages 
+                SET invoice_id = ?, customer_name = ?, customer_email = ?
+                WHERE message_id = ?
+                """, (invoice_id, customer_name, customer_email, message_id.strip()))
+        else:
+            now_str = get_now_ist_str()
+            cursor.execute("""
+            INSERT INTO processed_messages (message_id, invoice_id, received_at, customer_name, customer_email, processed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (message_id.strip(), invoice_id, received_at, customer_name, customer_email, now_str))
+            
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.IntegrityError:
+        # Unique constraint failed - locked by another process
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return False
+    except Exception as e:
+        print(f"[Warning] log_processed_message failed: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return False
 
 def generate_next_invoice_id(tenant_id=None):
     """
