@@ -1,7 +1,7 @@
       <!-- MODALS & DRAWERS -->
 
       <!-- 1. Review Match HITL Modal -->
-      <div x-show="showHitl" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition>
+      <div x-show="showHitl" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition style="display: none;">
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-lg w-full p-6 shadow-3 flex flex-col gap-4">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <h3 class="text-sm font-bold text-[var(--text-1)] m-0">Review Match</h3>
@@ -30,7 +30,7 @@
       </div>
 
       <!-- 2. Resolve Stock Deficit Modal -->
-      <div x-show="showResolveDeficit" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition>
+      <div x-show="showResolveDeficit" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition style="display: none;">
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-sm w-full p-6 shadow-3 flex flex-col gap-4">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <h3 class="text-sm font-bold text-[var(--text-1)] m-0">Resolve Deficit Shortage</h3>
@@ -57,7 +57,7 @@
       </div>
 
       <!-- 3. Resolve Negotiation Decision Modal -->
-      <div x-show="showResolveNeg" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition>
+      <div x-show="showResolveNeg" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition style="display: none;">
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-lg w-full p-6 shadow-3 flex flex-col gap-4">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <h3 class="text-sm font-bold text-[var(--text-1)] m-0" x-text="'Resolve Counter Offer: ' + selectedCustName"></h3>
@@ -118,7 +118,7 @@
       </div>
 
       <!-- 4. Update Catalog Item Inventory Stock Modal -->
-      <div x-show="showStockModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition>
+      <div x-show="showStockModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" x-transition style="display: none;">
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-sm w-full p-6 shadow-3 flex flex-col gap-4">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <h3 class="text-sm font-bold text-[var(--text-1)] m-0">Update Catalog Stock</h3>
@@ -145,7 +145,7 @@
       </div>
 
       <!-- 5. Chat History & Email Log Modal -->
-      <div x-show="showChatModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-0" x-transition>
+      <div x-show="showChatModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-0" x-transition style="display: none;">
         <div class="bg-[var(--bg-card)] w-full h-full p-6 md:p-8 flex flex-col gap-4 max-w-none rounded-none shadow-none border-none">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <h3 class="text-sm font-bold text-[var(--text-1)] m-0" x-text="'Email Log Timeline: ' + chatCustName"></h3>
@@ -207,7 +207,7 @@
       </div>
 
       <!-- 6. Respond to Unmatched Enquiry / Manual Reply Modal -->
-      <div x-show="showUnmatchedModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-0" x-transition>
+      <div x-show="showUnmatchedModal" class="modal-overlay fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-0" x-transition style="display: none;">
         <div class="bg-[var(--bg-card)] w-full h-full p-6 md:p-8 flex flex-col gap-4 max-w-none rounded-none shadow-none border-none">
           <div class="flex justify-between items-center border-b border-[var(--border)] pb-3">
             <div>
