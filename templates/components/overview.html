@@ -71,19 +71,43 @@
 
             </div>
 
-            <!-- Operations Dispatcher Split (Collapsible) -->
-            <div class="split-card" x-data="{ splitOpen: false }" style="margin-top:20px;">
-              <div class="split-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" @click="splitOpen = !splitOpen">
+            <!-- Sub-tabs Navigation Bar -->
+            <div style="display:flex; gap:10px; margin-top:24px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:6px;">
+              <button @click="overviewSubTab = 'pipeline'" 
+                      class="switcher-btn"
+                      :class="{ 'active': overviewSubTab === 'pipeline' }"
+                      style="display:flex; align-items:center; gap:6px;">
+                <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                <span>Live Pipeline</span>
+              </button>
+              <button @click="overviewSubTab = 'intelligence'" 
+                      class="switcher-btn"
+                      :class="{ 'active': overviewSubTab === 'intelligence' }"
+                      style="display:flex; align-items:center; gap:6px;">
+                <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
+                <span>Sales Intelligence</span>
+              </button>
+              <button @click="overviewSubTab = 'dispatcher'" 
+                      class="switcher-btn"
+                      :class="{ 'active': overviewSubTab === 'dispatcher' }"
+                      style="display:flex; align-items:center; gap:6px;">
+                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>
+                <span>Operations Split</span>
+              </button>
+            </div>
+
+            <!-- Operations Dispatcher Split (Tab Panel) -->
+            <div class="split-card" x-show="overviewSubTab === 'dispatcher'" x-transition style="margin-top:20px;">
+              <div class="split-header" style="display:flex; justify-content:space-between; align-items:center; user-select:none;">
                 <div>
                   <div class="split-title">
                     <i data-lucide="bar-chart-2" style="width:15px;height:15px;color:var(--accent);"></i>
                     Operations Dispatcher Split
-                    <span style="font-size:10px; font-weight:normal; color:var(--text-3); margin-left:8px;" x-text="splitOpen ? '▲ Collapse' : '▼ Expand'"></span>
                   </div>
                   <div style="font-size:11px;color:var(--text-2);margin-top:3px;">Ratio of automated responses vs. human-in-the-loop reviews</div>
                 </div>
                 <!-- Export Menu -->
-                <div class="export-container" x-data="{ exportOpen: false }" @click.away="exportOpen = false" @click.stop>
+                <div class="export-container" x-data="{ exportOpen: false }" @click.away="exportOpen = false">
                   <button @click="exportOpen = !exportOpen" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:5px;">
                     <i data-lucide="download" style="width:12px; height:12px;"></i>
                     <span>Export</span>
@@ -96,7 +120,7 @@
                 </div>
               </div>
               
-              <div x-show="splitOpen" x-transition style="display:flex;align-items:center;gap:30px;padding:22px 24px 24px;flex-wrap:wrap;border-top:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:30px;padding:22px 24px 24px;flex-wrap:wrap;border-top:1px solid var(--border);">
                 <!-- Donut gauge -->
                 <div style="position:relative;flex-shrink:0;">
                   <svg width="152" height="152" viewBox="0 0 152 152" style="transform:rotate(-90deg);">
@@ -135,19 +159,18 @@
               </div>
             </div>
 
-            <!-- Sales Intelligence & Leakage Section -->
-            <div style="margin-top:20px; margin-bottom:20px;" x-data="{ open: false }">
-              <div class="page-header" style="margin-bottom:14px; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" @click="open = !open">
+            <!-- Sales Intelligence & Leakage Section (Tab Panel) -->
+            <div style="margin-top:20px; margin-bottom:20px;" x-show="overviewSubTab === 'intelligence'" x-transition>
+              <div class="page-header" style="margin-bottom:14px; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center; user-select:none;">
                 <div>
                   <h2 class="page-title">
                     <i data-lucide="bar-chart-3" class="w-4 h-4" style="color:var(--accent)"></i>
                     Sales Intelligence &amp; Leakage
-                    <span style="font-size:10px; font-weight:normal; color:var(--text-3); margin-left:8px;" x-text="open ? '▲ Collapse' : '▼ Expand'"></span>
                   </h2>
                   <p class="page-subtitle">Immediate operational insights, high-value clients, top quotes, and conversion leakages.</p>
                 </div>
                 <!-- Export Menu -->
-                <div class="export-container" x-data="{ exportOpen: false }" @click.away="exportOpen = false" @click.stop>
+                <div class="export-container" x-data="{ exportOpen: false }" @click.away="exportOpen = false">
                   <button @click="exportOpen = !exportOpen" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:5px;">
                     <i data-lucide="download" style="width:12px; height:12px;"></i>
                     <span>Export</span>
@@ -160,7 +183,7 @@
                 </div>
               </div>
 
-              <div x-show="open" x-transition style="display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start;">
+              <div style="display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start;">
                 
                 <!-- Funnel & Leakage Card -->
                 <div class="section-card" style="padding:16px 20px;">
@@ -299,14 +322,14 @@
               </div>
             </div>
 
-            <div x-data="{ pipelineOpen: false }" style="margin-top:20px;">
+            <!-- Live Operations Pipeline Section (Tab Panel) -->
+            <div x-show="overviewSubTab === 'pipeline'" x-transition style="margin-top:20px;">
               <!-- Kanban Pipeline Section Header -->
-              <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" @click="pipelineOpen = !pipelineOpen">
+              <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; user-select:none;">
                 <div>
                   <h2 class="page-title">
                     <i data-lucide="zap" class="w-4 h-4" style="color:var(--yellow)"></i>
                     Live Operations Pipeline
-                    <span style="font-size:10px; font-weight:normal; color:var(--text-3); margin-left:8px;" x-text="pipelineOpen ? '▲ Collapse' : '▼ Expand'"></span>
                   </h2>
                   <p class="page-subtitle" style="font-size:10px; color:var(--text-3); margin:0; display:flex; align-items:center; gap:6px;">
                     <template x-if="isAutoRefreshing">
@@ -319,7 +342,7 @@
                     </template>
                   </p>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;" @click.stop>
+                <div style="display:flex; align-items:center; gap:8px;">
                   <button @click="fetchOverviewData()" class="btn btn-ghost btn-sm">
                     <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh Now
                   </button>
@@ -337,8 +360,6 @@
                   </div>
                 </div>
               </div>
-
-              <div x-show="pipelineOpen" x-transition>
 
             <!-- Kanban Grid -->
             <div class="kanban-grid">

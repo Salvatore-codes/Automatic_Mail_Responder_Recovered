@@ -1818,6 +1818,11 @@ html[data-theme="warm"] .k-k-card-footer {
   color: var(--text-2) !important;
   box-shadow: none !important;
 }
+.switcher-btn.active {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
 .switcher-btn.active-auto {
   background: var(--green) !important;
   color: #fff !important;
