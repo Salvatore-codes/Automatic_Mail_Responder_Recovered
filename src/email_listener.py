@@ -2739,13 +2739,15 @@ def is_subject_relevant(subject, sender, crm_emails):
         "fastener", "fasteners", "match", "estimate", "estimating", "invoice",
         "requisition", "req", "items", "slip", "rfp", "vendor", "signoff",
         "welcome", "discussion", "onboarding", "agreement", "contract", "sign",
-        "setup", "register", "registration", "details"
+        "setup", "register", "registration", "details",
+        "proposal", "proposals", "commercial", "commercials", "offer", "offers",
+        "rate", "rates", "bid", "bids", "tender", "tenders"
     ]
     if any(re.search(r'\b' + re.escape(kw) + r'\b', subject_lower) for kw in keywords):
         return True
         
     # Substring checks for compound tokens
-    if any(kw in subject_lower for kw in ["quote", "enquiry", "inquiry", "rfq", "pricing", "mtl", "vendor", "signoff", "welcome", "discussion"]):
+    if any(kw in subject_lower for kw in ["quote", "enquiry", "inquiry", "rfq", "pricing", "mtl", "vendor", "signoff", "welcome", "discussion", "proposal", "commercial", "offer", "rate", "tender"]):
         return True
         
     return False
