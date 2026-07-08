@@ -1,5 +1,10 @@
 import os
 import json
+from dotenv import load_dotenv
+
+project_root = os.path.dirname(os.path.dirname(__file__))
+load_dotenv(os.path.join(project_root, ".env"))
+
 from src.database import Catalog
 
 TENANTS_JSON_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tenants.json")

@@ -13,6 +13,9 @@ function dashboardApp() {
     selectedTenant: 'default',
     tenants: [{ id: 'default', name: 'Trofeo Hardware Branch' }],
     invoiceFilter: '',
+    deficitsSearch: '',
+    negSearch: '',
+    activitySearch: '',
     toasts: [],
     connectionStatus: 'connected',
     
@@ -548,31 +551,31 @@ function dashboardApp() {
       });
     },
 
-    getFilteredDeficits() {
-      const query = this.invoiceFilter.toLowerCase().trim();
-      if (!query) return this.deficits;
-      return this.deficits.filter(d => 
-        (d.invoice_id || '').toLowerCase().includes(query) || 
-        (d.sku_name || '').toLowerCase().includes(query) || 
-        (d.sku_id || '').toLowerCase().includes(query) || 
-        (d.customer_name || '').toLowerCase().includes(query) ||
-        (d.customer_email || '').toLowerCase().includes(query) ||
-        (d.status || '').toLowerCase().includes(query) ||
-        (d.created_at || '').toLowerCase().includes(query)
-      );
-    },
-
-    getFilteredNegotiations() {
-      const query = this.invoiceFilter.toLowerCase().trim();
-      if (!query) return this.negotiationsList;
-      return this.negotiationsList.filter(n => 
-        (n.invoice_id || '').toLowerCase().includes(query) || 
-        (n.customer_name || '').toLowerCase().includes(query) || 
-        (n.customer_email || '').toLowerCase().includes(query) ||
-        (n.status || '').toLowerCase().includes(query) ||
-        (n.created_at || '').toLowerCase().includes(query)
-      );
-    },
+     getFilteredDeficits() {
+       const query = (this.deficitsSearch || this.invoiceFilter).toLowerCase().trim();
+       if (!query) return this.deficits;
+       return this.deficits.filter(d => 
+         (d.invoice_id || '').toLowerCase().includes(query) || 
+         (d.sku_name || '').toLowerCase().includes(query) || 
+         (d.sku_id || '').toLowerCase().includes(query) || 
+         (d.customer_name || '').toLowerCase().includes(query) ||
+         (d.customer_email || '').toLowerCase().includes(query) ||
+         (d.status || '').toLowerCase().includes(query) ||
+         (d.created_at || '').toLowerCase().includes(query)
+       );
+     },
+ 
+     getFilteredNegotiations() {
+       const query = (this.negSearch || this.invoiceFilter).toLowerCase().trim();
+       if (!query) return this.negotiationsList;
+       return this.negotiationsList.filter(n => 
+         (n.invoice_id || '').toLowerCase().includes(query) || 
+         (n.customer_name || '').toLowerCase().includes(query) || 
+         (n.customer_email || '').toLowerCase().includes(query) ||
+         (n.status || '').toLowerCase().includes(query) ||
+         (n.created_at || '').toLowerCase().includes(query)
+       );
+     },
 
     // Tab 1: Overview APIS
     async fetchOverviewData() {
@@ -1596,7 +1599,7 @@ function dashboardApp() {
       if (this.activityFilter) {
         logs = logs.filter(e => e.event_type === this.activityFilter);
       }
-      const query = this.invoiceFilter.toLowerCase().trim();
+      const query = (this.activitySearch || this.invoiceFilter).toLowerCase().trim();
       if (!query) return logs;
       return logs.filter(e => 
         (e.customer_name || '').toLowerCase().includes(query) ||

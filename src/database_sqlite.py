@@ -26,7 +26,7 @@ def get_connection(tenant_id=None):
     db_key = t_id
     if db_key not in INITIALIZED_DBS:
         INITIALIZED_DBS.add(db_key)
-        # Create connection, set WAL mode, and run initialization
+        print(f"[Database] Initializing tenant '{t_id}' at path: {os.path.abspath(db_path)}")
         conn = sqlite3.connect(db_path, timeout=30.0)
         try:
             conn.execute("PRAGMA journal_mode=WAL")

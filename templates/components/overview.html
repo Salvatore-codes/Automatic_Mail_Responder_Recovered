@@ -71,43 +71,19 @@
 
             </div>
 
-            <!-- Sub-tabs Navigation Bar -->
-            <div style="display:flex; gap:10px; margin-top:24px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:1px;">
-              <button @click="overviewSubTab = 'pipeline'" 
-                      class="switcher-btn"
-                      :class="{ 'active': overviewSubTab === 'pipeline' }"
-                      style="display:flex; align-items:center; gap:6px;">
-                <i data-lucide="zap" class="w-3.5 h-3.5"></i>
-                <span>Live Pipeline</span>
-              </button>
-              <button @click="overviewSubTab = 'intelligence'" 
-                      class="switcher-btn"
-                      :class="{ 'active': overviewSubTab === 'intelligence' }"
-                      style="display:flex; align-items:center; gap:6px;">
-                <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
-                <span>Sales Intelligence</span>
-              </button>
-              <button @click="overviewSubTab = 'dispatcher'" 
-                      class="switcher-btn"
-                      :class="{ 'active': overviewSubTab === 'dispatcher' }"
-                      style="display:flex; align-items:center; gap:6px;">
-                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>
-                <span>Operations Split</span>
-              </button>
-            </div>
-
-            <!-- Dispatcher Split Bar (Tab Panel) -->
-            <div class="split-card" x-show="overviewSubTab === 'dispatcher'" x-transition>
-              <div class="split-header" style="display:flex; justify-content:space-between; align-items:center; user-select:none;">
+            <!-- Operations Dispatcher Split (Collapsible) -->
+            <div class="split-card" x-data="{ splitOpen: false }" style="margin-top:20px;">
+              <div class="split-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" @click="splitOpen = !splitOpen">
                 <div>
                   <div class="split-title">
                     <i data-lucide="bar-chart-2" style="width:15px;height:15px;color:var(--accent);"></i>
                     Operations Dispatcher Split
+                    <span style="font-size:10px; font-weight:normal; color:var(--text-3); margin-left:8px;" x-text="splitOpen ? '▲ Collapse' : '▼ Expand'"></span>
                   </div>
                   <div style="font-size:11px;color:var(--text-2);margin-top:3px;">Ratio of automated responses vs. human-in-the-loop reviews</div>
                 </div>
                 <!-- Export Menu -->
-                <div class="export-container" x-data="{ exportOpen: false }" @click.away="exportOpen = false">
+                <div class="export-container" x-data="{ exportOpen: false }" @click.away="exportOpen = false" @click.stop>
                   <button @click="exportOpen = !exportOpen" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:5px;">
                     <i data-lucide="download" style="width:12px; height:12px;"></i>
                     <span>Export</span>
@@ -119,7 +95,8 @@
                   </div>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;gap:30px;padding:22px 24px 24px;flex-wrap:wrap;">
+              
+              <div x-show="splitOpen" x-transition style="display:flex;align-items:center;gap:30px;padding:22px 24px 24px;flex-wrap:wrap;border-top:1px solid var(--border);">
                 <!-- Donut gauge -->
                 <div style="position:relative;flex-shrink:0;">
                   <svg width="152" height="152" viewBox="0 0 152 152" style="transform:rotate(-90deg);">
@@ -159,7 +136,7 @@
             </div>
 
             <!-- Sales Intelligence & Leakage Section -->
-            <div style="margin-top:20px; margin-bottom:20px;" x-data="{ open: true }">
+            <div style="margin-top:20px; margin-bottom:20px;" x-data="{ open: false }">
               <div class="page-header" style="margin-bottom:14px; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" @click="open = !open">
                 <div>
                   <h2 class="page-title">
@@ -322,7 +299,7 @@
               </div>
             </div>
 
-            <div x-data="{ pipelineOpen: true }" style="margin-top:20px;">
+            <div x-data="{ pipelineOpen: false }" style="margin-top:20px;">
               <!-- Kanban Pipeline Section Header -->
               <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" @click="pipelineOpen = !pipelineOpen">
                 <div>

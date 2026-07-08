@@ -38,9 +38,12 @@
                 <h3 class="section-title">
                   <i data-lucide="message-square" class="w-4 h-4" style="color:var(--yellow)"></i> Escalated Discount Negotiations
                 </h3>
-                <button @click="loadNegotiations" class="btn btn-ghost btn-sm">
-                  <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh
-                </button>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <input type="text" x-model="negSearch" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Search negotiations..." />
+                  <button @click="loadNegotiations" class="btn btn-ghost btn-sm">
+                    <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh
+                  </button>
+                </div>
               </div>
 
               <!-- Table -->

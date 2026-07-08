@@ -35,8 +35,9 @@
         <div class="server-start-value" x-text="activityServerStart || '—'">—</div>
       </div>
 
+      <input type="text" x-model="activitySearch" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Search logs..." style="height:32px; font-size:12px; margin-right:4px;" />
       <!-- Refresh button -->
-      <button class="btn-icon-action" @click="loadActivityLog()" title="Refresh log" style="margin-right:4px;">
+      <button class="btn-icon-action" @click="loadActivityLog()" title="Refresh log" style="margin-right:4px; height:32px; width:32px; display:inline-flex; align-items:center; justify-content:center;">
         <i data-lucide="refresh-cw" style="width:16px;height:16px;"></i>
       </button>
 
