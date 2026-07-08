@@ -94,7 +94,7 @@
       </thead>
       <tbody>
         <template x-for="entry in paginatedActivityLogs()" :key="entry.id">
-          <tr class="activity-row" :class="getActivityRowClass(entry.event_type)">
+          <tr class="activity-row" :class="getActivityRowClass(entry.event_type)" @click="handleActivityRowClick(entry)" style="cursor: pointer;" title="Click to view details">
             <!-- Timestamp -->
             <td class="activity-ts">
               <span class="ts-date" x-text="formatActivityDate(entry.timestamp)"></span>
@@ -317,7 +317,7 @@
   border-bottom: 1px solid var(--border);
   transition: background .12s;
 }
-.activity-row:hover { background: rgba(154,118,69,0.04); }
+.activity-row:hover { background: rgba(154,118,69,0.09) !important; }
 .activity-row td { padding: 9px 14px; vertical-align: middle; }
 
 /* Timestamp */

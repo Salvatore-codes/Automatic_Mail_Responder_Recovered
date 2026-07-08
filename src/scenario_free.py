@@ -2,10 +2,20 @@ import re
 from src.database import Catalog, normalize_dimensions
 
 
-def parse_order_text_rules(text):
+def parse_order_text_rules(text, catalog=None):
     """
     Scenario A Rule-based Parser: Extracts product queries and quantities using regular expressions.
     """
+    if catalog is None:
+        try:
+            import os
+            from src.database import Catalog
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            catalog_path = os.path.join(project_root, "data", "sku_catalog.csv")
+            catalog = Catalog(catalog_path)
+        except Exception:
+            pass
+
     lines = text.strip().split('\n')
     extracted_items = []
     
@@ -59,6 +69,15 @@ def parse_order_text_rules(text):
             item_text = re.sub(pref, '', item_text, flags=re.IGNORECASE).strip()
 
         if not item_text:
+            continue
+
+        # Direct SKU match to prevent splitting SKU IDs (e.g. COUPLER-PVC-075 -> coupler pvc + qty 75)
+        if catalog and catalog.get_by_sku_id(item_text):
+            extracted_items.append({
+                "original_line": line_clean,
+                "parsed_query": item_text,
+                "quantity": 1
+            })
             continue
             
         qty = 1
@@ -125,7 +144,7 @@ def run_scenario_free(order_text, catalog, gemini_client=None):
     vector embedding matches are combined with fuzzy/TF-IDF candidates.
     Without a client, the function works exactly as before.
     """
-    parsed_items = parse_order_text_rules(order_text)
+    parsed_items = parse_order_text_rules(order_text, catalog=catalog)
     matched_lines = []
     
     # Auto-build vector index if client is available but embeddings are not loaded/built

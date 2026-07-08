@@ -1520,6 +1520,70 @@ function dashboardApp() {
       }
     },
 
+    async handleActivityRowClick(entry) {
+      if (!entry) return;
+      const invoiceId = entry.invoice_id || '';
+      const custName = entry.customer_name || 'Customer';
+      const custEmail = entry.customer_email || '';
+      
+      this.showToast(`Loading details for ${invoiceId || custName}...`);
+
+      // Case 1: Unmatched item
+      if (invoiceId && invoiceId.startsWith('UNMATCHED_')) {
+        const uIdStr = invoiceId.replace('UNMATCHED_', '');
+        const item = this.pendingUnmatched.find(i => String(i.id) === uIdStr || String(i.id) === invoiceId);
+        if (item) {
+          this.openUnmatchedModal(item);
+          return;
+        }
+        
+        const mockItem = {
+          id: parseInt(uIdStr) || uIdStr,
+          customer_name: custName,
+          customer_email: custEmail,
+          original_body: entry.description,
+          created_at: entry.timestamp
+        };
+        this.openUnmatchedModal(mockItem);
+        return;
+      }
+      
+      // Case 2: Stock deficit item
+      if (entry.event_type === 'DEFICIT_RAISED' || (invoiceId && this.pendingDeficits.some(d => d.invoice_id === invoiceId))) {
+        const item = this.pendingDeficits.find(d => d.invoice_id === invoiceId);
+        if (item) {
+          this.openResolveDeficit(item);
+          return;
+        }
+      }
+
+      // Case 3: Escalated Negotiation Review
+      if (entry.event_type === 'NEGOTIATION_TRIGGERED' || (invoiceId && this.pendingReviews.some(r => r.invoice_id === invoiceId))) {
+        const item = this.pendingReviews.find(r => r.invoice_id === invoiceId);
+        if (item) {
+          this.openResolveNeg(item.invoice_id, item.customer_name, item.subtotal, item.discount_pct || 0);
+          return;
+        }
+      }
+      
+      // Case 4: Any standard quotation ID (starts with QTN-)
+      if (invoiceId && invoiceId.toUpperCase().startsWith('QTN-')) {
+        this.openChatHistory(invoiceId, custName);
+        return;
+      }
+      
+      // Case 5: No invoice ID but we have customer email
+      if (custEmail) {
+        const unmatchedItem = this.pendingUnmatched.find(i => i.customer_email === custEmail);
+        if (unmatchedItem) {
+          this.openUnmatchedModal(unmatchedItem);
+          return;
+        }
+        this.openChatHistory(custEmail, custName);
+        return;
+      }
+    },
+
     async loadRawLog() {
       try {
         const res = await this.safeFetch(`/api/service/logs?tenant_id=${this.selectedTenant}&limit=200`);

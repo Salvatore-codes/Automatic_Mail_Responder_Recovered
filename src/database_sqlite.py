@@ -726,7 +726,7 @@ def save_training_keywords(keywords, tenant_id=None):
     import json
     # Normalize list
     keywords_clean = sorted(list(set(str(k).lower().strip() for k in keywords if str(k).strip())))
-    save_setting("training_keywords", json.dumps(keywords_clean), tenant_id)
+    set_setting("training_keywords", json.dumps(keywords_clean), tenant_id)
     return keywords_clean
 
 def add_training_keyword(keyword, tenant_id=None):
@@ -792,7 +792,7 @@ def auto_train_from_email(subject, body, tenant_id=None):
         
         # Keep only the last 20 learned items
         recent_list = recent_list[:20]
-        save_setting("recently_learned", json.dumps(recent_list), tenant_id)
+        set_setting("recently_learned", json.dumps(recent_list), tenant_id)
         print(f"[AI Auto-Train] Learned new keywords from manual reply: {learned}")
         
         # Log to Activity Log

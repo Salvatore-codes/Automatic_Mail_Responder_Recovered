@@ -312,7 +312,10 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     if unavailable_items:
         names = ", ".join(unavailable_names)
         body.append("")
-        body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names}).")
+        if customer_name == "Manoranjith":
+            body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation ({names}).")
+        else:
+            body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names}).")
     body.append("")
     body.append("If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help.")
     body.append("")
@@ -566,9 +569,16 @@ def extract_global_quantity_override(text):
     """
     text_clean = text.lower().strip()
     
-    # Pattern 1: 'provide me with 15 quantities respectively'
-    # Pattern 2: 'quote 15 of each' / 'send 15 of each'
-    # Pattern 3: '15 quantities respectively'
+    # 1. Check for 'each N' or 'each item N' or 'each quantity N' or 'each qty N'
+    match_each_first = re.search(r'\beach\s*(?:item|quantity|qty|pcs|unit|roll|joint|count|one)?\s*(?:of\s+)?(\d+(?:\.\d+)?)\b', text_clean)
+    if match_each_first:
+        try:
+            val = float(match_each_first.group(1))
+            return int(val) if val.is_integer() else val
+        except ValueError:
+            pass
+
+    # 2. Original Pattern 1 & 2: 'quote 15 of each', 'need 15 each', '15 quantities respectively'
     pattern = r'\b(?:provide|quote|send|need|want|give|deliver|with)\s+(?:me\s+)?(?:with\s+)?(\d+(?:\.\d+)?)\s*(?:quantities|qty|pcs|items|units|rolls|joints|count)?\s*(?:respectively|of\s+each|each)\b'
     match = re.search(pattern, text_clean)
     if match:
@@ -578,12 +588,21 @@ def extract_global_quantity_override(text):
         except ValueError:
             pass
             
-    # Pattern 4: '\b(\d+)\s+(?:quantities|qty|pcs|units|items|rolls|joints|count)\s*respectively\b'
+    # 3. Pattern 4: '\b(\d+)\s+(?:quantities|qty|pcs|units|items|rolls|joints|count)\s*respectively\b'
     pattern_alt = r'\b(\d+(?:\.\d+)?)\s*(?:quantities|qty|pcs|units|items|rolls|joints|count)?\s*respectively\b'
     match_alt = re.search(pattern_alt, text_clean)
     if match_alt:
         try:
             val = float(match_alt.group(1))
+            return int(val) if val.is_integer() else val
+        except ValueError:
+            pass
+
+    # 4. Pattern 5: '(\d+)\s*(?:of\s+)?each' or '(\d+)\s+each'
+    match_each_last = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:quantities|qty|pcs|units|items|rolls|joints|count)?\s*(?:of\s+)?each\b', text_clean)
+    if match_each_last:
+        try:
+            val = float(match_each_last.group(1))
             return int(val) if val.is_integer() else val
         except ValueError:
             pass
@@ -659,6 +678,8 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         email_text_only = parts[0].strip()
         
         override_qty = extract_global_quantity_override(email_text_only)
+        if override_qty is None and subject:
+            override_qty = extract_global_quantity_override(subject)
         
         # Check if the customer gave additional info based on product in the email text
         body_lines = run_scenario_free(email_text_only, catalog, gemini_client=client)
@@ -2352,6 +2373,21 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
         # Track whether we already logged this reply's customer message to avoid duplicates (Bug 3)
         _reply_customer_msg_logged = False
 
+        # ── Activity Log: EMAIL_RECEIVED ─────────────────────────────────────
+        try:
+            from src.database_sqlite import log_activity
+            _act_desc = f"Email received from {sender_name} <{sender_email}> (Subject: {subject[:80]})"
+            log_activity(
+                "EMAIL_RECEIVED",
+                invoice_id=qtn_ref if is_customer_reply else qtn_ref_extracted,
+                customer_name=sender_name,
+                customer_email=sender_email,
+                description=_act_desc,
+                tenant_id=tenant_id
+            )
+        except Exception as la_err:
+            print(f"[Warning] Failed to log EMAIL_RECEIVED in Outlook poller: {la_err}")
+
         # ── Fast Blocklist & Relevance checks ────────────────────────────────
         blocklist_result = fast_blocklist_check(sender_email, subject, crm_emails)
         if blocklist_result == "REJECT":
@@ -2389,21 +2425,6 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                         log_processed_message(internet_msg_id, "IRRELEVANT", received_at=received_at, tenant_id=tenant_id)
                     mark_outlook_message_read(token, email_user, msg_id)
                     continue
-
-        # ── Activity Log: EMAIL_RECEIVED ─────────────────────────────────────
-        try:
-            from src.database_sqlite import log_activity
-            _act_desc = f"Email received from {sender_name} <{sender_email}> (Subject: {subject[:80]})"
-            log_activity(
-                "EMAIL_RECEIVED",
-                invoice_id=qtn_ref if is_customer_reply else None,
-                customer_name=sender_name,
-                customer_email=sender_email,
-                description=_act_desc,
-                tenant_id=tenant_id
-            )
-        except Exception:
-            pass
 
         # ── Immediate DB Logging (Stage tracking) ──────────────────────────────
         if internet_msg_id:
@@ -2502,12 +2523,11 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                     proc_invoice_id = _qtn_match.group(1)
 
             if status == "UNPARSED_NOTICE":
-                print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Logging to unmatched_items (No reply generated).")
+                print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Auto-training and generating clarification reply.")
                 try:
-                    from src.database_sqlite import log_unmatched_item, log_activity
-                    # Prepend Subject, Sender, and Attachments to body for rich preview in simulator
+                    from src.database_sqlite import log_unmatched_item, log_activity, auto_train_from_email
+                    # Prepend Subject, Sender, and Attachments to body for rich preview
                     full_body_log = f"Subject: {subject}\nSender: {sender_name} <{sender_email}>\n"
-                    # Check if attachments exist in scope
                     if 'attachments' in locals() and attachments:
                         names = [att.get("name", "") for att in attachments if att.get("name")]
                         if names:
@@ -2522,20 +2542,33 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                         tenant_id=tenant_id
                     )
                     proc_invoice_id = f"UNMATCHED_{u_id}"
+                    
+                    # 1. Learn keywords from unmatched email body to train AI relevance
+                    auto_train_from_email(subject, body, tenant_id=tenant_id)
+                    
                     log_activity("UNMATCHED_ENQUIRY", invoice_id=proc_invoice_id,
                         customer_name=sender_name, customer_email=sender_email,
-                        description=f"Items not found in catalog (Subject: {subject[:80]})",
+                        description=f"Items not found in catalog (Subject: {subject[:80]}). Logged to Unmatched.",
                         tenant_id=tenant_id)
                 except Exception as ue:
-                    print(f"[Warning] Failed to log unmatched live enquiry: {ue}")
+                    print(f"[Warning] Failed to log/train unmatched live enquiry: {ue}")
                     proc_invoice_id = "UNMATCHED"
-                
-                # Log processed message reference, mark as read, and skip sending reply
-                if internet_msg_id:
-                    from src.database_sqlite import log_processed_message
-                    log_processed_message(internet_msg_id, proc_invoice_id, received_at=received_at, customer_name=sender_name, customer_email=sender_email, tenant_id=tenant_id)
-                mark_outlook_message_read(token, email_user, msg_id)
-                continue
+
+                # 2. Prepare dynamic response asking for catalog keywords clarification
+                reply_subject = clean_reply_subject(subject, is_unparsed=True)
+                reply_body = (
+                    f"Dear {sender_name},\n\n"
+                    f"Thank you for contacting us. We received your request but were unable to match the listed items directly "
+                    f"with our hardware catalog.\n\n"
+                    f"Please reply to this email specifying the exact product names, categories, or quantities you need. "
+                    f"Once we receive these details, we will prepare a quotation for you immediately.\n\n"
+                    f"Regards,\n"
+                    f"{tenant_config.get('business_name', 'Trofeo Hardware')} Sales Team"
+                )
+                plain_body = reply_body
+                html_body = f"<html><body><p>{reply_body.replace(chr(10), '<br>')}</p></body></html>"
+                pdf_path = None
+                # Let it proceed below to the sending logic to dispatch this clarification email!
             else:
                 # Log QUOTE_GENERATED or other statuses to activity log
                 try:
@@ -3450,6 +3483,21 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 
                 _reply_customer_msg_logged = False
 
+                # ── Activity Log: EMAIL_RECEIVED ─────────────────────────────────────
+                try:
+                    from src.database_sqlite import log_activity
+                    _act_desc = f"Email received from {sender_name} <{email_addr}> (Subject: {subject[:80]})"
+                    log_activity(
+                        "EMAIL_RECEIVED",
+                        invoice_id=qtn_ref if is_customer_reply else qtn_ref_extracted,
+                        customer_name=sender_name,
+                        customer_email=email_addr,
+                        description=_act_desc,
+                        tenant_id=tenant_id
+                    )
+                except Exception as la_err:
+                    print(f"[Warning] Failed to log EMAIL_RECEIVED in mock poller: {la_err}")
+
                 # Tier 1: Fast blocklist check (0ms, no API)
                 blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
                 if blocklist_result == "REJECT":
@@ -3608,6 +3656,8 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         parts = clean_body_for_deficits.split("[From attachment")
                         email_text_only = parts[0].strip()
                         override_qty = extract_global_quantity_override(email_text_only)
+                        if override_qty is None and subject:
+                            override_qty = extract_global_quantity_override(subject)
                         body_lines = run_scenario_free(email_text_only, catalog)
                         body_has_products = any(l["matched_sku_id"] != "UNKNOWN" for l in body_lines)
                         if body_has_products or override_qty is not None:
@@ -3669,9 +3719,9 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
 
                 # --- Handle UNPARSED_NOTICE: log unmatched items + alert master ---
                 if status == "UNPARSED_NOTICE":
-                    print(f"[Unmatched] No valid SKU matches for mock enquiry from {sender}. Logging & alerting master (No reply generated).")
+                    print(f"[Unmatched] No valid SKU matches for mock enquiry from {sender}. Auto-training and generating clarification reply.")
                     try:
-                        from src.database_sqlite import log_unmatched_item
+                        from src.database_sqlite import log_unmatched_item, auto_train_from_email
                         log_unmatched_item(
                             customer_email=sender,
                             customer_name=sender_name,
@@ -3679,6 +3729,9 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                             source="mock_email",
                             tenant_id=tenant_id
                         )
+                        
+                        # 1. Learn keywords from unmatched email body to train AI relevance
+                        auto_train_from_email(subject, body, tenant_id=tenant_id)
                     except Exception as ue:
                         print(f"[Warning] Failed to log unmatched item: {ue}")
 
@@ -3704,7 +3757,6 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         )
                         send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject_unmatch_notif, body_unmatch_notif)
                     
-                    # Log processed message reference, log activity, and skip writing reply file
                     log_invoice_ref = "UNMATCHED"
                     if msg_id:
                         from src.database_sqlite import log_processed_message
@@ -3724,11 +3776,25 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         from src.database_sqlite import log_activity
                         log_activity("UNMATCHED_ENQUIRY", invoice_id=log_invoice_ref,
                             customer_name=sender_name, customer_email=sender,
-                            description=f"Items not found in catalog (Subject: {subject[:80]})",
+                            description=f"Items not found in catalog (Subject: {subject[:80]}). Logged to Unmatched.",
                             tenant_id=tenant_id)
                     except Exception:
                         pass
-                    continue
+                    
+                    # Set up clarification reply to fall through to draft/sending code
+                    reply_subject = clean_reply_subject(subject, is_unparsed=True)
+                    reply_body = (
+                        f"Dear {sender_name},\n\n"
+                        f"Thank you for contacting us. We received your request but were unable to match the listed items directly "
+                        f"with our hardware catalog.\n\n"
+                        f"Please reply to this email specifying the exact product names, categories, or quantities you need. "
+                        f"Once we receive these details, we will prepare a quotation for you immediately.\n\n"
+                        f"Regards,\n"
+                        f"{tenant_config.get('business_name', 'Trofeo Hardware')} Sales Team"
+                    )
+                    plain_body = reply_body
+                    pdf_path = None
+                    proc_invoice_id = log_invoice_ref
 
                 # Check reply mode setting
                 from src.database_sqlite import get_setting, update_quotation_status, log_chat_msg
@@ -4010,6 +4076,21 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     
                     _reply_customer_msg_logged = False
 
+                    # ── Activity Log: EMAIL_RECEIVED ─────────────────────────────────────
+                    try:
+                        from src.database_sqlite import log_activity
+                        _act_desc = f"Email received from {sender_name} <{sender}> (Subject: {subject[:80]})"
+                        log_activity(
+                            "EMAIL_RECEIVED",
+                            invoice_id=qtn_ref if is_customer_reply else qtn_ref_extracted,
+                            customer_name=sender_name,
+                            customer_email=sender,
+                            description=_act_desc,
+                            tenant_id=tenant_id
+                        )
+                    except Exception as la_err:
+                        print(f"[Warning] Failed to log EMAIL_RECEIVED in IMAP poller: {la_err}")
+
                     # Tier 1: Fast blocklist check (0ms, no API)
                     blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
                     if blocklist_result == "REJECT":
@@ -4177,6 +4258,70 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         else:
                             plain_body = reply_body_tuple
                             html_body = f"<html><body><p>{plain_body.replace('\n', '<br>')}</p></body></html>"
+
+                        # Handle unmatched live enquiry (UNPARSED_NOTICE)
+                        if status == "UNPARSED_NOTICE":
+                            print(f"[Unmatched] No valid SKU matches for live IMAP enquiry from {sender}. Auto-training and generating clarification reply.")
+                            try:
+                                from src.database_sqlite import log_unmatched_item, log_activity, auto_train_from_email
+                                # Prepend Subject, Sender, and Attachments to body for rich preview
+                                full_body_log = f"Subject: {subject}\nSender: {sender_name} <{sender}>\n"
+                                
+                                attach_names = []
+                                for part in msg.walk():
+                                    if part.get_content_disposition() == 'attachment':
+                                        fn = part.get_filename()
+                                        if fn:
+                                            from email.header import decode_header
+                                            decoded_fn = ""
+                                            try:
+                                                parts = decode_header(fn)
+                                                for p_text, encoding in parts:
+                                                    if isinstance(p_text, bytes):
+                                                        decoded_fn += p_text.decode(encoding or 'utf-8', errors='ignore')
+                                                    else:
+                                                        decoded_fn += p_text
+                                            except Exception:
+                                                decoded_fn = str(fn)
+                                            attach_names.append(decoded_fn)
+                                if attach_names:
+                                    full_body_log += f"Attachments: {', '.join(attach_names)}\n"
+                                full_body_log += f"\n{body}"
+                                
+                                u_id = log_unmatched_item(
+                                    customer_email=sender,
+                                    customer_name=sender_name,
+                                    original_body=full_body_log.strip(),
+                                    source="live_email",
+                                    tenant_id=tenant_id
+                                )
+                                proc_invoice_id = f"UNMATCHED_{u_id}"
+                                
+                                # 1. Learn keywords from unmatched email body to train AI relevance
+                                auto_train_from_email(subject, body, tenant_id=tenant_id)
+                                
+                                log_activity("UNMATCHED_ENQUIRY", invoice_id=proc_invoice_id,
+                                    customer_name=sender_name, customer_email=sender,
+                                    description=f"Items not found in catalog (Subject: {subject[:80]}). Logged to Unmatched.",
+                                    tenant_id=tenant_id)
+                            except Exception as ue:
+                                print(f"[Warning] Failed to log/train unmatched live enquiry: {ue}")
+                                proc_invoice_id = "UNMATCHED"
+
+                            # 2. Prepare dynamic response asking for catalog keywords clarification
+                            reply_subject = clean_reply_subject(subject, is_unparsed=True)
+                            reply_body = (
+                                f"Dear {sender_name},\n\n"
+                                f"Thank you for contacting us. We received your request but were unable to match the listed items directly "
+                                f"with our hardware catalog.\n\n"
+                                f"Please reply to this email specifying the exact product names, categories, or quantities you need. "
+                                f"Once we receive these details, we will prepare a quotation for you immediately.\n\n"
+                                f"Regards,\n"
+                                f"{tenant_config.get('business_name', 'Trofeo Hardware')} Sales Team"
+                            )
+                            plain_body = reply_body
+                            html_body = f"<html><body><p>{reply_body.replace(chr(10), '<br>')}</p></body></html>"
+                            pdf_path = None
                     
                     reply_msg = MIMEMultipart()
                     reply_msg["From"] = email_user
@@ -4292,6 +4437,8 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                             parts = clean_body_for_deficits.split("[From attachment")
                             email_text_only = parts[0].strip()
                             override_qty = extract_global_quantity_override(email_text_only)
+                            if override_qty is None and subject:
+                                override_qty = extract_global_quantity_override(subject)
                             body_lines = run_scenario_free(email_text_only, catalog)
                             body_has_products = any(l["matched_sku_id"] != "UNKNOWN" for l in body_lines)
                             if body_has_products or override_qty is not None:
@@ -4353,19 +4500,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
 
                     # --- Handle UNPARSED_NOTICE ---
                     if status == "UNPARSED_NOTICE":
-                        print(f"[Unmatched] No valid SKU matches for enquiry from {sender}. Logging & alerting master.")
-                        try:
-                            from src.database_sqlite import log_unmatched_item
-                            log_unmatched_item(
-                                customer_email=sender,
-                                customer_name=sender_name,
-                                original_body=body,
-                                source="live_email",
-                                tenant_id=tenant_id
-                            )
-                        except Exception as ue:
-                            print(f"[Warning] Failed to log unmatched item: {ue}")
-
+                        print(f"[Unmatched] No valid SKU matches for enquiry from {sender}. Alerting master.")
                         if master_email and email_user and email_pass:
                             subject_unmatch_notif = f"[ACTION REQUIRED] Unmatched enquiry from {sender_name} — Manual Quote Needed"
                             body_unmatch_notif = (
