@@ -575,6 +575,77 @@ async def get_unmatched_enquiries(tenant_id: str = "default"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class AddKeywordRequest(BaseModel):
+    keyword: str
+    tenant_id: str = "default"
+
+class DeleteKeywordRequest(BaseModel):
+    keyword: str
+    tenant_id: str = "default"
+
+class ResetKeywordsRequest(BaseModel):
+    tenant_id: str = "default"
+
+@app.get("/api/training/keywords")
+async def get_keywords_api(tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_training_keywords, get_setting
+        import json
+        kws = get_training_keywords(tenant_id)
+        recent_val = get_setting("recently_learned", "[]", tenant_id)
+        try:
+            recent = json.loads(recent_val)
+        except Exception:
+            recent = []
+        return {"keywords": kws, "recently_learned": recent}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/keywords/add")
+async def add_keyword_api(req: AddKeywordRequest):
+    try:
+        from src.database_sqlite import add_training_keyword
+        success = add_training_keyword(req.keyword, req.tenant_id)
+        return {"success": success}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/keywords/delete")
+async def delete_keyword_api(req: DeleteKeywordRequest):
+    try:
+        from src.database_sqlite import get_training_keywords, save_training_keywords
+        kws = get_training_keywords(req.tenant_id)
+        k_clean = str(req.keyword).lower().strip()
+        if k_clean in kws:
+            kws.remove(k_clean)
+            save_training_keywords(kws, req.tenant_id)
+            return {"success": True}
+        return {"success": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/keywords/reset")
+async def reset_keywords_api(req: ResetKeywordsRequest):
+    try:
+        from src.database_sqlite import save_training_keywords
+        defaults = [
+            "quote", "quotation", "enquiry", "enquiries", "inquiry", "inquiries", 
+            "pricing", "need", "needed", "material", "materials", "mtl", "mtls", 
+            "rfq", "purchase", "order", "price", "prices", "request", "hardware", 
+            "fastener", "fasteners", "match", "estimate", "estimating", "invoice",
+            "requisition", "req", "items", "slip", "rfp", "vendor", "signoff",
+            "welcome", "discussion", "onboarding", "agreement", "contract", "sign",
+            "setup", "register", "registration", "details", "proposal", "proposals", 
+            "commercial", "commercials", "offer", "offers", "rate", "rates", "bid", 
+            "bids", "tender", "tenders"
+        ]
+        save_training_keywords(defaults, req.tenant_id)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/deficits")
 async def get_deficits(tenant_id: str = "default"):
     """Returns all stock deficit items from the database."""
@@ -1787,13 +1858,29 @@ async def send_manual_reply(req: SendManualReplyRequest):
             except Exception:
                 pass
                 
-        # If this was an unmatched item, delete/resolve it
+        # If this was an unmatched item, auto-train from original query and then delete it
         if req.invoice_id and req.invoice_id.startswith("UNMATCHED_"):
             try:
                 u_id = int(req.invoice_id.replace("UNMATCHED_", ""))
+                from src.database_sqlite import auto_train_from_email
+                # Fetch original body from unmatched items before deleting it
+                conn = get_connection(tenant_id)
+                row = conn.execute("SELECT original_body FROM unmatched_items WHERE id = ?", (u_id,)).fetchone()
+                conn.close()
+                if row:
+                    orig_body = row[0]
+                    # Train from original body and the reply subject/body!
+                    auto_train_from_email(req.subject, orig_body, tenant_id=tenant_id)
                 delete_unmatched_item(u_id, tenant_id=tenant_id)
             except Exception as e:
-                print(f"[Warning] Failed to delete unmatched item: {e}")
+                print(f"[Warning] Failed to delete unmatched item / auto-train: {e}")
+        else:
+            # General fallback: auto-train from reply text to learn new terms
+            try:
+                from src.database_sqlite import auto_train_from_email
+                auto_train_from_email(req.subject, req.reply_body, tenant_id=tenant_id)
+            except Exception as e:
+                print(f"[Warning] Failed general auto-train: {e}")
                 
         # Log to activity log
         try:

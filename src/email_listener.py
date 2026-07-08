@@ -2368,7 +2368,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
         if needs_relevance_check:
             # Bug 11 fix: Never block emails with explicit QTN references in the subject
             subj_has_qtn_ref = bool(re.search(r'\[Quotation\s+#|QTN-[A-Z0-9\-]+', subject, re.IGNORECASE))
-            if not subj_has_qtn_ref and not is_customer_reply and not is_subject_relevant(subject, sender_email, crm_emails):
+            if not subj_has_qtn_ref and not is_customer_reply and not is_subject_relevant(subject, sender_email, crm_emails, tenant_id=tenant_id):
                 print(f"[Outlook Filter] Skipped irrelevant subject from {sender_email} (Subject: {subject})")
                 if internet_msg_id:
                     from src.database_sqlite import log_processed_message
@@ -2715,7 +2715,7 @@ def fast_blocklist_check(sender, subject, crm_emails):
     return "NEEDS_AI"
 
 
-def is_subject_relevant(subject, sender, crm_emails):
+def is_subject_relevant(subject, sender, crm_emails, tenant_id=None):
     """
     Checks if an incoming email subject or sender suggests it is a quote request
     or thread reply, avoiding calling Gemini on completely irrelevant emails.
@@ -2731,23 +2731,29 @@ def is_subject_relevant(subject, sender, crm_emails):
     if sender_lower in crm_emails:
         return True
         
-    # 3. Subject keyword matching (whole word boundary checks)
-    keywords = [
-        "quote", "quotation", "enquiry", "enquiries", "inquiry", "inquiries", 
-        "pricing", "need", "needed", "material", "materials", "mtl", "mtls", 
-        "rfq", "purchase", "order", "price", "prices", "request", "hardware", 
-        "fastener", "fasteners", "match", "estimate", "estimating", "invoice",
-        "requisition", "req", "items", "slip", "rfp", "vendor", "signoff",
-        "welcome", "discussion", "onboarding", "agreement", "contract", "sign",
-        "setup", "register", "registration", "details",
-        "proposal", "proposals", "commercial", "commercials", "offer", "offers",
-        "rate", "rates", "bid", "bids", "tender", "tenders"
-    ]
+    # 3. Subject keyword matching (whole word boundary checks) loaded from database
+    try:
+        from src.database_sqlite import get_training_keywords
+        keywords = get_training_keywords(tenant_id)
+    except Exception as e:
+        print(f"[Warning] Failed to load training keywords from DB: {e}")
+        keywords = [
+            "quote", "quotation", "enquiry", "enquiries", "inquiry", "inquiries", 
+            "pricing", "need", "needed", "material", "materials", "mtl", "mtls", 
+            "rfq", "purchase", "order", "price", "prices", "request", "hardware", 
+            "fastener", "fasteners", "match", "estimate", "estimating", "invoice",
+            "requisition", "req", "items", "slip", "rfp", "vendor", "signoff",
+            "welcome", "discussion", "onboarding", "agreement", "contract", "sign",
+            "setup", "register", "registration", "details", "proposal", "proposals", 
+            "commercial", "commercials", "offer", "offers", "rate", "rates", "bid", 
+            "bids", "tender", "tenders"
+        ]
+        
     if any(re.search(r'\b' + re.escape(kw) + r'\b', subject_lower) for kw in keywords):
         return True
         
     # Substring checks for compound tokens
-    if any(kw in subject_lower for kw in ["quote", "enquiry", "inquiry", "rfq", "pricing", "mtl", "vendor", "signoff", "welcome", "discussion", "proposal", "commercial", "offer", "rate", "tender"]):
+    if any(kw in subject_lower for kw in keywords if len(kw) >= 3):
         return True
         
     return False
@@ -3456,7 +3462,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 needs_relevance_check = (blocklist_result == "NEEDS_AI") or (blocklist_result == "ACCEPT_CRM" and not is_customer_reply)
                 if needs_relevance_check:
                     # Fast relevance check on subject before using AI API
-                    if not is_customer_reply and not is_subject_relevant(subject, sender, crm_emails):
+                    if not is_customer_reply and not is_subject_relevant(subject, sender, crm_emails, tenant_id=tenant_id):
                         print(f"[Email Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) [Fast Subject Check]")
                         if os.path.exists(file_path):
                             os.remove(file_path)
@@ -4018,7 +4024,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     needs_relevance_check = (blocklist_result == "NEEDS_AI") or (blocklist_result == "ACCEPT_CRM" and not is_customer_reply)
                     if needs_relevance_check:
                         # Fast relevance check on subject before using AI API
-                        if not is_customer_reply and not is_subject_relevant(subject, sender, crm_emails):
+                        if not is_customer_reply and not is_subject_relevant(subject, sender, crm_emails, tenant_id=tenant_id):
                             print(f"[Email Filter] Skipped irrelevant email subject from {sender} (Subject: {subject}) [Fast Subject Check]")
                             mail.store(m_id, '+FLAGS', '\\Seen')
                             if msg_id:

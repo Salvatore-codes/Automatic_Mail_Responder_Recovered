@@ -1,0 +1,121 @@
+<!-- TAB 6: AI TRAINING & KEYWORDS -->
+<div class="tab-content" :class="{ 'active': activeTab === 'training' }">
+
+  <div class="ov-hero page-hero">
+    <div class="ov-hero-glow" aria-hidden="true"></div>
+    <div class="ov-hero-main">
+      <div class="ov-eyebrow">AI Engine</div>
+      <h1 class="ov-title">AI Training &amp; Keywords</h1>
+      <p class="ov-sub">Manage relevance keywords for incoming email filtering. The system automatically trains and learns new keywords when you respond to manual enquiries.</p>
+    </div>
+    <div class="ov-hero-side">
+      <button @click="resetKeywords" class="btn-micro" style="background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.2); color:#ef4444; border-radius:12px; padding:8px 16px;">
+        <i data-lucide="rotate-ccw" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:4px;"></i>
+        <span>Reset Defaults</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;">
+    <div class="kpi-card">
+      <span>Total Registered Keywords</span>
+      <strong x-text="trainingKeywords.length"></strong>
+    </div>
+    <div class="kpi-card">
+      <span>Automatically Learned</span>
+      <strong style="color:var(--accent-2);" x-text="recentlyLearnedKeywords.length"></strong>
+    </div>
+    <div class="kpi-card">
+      <span>AI Ingestion Engine</span>
+      <strong style="color:var(--green);" x-text="settings.ingestion_engine === 'B' ? 'Active (Gemini)' : 'Active (Local)'"></strong>
+    </div>
+    <div class="kpi-card">
+      <span>Auto-Training Status</span>
+      <strong style="color:var(--green);">Enabled (Live)</strong>
+    </div>
+  </div>
+
+  <!-- Main Grid Layout -->
+  <div class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+    
+    <!-- Left Column: Keywords List -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col gap-5">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+        <div>
+          <h2 class="text-sm font-bold text-[var(--text-1)] m-0">Active Relevance Keywords</h2>
+          <p class="text-[11px] text-[var(--text-3)] m-0 mt-0.5">Incoming emails containing any of these keywords in the subject or body will be auto-processed.</p>
+        </div>
+        
+        <!-- Add keyword input -->
+        <div class="flex gap-2 w-full md:w-auto">
+          <input 
+            type="text" 
+            placeholder="Enter new keyword..." 
+            x-model="newTrainingKeyword"
+            @keyup.enter="addKeyword"
+            class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] px-3 py-2 outline-none focus:border-[var(--accent)] w-full md:w-48"
+          />
+          <button @click="addKeyword" class="btn-action-primary btn-action-primary-md flex items-center gap-1">
+            <i data-lucide="plus" style="width:12px;height:12px;"></i>
+            <span>Add</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="border-t border-[var(--border)] pt-4">
+        <!-- Keywords pills -->
+        <template x-if="loadingTraining">
+          <div class="flex items-center justify-center py-12 text-xs text-[var(--text-2)] gap-2">
+            <div class="animate-spin rounded-full h-4 w-4 border-2 border-[var(--accent)] border-t-transparent"></div>
+            <span>Loading keywords...</span>
+          </div>
+        </template>
+        
+        <template x-if="!loadingTraining && trainingKeywords.length === 0">
+          <div class="text-center py-12 text-xs text-[var(--text-2)] italic">No keywords registered.</div>
+        </template>
+
+        <div class="flex flex-wrap gap-2 max-h-[400px] overflow-y-auto pr-2">
+          <template x-for="kw in trainingKeywords" :key="kw">
+            <div class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-card2)] hover:bg-[var(--bg-card2)]/80 border border-[var(--border)] rounded-full text-xs text-[var(--text-1)] font-semibold transition-all">
+              <span x-text="kw"></span>
+              <button @click="deleteKeyword(kw)" class="text-[var(--text-3)] hover:text-red-500 bg-transparent border-none p-0 cursor-pointer text-[10px] leading-none transition-all flex items-center justify-center w-3 h-3">✕</button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Recently Learned Keywords (Auto-training Log) -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col gap-4">
+      <div>
+        <h2 class="text-sm font-bold text-[var(--text-1)] m-0">Recently Learned</h2>
+        <p class="text-[11px] text-[var(--text-3)] m-0 mt-0.5">Keywords automatically extracted and trained from manual responses.</p>
+      </div>
+
+      <div class="border-t border-[var(--border)] pt-4 flex-1 overflow-y-auto max-h-[450px]">
+        <template x-if="recentlyLearnedKeywords.length === 0">
+          <div class="text-center py-16 text-[11px] text-[var(--text-3)] italic">
+            <div class="mb-2"><i data-lucide="sparkles" style="width:20px;height:20px;margin:0 auto;opacity:0.3;"></i></div>
+            No keywords learned yet. Manual replies will auto-train the system.
+          </div>
+        </template>
+
+        <div class="flex flex-col gap-3">
+          <template x-for="item in recentlyLearnedKeywords" :key="item.word">
+            <div class="p-3 bg-[var(--bg-dark)] border border-[var(--border)] rounded-xl flex justify-between items-center hover:border-[var(--accent)]/40 transition-all">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span class="font-mono text-xs font-bold text-[var(--text-1)]" x-text="item.word"></span>
+              </div>
+              <span class="text-[9px] text-[var(--text-3)] font-semibold" x-text="formatDate(item.timestamp)"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>

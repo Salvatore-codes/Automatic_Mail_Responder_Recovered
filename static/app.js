@@ -5,6 +5,7 @@ function dashboardApp() {
       { id: 'deficits', label: 'Deficits', icon: 'package', badge: 0, badgeColor: 'red', description: 'Manage raw material/item deficits and match alternatives for outstanding orders.' },
       { id: 'negotiations', label: 'Negotiations', icon: 'message-square-text', badge: 0, badgeColor: 'yellow', description: 'Review, counter-offer, or resolve discount requests escalated by the AI.' },
       { id: 'inventory', label: 'Full Inventory', icon: 'warehouse', badge: null, badgeColor: 'blue', description: 'View current stock levels, base prices, and catalog items.' },
+      { id: 'training', label: 'AI Training', icon: 'brain', badge: null, badgeColor: 'blue', description: 'Train and configure relevance keywords for automatic email classification.' },
       { id: 'activity', label: 'Activity Log', icon: 'activity', badge: null, badgeColor: 'blue', description: 'Real-time event stream: every email received, quote generated, reply handled, and error logged with timestamps.' }
     ],
     
@@ -18,6 +19,12 @@ function dashboardApp() {
     activitySearch: '',
     toasts: [],
     connectionStatus: 'connected',
+    
+    // Tab AI Training
+    trainingKeywords: [],
+    recentlyLearnedKeywords: [],
+    newTrainingKeyword: '',
+    loadingTraining: false,
     
     // Tab 1: Overview
     overviewData: {},
@@ -435,6 +442,7 @@ function dashboardApp() {
       this.loadSettings();
       this.loadAnalytics();
       this.loadActivityLog();
+      this.fetchTrainingData();
     },
     
     switchTab(tabId, filterVal = '') {
@@ -446,6 +454,9 @@ function dashboardApp() {
       }
       if (tabId === 'activity') {
         this.loadActivityLog();
+      }
+      if (tabId === 'training') {
+        this.fetchTrainingData();
       }
       this.$nextTick(() => {
         this.triggerLucide();
@@ -1850,6 +1861,80 @@ function dashboardApp() {
         `;
         printWindow.document.write(html);
         printWindow.document.close();
+      }
+    },
+
+    async fetchTrainingData() {
+      this.loadingTraining = true;
+      try {
+        const res = await this.safeFetch(`/api/training/keywords?tenant_id=${this.selectedTenant}`);
+        if (res.ok) {
+          const data = await res.json();
+          this.trainingKeywords = data.keywords || [];
+          this.recentlyLearnedKeywords = data.recently_learned || [];
+        }
+      } catch (e) {
+        console.error('Failed to fetch training data:', e);
+      } finally {
+        this.loadingTraining = false;
+      }
+    },
+
+    async addKeyword() {
+      const kw = this.newTrainingKeyword.trim().toLowerCase();
+      if (!kw) return;
+      try {
+        const res = await this.safeFetch(`/api/training/keywords/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            this.showToast(`Keyword "${kw}" added successfully!`);
+            this.newTrainingKeyword = '';
+            this.fetchTrainingData();
+          } else {
+            this.showToast(`Keyword "${kw}" is already registered.`, 'warning');
+          }
+        }
+      } catch (e) {
+        this.showToast('Failed to add keyword: ' + e.message, 'error');
+      }
+    },
+
+    async deleteKeyword(kw) {
+      if (!confirm(`Are you sure you want to delete keyword "${kw}"?`)) return;
+      try {
+        const res = await this.safeFetch(`/api/training/keywords/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast(`Keyword "${kw}" deleted!`);
+          this.fetchTrainingData();
+        }
+      } catch (e) {
+        this.showToast('Failed to delete keyword: ' + e.message, 'error');
+      }
+    },
+
+    async resetKeywords() {
+      if (!confirm('Are you sure you want to reset all training keywords to system defaults?')) return;
+      try {
+        const res = await this.safeFetch(`/api/training/keywords/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast('Keywords reset to default settings!');
+          this.fetchTrainingData();
+        }
+      } catch (e) {
+        this.showToast('Failed to reset keywords: ' + e.message, 'error');
       }
     }
   };

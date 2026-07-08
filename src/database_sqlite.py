@@ -698,3 +698,116 @@ def set_setting(key, value, tenant_id=None):
     finally:
         conn.close()
 
+
+def get_training_keywords(tenant_id=None):
+    """Retrieves list of relevance keywords from the settings table."""
+    import json
+    val = get_setting("training_keywords", None, tenant_id)
+    if val:
+        try:
+            return json.loads(val)
+        except Exception:
+            pass
+    # Default fallback list
+    return [
+        "quote", "quotation", "enquiry", "enquiries", "inquiry", "inquiries", 
+        "pricing", "need", "needed", "material", "materials", "mtl", "mtls", 
+        "rfq", "purchase", "order", "price", "prices", "request", "hardware", 
+        "fastener", "fasteners", "match", "estimate", "estimating", "invoice",
+        "requisition", "req", "items", "slip", "rfp", "vendor", "signoff",
+        "welcome", "discussion", "onboarding", "agreement", "contract", "sign",
+        "setup", "register", "registration", "details", "proposal", "proposals", 
+        "commercial", "commercials", "offer", "offers", "rate", "rates", "bid", 
+        "bids", "tender", "tenders"
+    ]
+
+def save_training_keywords(keywords, tenant_id=None):
+    """Saves the relevance keywords list to the settings table."""
+    import json
+    # Normalize list
+    keywords_clean = sorted(list(set(str(k).lower().strip() for k in keywords if str(k).strip())))
+    save_setting("training_keywords", json.dumps(keywords_clean), tenant_id)
+    return keywords_clean
+
+def add_training_keyword(keyword, tenant_id=None):
+    """Adds a single keyword to the relevance settings list if not present."""
+    k_clean = str(keyword).lower().strip()
+    if not k_clean:
+        return False
+    kws = get_training_keywords(tenant_id)
+    if k_clean not in kws:
+        kws.append(k_clean)
+        save_training_keywords(kws, tenant_id)
+        return True
+    return False
+
+def auto_train_from_email(subject, body, tenant_id=None):
+    """Extracts nouns/meaningful words from manual reply subject/body and automatically trains the system by adding them."""
+    import re
+    import json
+    from datetime import datetime
+    
+    stop_words = {
+        "the", "and", "please", "dear", "you", "for", "this", "that", "with", "from", 
+        "have", "your", "are", "was", "were", "been", "has", "had", "will", "would", 
+        "should", "could", "can", "may", "might", "must", "shall", "does", "did", 
+        "done", "doing", "about", "above", "after", "again", "against", "all", "any", 
+        "both", "each", "few", "more", "most", "other", "some", "such", "than", "too", 
+        "very", "just", "only", "then", "once", "here", "there", "when", "where", 
+        "why", "how", "under", "over", "into", "onto", "down", "up", "out", "off", 
+        "our", "ours", "him", "her", "his", "its", "them", "their", "they", "she", 
+        "but", "not", "hello", "hi", "thanks", "thank", "regards", "best", "sincerely", 
+        "com", "net", "org", "edu", "gov", "mail", "email", "subject", "body", "sent", 
+        "received", "date", "time", "message", "reply", "forward", "original", "write", 
+        "wrote", "attachment", "attachments", "commercials", "products", "shared", "karthikeyan"
+    }
+    
+    # Extract candidate words from subject and body
+    text = (subject or "") + " " + (body or "")
+    # Find all words that are purely alphabetic and of length 3-15
+    words = re.findall(r'\b[a-zA-Z]{3,15}\b', text.lower())
+    
+    learned = []
+    current_kws = get_training_keywords(tenant_id)
+    
+    for w in words:
+        if w not in stop_words and w not in current_kws:
+            current_kws.append(w)
+            learned.append(w)
+            
+    if learned:
+        save_training_keywords(current_kws, tenant_id)
+        # Log to recently learned keywords list
+        recent_val = get_setting("recently_learned", "[]", tenant_id)
+        try:
+            recent_list = json.loads(recent_val)
+        except Exception:
+            recent_list = []
+            
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for lw in learned:
+            # Avoid duplicating in the recent log
+            if not any(item['word'] == lw for item in recent_list):
+                recent_list.insert(0, {"word": lw, "timestamp": timestamp})
+        
+        # Keep only the last 20 learned items
+        recent_list = recent_list[:20]
+        save_setting("recently_learned", json.dumps(recent_list), tenant_id)
+        print(f"[AI Auto-Train] Learned new keywords from manual reply: {learned}")
+        
+        # Log to Activity Log
+        try:
+            from src.database_sqlite import log_activity
+            log_activity(
+                "AI_TRAINED",
+                invoice_id=None,
+                customer_name="AI System",
+                customer_email="auto-trainer@trofeo.ai",
+                description=f"Auto-trained new relevance keywords: {', '.join(learned[:5])}...",
+                tenant_id=tenant_id
+            )
+        except Exception as ae:
+            print(f"[AI Auto-Train] Failed to log activity: {ae}")
+            
+    return learned
+
