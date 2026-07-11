@@ -126,6 +126,18 @@ def load_tenant_crm_customers(tenant_id):
             pass
     return {}
 
+
+def apply_dynamic_pricing(matched_lines, customer_email, tenant_id):
+    from src.database_sqlite import get_dynamic_unit_price
+    for line in matched_lines:
+        sku_id = line.get("matched_sku_id")
+        if sku_id and sku_id != "UNKNOWN":
+            base_price = line.get("unit_price", 0.0)
+            category = line.get("category", "General")
+            line["unit_price"] = get_dynamic_unit_price(customer_email, sku_id, base_price, category, tenant_id)
+            line["line_total"] = round(line["quantity"] * line["unit_price"], 2)
+
+
 # Tenant Metadata listing endpoint
 @app.get("/api/tenants")
 async def get_tenants():
@@ -175,6 +187,7 @@ async def process_order(req: ProcessRequest):
         # Scenario B (Paid AI Hybrid)
         matched_lines = run_scenario_hybrid(text, catalog, input_type=req.input_type)
         
+    apply_dynamic_pricing(matched_lines, req.customer_email, req.tenant_id)
     search_time = time.time() - start_time
     
     # Calculate pipeline costs
@@ -234,6 +247,7 @@ async def process_order_file(
     else:
         matched_lines = run_scenario_hybrid(extracted_text, catalog, input_type=input_type)
         
+    apply_dynamic_pricing(matched_lines, customer_email, tenant_id)
     search_time = time.time() - start_time
     cost = 0.0014 if engine == "B" else 0.0
     
@@ -644,6 +658,56 @@ async def reset_keywords_api(req: ResetKeywordsRequest):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/training/negotiation/keywords")
+async def get_negotiation_keywords_api(tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_negotiation_keywords
+        kws = get_negotiation_keywords(tenant_id)
+        return {"keywords": kws}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/negotiation/keywords/add")
+async def add_negotiation_keyword_api(req: AddKeywordRequest):
+    try:
+        from src.database_sqlite import add_negotiation_keyword
+        success = add_negotiation_keyword(req.keyword, req.tenant_id)
+        return {"success": success}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/negotiation/keywords/delete")
+async def delete_negotiation_keyword_api(req: DeleteKeywordRequest):
+    try:
+        from src.database_sqlite import get_negotiation_keywords, save_negotiation_keywords
+        kws = get_negotiation_keywords(req.tenant_id)
+        k_clean = str(req.keyword).lower().strip()
+        if k_clean in kws:
+            kws.remove(k_clean)
+            save_negotiation_keywords(kws, req.tenant_id)
+            return {"success": True}
+        return {"success": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/negotiation/keywords/reset")
+async def reset_negotiation_keywords_api(req: ResetKeywordsRequest):
+    try:
+        from src.database_sqlite import save_negotiation_keywords
+        defaults = [
+            "discount", "discounts", "cheaper", "reduction", "reductions", "reduce", 
+            "negotiate", "negotiating", "negotiation", "negotiations", "deal", "deals", 
+            "concession", "concessions", "cash", "special", "better", "lower", "less"
+        ]
+        save_negotiation_keywords(defaults, req.tenant_id)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 
 @app.get("/api/deficits")
@@ -1349,7 +1413,7 @@ async def get_overview_analytics(tenant_id: str = "default"):
                 email = pm_email or row['q_email'] or "Customer"
                 name = pm_name or row['q_name'] or "Customer"
                 q_status = row['q_status']
-                if q_status in ("NEGOTIATION_APPROVED", "NEGOTIATION_NEGOTIATING", "QUOTE_UPDATED", "CONVERSATIONAL_REPLY"):
+                if q_status in ("NEGOTIATION_APPROVED", "NEGOTIATION_NEGOTIATING", "NEGOTIATION_ESCALATED", "QUOTE_UPDATED", "CONVERSATIONAL_REPLY"):
                     status = q_status
                     desc = f"AI replied to customer's thread for {qtn_ref} ({q_status})"
                 else:
@@ -1526,6 +1590,168 @@ async def update_settings(req: SettingsUpdateRequest, tenant_id: str = "default"
     if req.business_name is not None:
         set_setting("business_name", req.business_name, tenant_id)
     return {"status": "success"}
+
+
+class TierPricingRuleRequest(BaseModel):
+    tier: str
+    category: str
+    discount_pct: float
+    tenant_id: str = "default"
+
+class CustomerCustomPriceRequest(BaseModel):
+    customer_email: str
+    sku_id: str
+    custom_price: float
+    tenant_id: str = "default"
+
+
+@app.get("/api/pricing/rules")
+async def api_get_tier_pricing_rules(tenant_id: str = "default"):
+    from src.database_sqlite import get_tier_pricing_rules
+    try:
+        return get_tier_pricing_rules(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/pricing/rules")
+async def api_add_tier_pricing_rule(req: TierPricingRuleRequest):
+    from src.database_sqlite import add_tier_pricing_rule
+    try:
+        add_tier_pricing_rule(req.tier, req.category, req.discount_pct, req.tenant_id)
+        return {"status": "SUCCESS"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/pricing/rules/{rule_id}")
+async def api_delete_tier_pricing_rule(rule_id: int, tenant_id: str = "default"):
+    from src.database_sqlite import delete_tier_pricing_rule
+    try:
+        delete_tier_pricing_rule(rule_id, tenant_id)
+        return {"status": "SUCCESS"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/pricing/custom")
+async def api_get_customer_custom_prices(tenant_id: str = "default"):
+    from src.database_sqlite import get_customer_custom_prices
+    try:
+        return get_customer_custom_prices(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/pricing/custom")
+async def api_add_customer_custom_price(req: CustomerCustomPriceRequest):
+    from src.database_sqlite import add_customer_custom_price
+    try:
+        add_customer_custom_price(req.customer_email, req.sku_id, req.custom_price, req.tenant_id)
+        return {"status": "SUCCESS"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/pricing/custom/{price_id}")
+async def api_delete_customer_custom_price(price_id: int, tenant_id: str = "default"):
+    from src.database_sqlite import delete_customer_custom_price
+    try:
+        delete_customer_custom_price(price_id, tenant_id)
+        return {"status": "SUCCESS"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/customers/segments")
+async def get_customers_segments(tenant_id: str = "default"):
+    import json
+    import os
+    from src.database_sqlite import get_connection
+    
+    try:
+        # 1. Query sqlite total revenue per customer
+        conn = get_connection(tenant_id)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT customer_email, customer_name, ROUND(SUM(grand_total), 2) as total_value, COUNT(*) as quote_count
+            FROM quotations
+            WHERE status NOT IN ('REJECTED')
+            GROUP BY customer_email
+        """)
+        rows = cursor.fetchall()
+        db_customers = {r['customer_email'].lower().strip(): dict(r) for r in rows if r['customer_email']}
+        conn.close()
+        
+        # 2. Load CRM customers
+        crm_p = os.path.join(project_root, "data", "crm_customers.json")
+        crm_data = {}
+        if os.path.exists(crm_p):
+            with open(crm_p, "r", encoding="utf-8") as f:
+                crm_data = json.load(f)
+                
+        # Merge data
+        all_emails = set(db_customers.keys()) | set(k.lower().strip() for k in crm_data.keys() if k)
+        merged_customers = []
+        
+        # Stats dictionary
+        stats = {
+            "enterprise": {"count": 0, "revenue": 0.0},
+            "vip": {"count": 0, "revenue": 0.0},
+            "growth": {"count": 0, "revenue": 0.0},
+            "lite": {"count": 0, "revenue": 0.0}
+        }
+        
+        for email in all_emails:
+            # Find in CRM
+            crm_email_key = next((k for k in crm_data.keys() if k.lower().strip() == email), None)
+            crm_profile = crm_data[crm_email_key] if crm_email_key else {}
+            
+            # Find in DB
+            db_profile = db_customers.get(email, {})
+            
+            name = crm_profile.get("name") or db_profile.get("customer_name") or "Unnamed Customer"
+            total_value = float(db_profile.get("total_value") or 0.0)
+            quote_count = int(db_profile.get("quote_count") or 0)
+            tier = crm_profile.get("tier") or "retail"
+            phone = crm_profile.get("phone") or "—"
+            
+            # Categorize
+            if total_value >= 500000.0:
+                segment = "enterprise"
+                segment_label = "Enterprise Class"
+            elif total_value >= 200000.0:
+                segment = "vip"
+                segment_label = "VIP Class"
+            elif total_value >= 50000.0:
+                segment = "growth"
+                segment_label = "Growth Class"
+            else:
+                segment = "lite"
+                segment_label = "Lite Class"
+                
+            stats[segment]["count"] += 1
+            stats[segment]["revenue"] += total_value
+            
+            merged_customers.append({
+                "email": email,
+                "name": name,
+                "total_value": total_value,
+                "quote_count": quote_count,
+                "tier": tier,
+                "phone": phone,
+                "segment": segment,
+                "segment_label": segment_label
+            })
+            
+        # Sort by total business volume descending
+        merged_customers.sort(key=lambda c: c["total_value"], reverse=True)
+        
+        # Round statistics values
+        for k in stats:
+            stats[k]["revenue"] = round(stats[k]["revenue"], 2)
+            
+        return {
+            "customers": merged_customers,
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/analytics/summary")

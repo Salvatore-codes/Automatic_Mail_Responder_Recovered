@@ -217,6 +217,28 @@ def init_db_conn(conn):
         except Exception:
             pass
 
+    # 12. Tier pricing rules table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS tier_pricing_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id TEXT DEFAULT 'default',
+        tier TEXT,
+        category TEXT,
+        discount_pct REAL
+    )
+    """)
+
+    # 13. Customer custom prices table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS customer_custom_prices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id TEXT DEFAULT 'default',
+        customer_email TEXT,
+        sku_id TEXT,
+        custom_price REAL
+    )
+    """)
+
     conn.commit()
 
 def init_db(tenant_id=None):
@@ -741,6 +763,43 @@ def add_training_keyword(keyword, tenant_id=None):
         return True
     return False
 
+
+def get_negotiation_keywords(tenant_id=None):
+    """Retrieves list of negotiation/discount keywords from the settings table."""
+    import json
+    val = get_setting("negotiation_keywords", None, tenant_id)
+    if val:
+        try:
+            return json.loads(val)
+        except Exception:
+            pass
+    # Default fallback list
+    return [
+        "discount", "discounts", "cheaper", "reduction", "reductions", "reduce", 
+        "negotiate", "negotiating", "negotiation", "negotiations", "deal", "deals", 
+        "concession", "concessions", "cash", "special", "better", "lower", "less"
+    ]
+
+def save_negotiation_keywords(keywords, tenant_id=None):
+    """Saves the negotiation/discount keywords list to the settings table."""
+    import json
+    keywords_clean = sorted(list(set(str(k).lower().strip() for k in keywords if str(k).strip())))
+    set_setting("negotiation_keywords", json.dumps(keywords_clean), tenant_id)
+    return keywords_clean
+
+def add_negotiation_keyword(keyword, tenant_id=None):
+    """Adds a single keyword to the negotiation settings list if not present."""
+    k_clean = str(keyword).lower().strip()
+    if not k_clean:
+        return False
+    kws = get_negotiation_keywords(tenant_id)
+    if k_clean not in kws:
+        kws.append(k_clean)
+        save_negotiation_keywords(kws, tenant_id)
+        return True
+    return False
+
+
 def auto_train_from_email(subject, body, tenant_id=None):
     """Extracts nouns/meaningful words from manual reply subject/body and automatically trains the system by adding them."""
     import re
@@ -810,4 +869,170 @@ def auto_train_from_email(subject, body, tenant_id=None):
             print(f"[AI Auto-Train] Failed to log activity: {ae}")
             
     return learned
+
+
+def get_customer_tier(customer_email, tenant_id=None):
+    """Loads the customer profile from crm_customers.json and returns their tier."""
+    from src.tenants import get_tenant_config, sanitize_tenant_id
+    t_id = sanitize_tenant_id(tenant_id)
+    tenant_config = get_tenant_config(t_id)
+    crm_p = tenant_config.get("crm_json")
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    if crm_p:
+        if not os.path.isabs(crm_p):
+            crm_p = os.path.join(project_root, crm_p)
+        if not os.path.exists(crm_p):
+            crm_p = os.path.join(project_root, "data", "crm_customers.json")
+    else:
+        crm_p = os.path.join(project_root, "data", "crm_customers.json")
+        
+    import json
+    try:
+        with open(crm_p, "r", encoding="utf-8") as f:
+            customers = json.load(f)
+        profile = customers.get(customer_email.lower().strip() if customer_email else "", {"tier": "retail"})
+        return profile.get("tier", "retail")
+    except Exception:
+        return "retail"
+
+
+def get_dynamic_unit_price(customer_email, sku_id, base_price, category=None, tenant_id=None):
+    """
+    Finds the custom override price or tier discount price for a customer/SKU.
+    1. Direct override: customer_custom_prices table lookup.
+    2. Tier Category multiplier: tier_pricing_rules table lookup.
+    3. Fallback: base_price.
+    """
+    if not customer_email or not sku_id:
+        return base_price
+        
+    # Resolve category from catalog if not provided or empty/General
+    if not category or category in ("General", "—", ""):
+        from src.tenants import get_tenant_catalog
+        try:
+            catalog = get_tenant_catalog(tenant_id)
+            sku_profile = next((s for s in catalog.skus if s.get("sku_id") == sku_id), None)
+            if sku_profile:
+                category = sku_profile.get("category", "General")
+        except Exception as ce:
+            print(f"[Pricing] Catalog category lookup failed: {ce}")
+
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    
+    # 1. Custom price override lookup
+    try:
+        cursor.execute(
+            "SELECT custom_price FROM customer_custom_prices WHERE customer_email = ? AND sku_id = ?",
+            (customer_email.lower().strip(), sku_id.strip())
+        )
+        row = cursor.fetchone()
+        if row is not None:
+            val = float(row["custom_price"])
+            conn.close()
+            return val
+    except Exception as e:
+        print(f"[Pricing] Error looking up custom price: {e}")
+        
+    # 2. Tier category multiplier lookup
+    tier = get_customer_tier(customer_email, tenant_id)
+    if tier and tier != "retail" and category:
+        try:
+            cursor.execute(
+                "SELECT discount_pct FROM tier_pricing_rules WHERE tier = ? AND category = ?",
+                (tier.lower().strip(), category.strip())
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                discount_pct = float(row["discount_pct"])
+                conn.close()
+                return float(base_price) * (1.0 - discount_pct)
+        except Exception as e:
+            print(f"[Pricing] Error looking up tier pricing rules: {e}")
+            
+    conn.close()
+    return base_price
+
+
+def get_tier_pricing_rules(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tier_pricing_rules")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def add_tier_pricing_rule(tier, category, discount_pct, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM tier_pricing_rules WHERE tier = ? AND category = ?",
+        (tier.lower().strip(), category.strip())
+    )
+    row = cursor.fetchone()
+    if row:
+        cursor.execute(
+            "UPDATE tier_pricing_rules SET discount_pct = ? WHERE id = ?",
+            (float(discount_pct), row["id"])
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO tier_pricing_rules (tier, category, discount_pct) VALUES (?, ?, ?)",
+            (tier.lower().strip(), category.strip(), float(discount_pct))
+        )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_tier_pricing_rule(rule_id, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tier_pricing_rules WHERE id = ?", (rule_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_customer_custom_prices(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM customer_custom_prices")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def add_customer_custom_price(customer_email, sku_id, custom_price, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM customer_custom_prices WHERE customer_email = ? AND sku_id = ?",
+        (customer_email.lower().strip(), sku_id.strip())
+    )
+    row = cursor.fetchone()
+    if row:
+        cursor.execute(
+            "UPDATE customer_custom_prices SET custom_price = ? WHERE id = ?",
+            (float(custom_price), row["id"])
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO customer_custom_prices (customer_email, sku_id, custom_price) VALUES (?, ?, ?)",
+            (customer_email.lower().strip(), sku_id.strip(), float(custom_price))
+        )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_customer_custom_price(price_id, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM customer_custom_prices WHERE id = ?", (price_id,))
+    conn.commit()
+    conn.close()
+    return True
+
 

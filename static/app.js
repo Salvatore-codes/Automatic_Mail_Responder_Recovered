@@ -5,7 +5,9 @@ function dashboardApp() {
       { id: 'deficits', label: 'Deficits', icon: 'package', badge: 0, badgeColor: 'red', description: 'Manage raw material/item deficits and match alternatives for outstanding orders.' },
       { id: 'negotiations', label: 'Negotiations', icon: 'message-square-text', badge: 0, badgeColor: 'yellow', description: 'Review, counter-offer, or resolve discount requests escalated by the AI.' },
       { id: 'inventory', label: 'Full Inventory', icon: 'warehouse', badge: null, badgeColor: 'blue', description: 'View current stock levels, base prices, and catalog items.' },
+      { id: 'pricing', label: 'Dynamic Pricing', icon: 'coins', badge: null, badgeColor: 'blue', description: 'Configure customer contract pricing and category-level discount tiers.' },
       { id: 'training', label: 'AI Training', icon: 'brain', badge: null, badgeColor: 'blue', description: 'Train and configure relevance keywords for automatic email classification.' },
+      { id: 'customers', label: 'CRM Segments', icon: 'users', badge: null, badgeColor: 'blue', description: 'Group and classify customers based on historical purchase volume and business value.' },
       { id: 'activity', label: 'Activity Log', icon: 'activity', badge: null, badgeColor: 'blue', description: 'Real-time event stream: every email received, quote generated, reply handled, and error logged with timestamps.' }
     ],
     
@@ -24,7 +26,35 @@ function dashboardApp() {
     trainingKeywords: [],
     recentlyLearnedKeywords: [],
     newTrainingKeyword: '',
+    negotiationKeywords: [],
+    newNegotiationKeyword: '',
     loadingTraining: false,
+    
+    // Tab Dynamic Pricing
+    tierPricingRules: [],
+    customerCustomPrices: [],
+    newRule: { tier: 'wholesale', category: 'Plumbing', discount_pct: 10 },
+    newCustomPrice: { customer_email: '', sku_id: '', custom_price: '' },
+    loadingPricing: false,
+    rulesSearch: '',
+    rulesSortKey: 'tier',
+    rulesSortDesc: false,
+    rulesPage: 1,
+    rulesPageSize: 5,
+    customPricesSearch: '',
+    customPricesSortKey: 'customer_email',
+    customPricesSortDesc: false,
+    customPricesPage: 1,
+    customPricesPageSize: 5,
+    
+    // Tab Customer Segments
+    customerSegments: { customers: [], stats: {} },
+    loadingSegments: false,
+    segmentsSearch: '',
+    segmentsSortKey: 'total_value',
+    segmentsSortDesc: true,
+    segmentsPage: 1,
+    segmentsPageSize: 10,
     
     // Tab 1: Overview
     overviewData: {},
@@ -443,6 +473,9 @@ function dashboardApp() {
       this.loadAnalytics();
       this.loadActivityLog();
       this.fetchTrainingData();
+      this.fetchNegotiationData();
+      this.loadPricingData();
+      this.loadCustomerSegments();
     },
     
     switchTab(tabId, filterVal = '') {
@@ -457,6 +490,13 @@ function dashboardApp() {
       }
       if (tabId === 'training') {
         this.fetchTrainingData();
+        this.fetchNegotiationData();
+      }
+      if (tabId === 'pricing') {
+        this.loadPricingData();
+      }
+      if (tabId === 'customers') {
+        this.loadCustomerSegments();
       }
       this.$nextTick(() => {
         this.triggerLucide();
@@ -519,6 +559,18 @@ function dashboardApp() {
     // Search filters
     handleGlobalSearch() {
       const query = this.invoiceFilter.toLowerCase().trim();
+      
+      // Reset all page pagination parameters to 1 when search query changes
+      this.deficitsPage = 1;
+      this.negPage = 1;
+      this.catalogPage = 1;
+      this.activityPage = 1;
+      this.rulesPage = 1;
+      this.customPricesPage = 1;
+      this.segmentsPage = 1;
+      
+      // Sync Catalog search filter
+      this.filterCatalog();
       
       // Filter Quotes Tab
       if (!query) {
@@ -587,6 +639,105 @@ function dashboardApp() {
          (n.created_at || '').toLowerCase().includes(query)
        );
      },
+
+      getFilteredRules() {
+        const query = (this.rulesSearch || this.invoiceFilter).toLowerCase().trim();
+        if (!query) return this.tierPricingRules;
+        return this.tierPricingRules.filter(r => 
+          (r.tier || '').toLowerCase().includes(query) || 
+          (r.category || '').toLowerCase().includes(query) ||
+          String(Math.round(r.discount_pct * 100)).includes(query)
+        );
+      },
+
+      sortedRules() {
+        return [...this.getFilteredRules()].sort((a, b) => {
+          let valA = a[this.rulesSortKey];
+          let valB = b[this.rulesSortKey];
+          if (typeof valA === 'string') valA = valA.toLowerCase();
+          if (typeof valB === 'string') valB = valB.toLowerCase();
+          
+          if (valA < valB) return this.rulesSortDesc ? 1 : -1;
+          if (valA > valB) return this.rulesSortDesc ? -1 : 1;
+          return 0;
+        });
+      },
+
+      paginatedRules() {
+        const start = (this.rulesPage - 1) * this.rulesPageSize;
+        return this.sortedRules().slice(start, start + this.rulesPageSize);
+      },
+
+      rulesTotalPages() {
+        return Math.ceil(this.sortedRules().length / this.rulesPageSize) || 1;
+      },
+
+      getFilteredCustomPrices() {
+        const query = (this.customPricesSearch || this.invoiceFilter).toLowerCase().trim();
+        if (!query) return this.customerCustomPrices;
+        return this.customerCustomPrices.filter(p => 
+          (p.customer_email || '').toLowerCase().includes(query) || 
+          (p.sku_id || '').toLowerCase().includes(query) ||
+          String(p.custom_price).includes(query)
+        );
+      },
+
+      sortedCustomPrices() {
+        return [...this.getFilteredCustomPrices()].sort((a, b) => {
+          let valA = a[this.customPricesSortKey];
+          let valB = b[this.customPricesSortKey];
+          if (typeof valA === 'string') valA = valA.toLowerCase();
+          if (typeof valB === 'string') valB = valB.toLowerCase();
+          
+          if (valA < valB) return this.customPricesSortDesc ? 1 : -1;
+          if (valA > valB) return this.customPricesSortDesc ? -1 : 1;
+          return 0;
+        });
+      },
+
+      paginatedCustomPrices() {
+        const start = (this.customPricesPage - 1) * this.customPricesPageSize;
+        return this.sortedCustomPrices().slice(start, start + this.customPricesPageSize);
+      },
+
+      customPricesTotalPages() {
+        return Math.ceil(this.sortedCustomPrices().length / this.customPricesPageSize) || 1;
+      },
+
+      getFilteredSegments() {
+        const query = (this.segmentsSearch || this.invoiceFilter).toLowerCase().trim();
+        const list = this.customerSegments.customers || [];
+        if (!query) return list;
+        return list.filter(c => 
+          (c.name || '').toLowerCase().includes(query) || 
+          (c.email || '').toLowerCase().includes(query) ||
+          (c.phone || '').toLowerCase().includes(query) ||
+          (c.tier || '').toLowerCase().includes(query) ||
+          (c.segment_label || '').toLowerCase().includes(query)
+        );
+      },
+
+      sortedSegments() {
+        return [...this.getFilteredSegments()].sort((a, b) => {
+          let valA = a[this.segmentsSortKey];
+          let valB = b[this.segmentsSortKey];
+          if (typeof valA === 'string') valA = valA.toLowerCase();
+          if (typeof valB === 'string') valB = valB.toLowerCase();
+          
+          if (valA < valB) return this.segmentsSortDesc ? 1 : -1;
+          if (valA > valB) return this.segmentsSortDesc ? -1 : 1;
+          return 0;
+        });
+      },
+
+      paginatedSegments() {
+        const start = (this.segmentsPage - 1) * this.segmentsPageSize;
+        return this.sortedSegments().slice(start, start + this.segmentsPageSize);
+      },
+
+      segmentsTotalPages() {
+        return Math.ceil(this.sortedSegments().length / this.segmentsPageSize) || 1;
+      },
 
     // Tab 1: Overview APIS
     async fetchOverviewData() {
@@ -1190,7 +1341,7 @@ function dashboardApp() {
     },
     
     filterCatalog() {
-      const query = this.inventorySearch.toLowerCase().trim();
+      const query = (this.inventorySearch || this.invoiceFilter).toLowerCase().trim();
       const cat = this.inventoryCategory;
       const st = this.inventoryStatus;
       this.filteredCatalog = this.catalog.filter(item => {
@@ -1774,10 +1925,10 @@ function dashboardApp() {
         rows.push(['Responded', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', m.status || '—', m.timestamp || '—']);
       });
       this.getFilteredList(this.repliedMails).forEach(m => {
-        rows.push(['Reply (Email)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Customer Replied', m.timestamp || '—']);
+        rows.push(['Reply', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Customer Replied', m.timestamp || '—']);
       });
       this.getFilteredList(this.negotiations).forEach(m => {
-        rows.push(['Reply (Negotiation)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Requested: ${Math.round(m.discount_pct*100)}%`, m.created_at || '—']);
+        rows.push(['Customer Request', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Requested: ${Math.round(m.discount_pct*100)}%`, m.created_at || '—']);
       });
       this.getFilteredList(this.rejectedMails).forEach(m => {
         rows.push(['Rejected', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Quotation Rejected', m.created_at || '—']);
@@ -1858,7 +2009,7 @@ function dashboardApp() {
       const headers = ['SKU ID', 'Product Description', 'Category', 'Stock Level', 'Unit Price (INR)'];
       const rows = this.filteredCatalog.map(sku => [
         sku.sku_id || '—',
-        sku.name || '—',
+        sku.sku_name || '—',
         sku.category || '—',
         sku.stock !== null && sku.stock !== undefined ? sku.stock : '0',
         sku.price !== null && sku.price !== undefined ? sku.price : '0.00'
@@ -1999,6 +2150,191 @@ function dashboardApp() {
         }
       } catch (e) {
         this.showToast('Failed to reset keywords: ' + e.message, 'error');
+      }
+    },
+
+    async fetchNegotiationData() {
+      try {
+        const res = await this.safeFetch(`/api/training/negotiation/keywords?tenant_id=${this.selectedTenant}`);
+        if (res.ok) {
+          const data = await res.json();
+          this.negotiationKeywords = data.keywords || [];
+        }
+      } catch (e) {
+        console.error('Failed to fetch negotiation keywords:', e);
+      }
+    },
+
+    async addNegotiationKeyword() {
+      const kw = this.newNegotiationKeyword.trim().toLowerCase();
+      if (!kw) return;
+      try {
+        const res = await this.safeFetch(`/api/training/negotiation/keywords/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            this.showToast(`Negotiation keyword "${kw}" added successfully!`);
+            this.newNegotiationKeyword = '';
+            this.fetchNegotiationData();
+          } else {
+            this.showToast(`Keyword "${kw}" is already registered.`, 'warning');
+          }
+        }
+      } catch (e) {
+        this.showToast('Failed to add keyword: ' + e.message, 'error');
+      }
+    },
+
+    async deleteNegotiationKeyword(kw) {
+      if (!confirm(`Are you sure you want to delete negotiation keyword "${kw}"?`)) return;
+      try {
+        const res = await this.safeFetch(`/api/training/negotiation/keywords/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast(`Negotiation keyword "${kw}" deleted!`);
+          this.fetchNegotiationData();
+        }
+      } catch (e) {
+        this.showToast('Failed to delete keyword: ' + e.message, 'error');
+      }
+    },
+
+    async resetNegotiationKeywords() {
+      if (!confirm('Are you sure you want to reset all negotiation keywords to system defaults?')) return;
+      try {
+        const res = await this.safeFetch(`/api/training/negotiation/keywords/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast('Negotiation keywords reset to defaults!');
+          this.fetchNegotiationData();
+        }
+      } catch (e) {
+        this.showToast('Failed to reset keywords: ' + e.message, 'error');
+      }
+    },
+
+    async loadPricingData() {
+      this.loadingPricing = true;
+      try {
+        const resRules = await this.safeFetch(`/api/pricing/rules?tenant_id=${this.selectedTenant}`);
+        if (resRules.ok) {
+          this.tierPricingRules = await resRules.json();
+        }
+        const resCustom = await this.safeFetch(`/api/pricing/custom?tenant_id=${this.selectedTenant}`);
+        if (resCustom.ok) {
+          this.customerCustomPrices = await resCustom.json();
+        }
+      } catch (e) {
+        this.showToast('Failed to load pricing data: ' + e.message, 'error');
+      } finally {
+        this.loadingPricing = false;
+      }
+    },
+
+    async loadCustomerSegments() {
+      this.loadingSegments = true;
+      try {
+        const res = await this.safeFetch(`/api/customers/segments?tenant_id=${this.selectedTenant}`);
+        if (res.ok) {
+          this.customerSegments = await res.json();
+        }
+      } catch (e) {
+        this.showToast('Failed to load customer segments: ' + e.message, 'error');
+      } finally {
+        this.loadingSegments = false;
+      }
+    },
+
+    async addTierRule() {
+      if (!this.newRule.category) {
+        this.showToast('Category name is required', 'warning');
+        return;
+      }
+      try {
+        const res = await this.safeFetch('/api/pricing/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tier: this.newRule.tier,
+            category: this.newRule.category,
+            discount_pct: parseFloat(this.newRule.discount_pct) / 100.0,
+            tenant_id: this.selectedTenant
+          })
+        });
+        if (res.ok) {
+          this.showToast('Tier pricing rule saved successfully!');
+          this.loadPricingData();
+        }
+      } catch (e) {
+        this.showToast('Failed to save rule: ' + e.message, 'error');
+      }
+    },
+
+    async deleteTierRule(ruleId) {
+      if (!confirm('Are you sure you want to delete this pricing rule?')) return;
+      try {
+        const res = await this.safeFetch(`/api/pricing/rules/${ruleId}?tenant_id=${this.selectedTenant}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          this.showToast('Pricing rule deleted!');
+          this.loadPricingData();
+        }
+      } catch (e) {
+        this.showToast('Failed to delete rule: ' + e.message, 'error');
+      }
+    },
+
+    async addCustomPrice() {
+      if (!this.newCustomPrice.customer_email || !this.newCustomPrice.sku_id || !this.newCustomPrice.custom_price) {
+        this.showToast('All fields are required', 'warning');
+        return;
+      }
+      try {
+        const res = await this.safeFetch('/api/pricing/custom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_email: this.newCustomPrice.customer_email,
+            sku_id: this.newCustomPrice.sku_id,
+            custom_price: parseFloat(this.newCustomPrice.custom_price),
+            tenant_id: this.selectedTenant
+          })
+        });
+        if (res.ok) {
+          this.showToast('Custom customer price override saved!');
+          this.newCustomPrice.customer_email = '';
+          this.newCustomPrice.sku_id = '';
+          this.newCustomPrice.custom_price = '';
+          this.loadPricingData();
+        }
+      } catch (e) {
+        this.showToast('Failed to save override: ' + e.message, 'error');
+      }
+    },
+
+    async deleteCustomPrice(priceId) {
+      if (!confirm('Are you sure you want to delete this custom price override?')) return;
+      try {
+        const res = await this.safeFetch(`/api/pricing/custom/${priceId}?tenant_id=${this.selectedTenant}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          this.showToast('Custom price override deleted!');
+          this.loadPricingData();
+        }
+      } catch (e) {
+        this.showToast('Failed to delete override: ' + e.message, 'error');
       }
     }
   };

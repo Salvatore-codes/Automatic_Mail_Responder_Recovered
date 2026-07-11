@@ -1,0 +1,213 @@
+<!-- TAB: CRM SEGMENTS -->
+<div class="tab-content" :class="{ 'active': activeTab === 'customers' }">
+
+  <div class="ov-hero page-hero">
+    <div class="ov-hero-glow" aria-hidden="true"></div>
+    <div class="ov-hero-main">
+      <div class="ov-eyebrow">Customer Relationship Management</div>
+      <h1 class="ov-title">Customer Business Segments</h1>
+      <p class="ov-sub">Group, track, and classify customer accounts automatically based on the volume and total value of business they offer.</p>
+    </div>
+  </div>
+
+  <!-- Segment Summary Cards -->
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom: 24px;">
+    
+    <!-- Enterprise Class -->
+    <div class="kpi-card hover:border-[var(--accent-2)] transition-all" style="border-left: 4px solid #a855f7;">
+      <div class="flex justify-between items-start">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-[#a855f7]">Enterprise Class</span>
+          <strong class="text-2xl mt-1 block" x-text="fmt((customerSegments.stats?.enterprise?.revenue) || 0)"></strong>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-[#a855f7]">
+          <i data-lucide="crown" style="width:16px;height:16px;"></i>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-[var(--text-3)]">
+        <span class="font-bold text-[var(--text-1)]" x-text="(customerSegments.stats?.enterprise?.count) || 0"></span> accounts (>= ₹5.00L business)
+      </div>
+    </div>
+
+    <!-- VIP Class -->
+    <div class="kpi-card hover:border-[var(--accent-1)] transition-all" style="border-left: 4px solid #eab308;">
+      <div class="flex justify-between items-start">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-[#eab308]">VIP Class</span>
+          <strong class="text-2xl mt-1 block" x-text="fmt((customerSegments.stats?.vip?.revenue) || 0)"></strong>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center text-[#eab308]">
+          <i data-lucide="award" style="width:16px;height:16px;"></i>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-[var(--text-3)]">
+        <span class="font-bold text-[var(--text-1)]" x-text="(customerSegments.stats?.vip?.count) || 0"></span> accounts (₹2.00L - ₹5.00L business)
+      </div>
+    </div>
+
+    <!-- Growth Class -->
+    <div class="kpi-card hover:border-[var(--green)] transition-all" style="border-left: 4px solid #14b8a6;">
+      <div class="flex justify-between items-start">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-[#14b8a6]">Growth Class</span>
+          <strong class="text-2xl mt-1 block" x-text="fmt((customerSegments.stats?.growth?.revenue) || 0)"></strong>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center text-[#14b8a6]">
+          <i data-lucide="trending-up" style="width:16px;height:16px;"></i>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-[var(--text-3)]">
+        <span class="font-bold text-[var(--text-1)]" x-text="(customerSegments.stats?.growth?.count) || 0"></span> accounts (₹50K - ₹2.00L business)
+      </div>
+    </div>
+
+    <!-- Lite Class -->
+    <div class="kpi-card hover:border-[var(--border)] transition-all" style="border-left: 4px solid #64748b;">
+      <div class="flex justify-between items-start">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-[#64748b]">Lite Class</span>
+          <strong class="text-2xl mt-1 block" x-text="fmt((customerSegments.stats?.lite?.revenue) || 0)"></strong>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-slate-500/10 flex items-center justify-center text-[#64748b]">
+          <i data-lucide="user" style="width:16px;height:16px;"></i>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-[var(--text-3)]">
+        <span class="font-bold text-[var(--text-1)]" x-text="(customerSegments.stats?.lite?.count) || 0"></span> accounts (< ₹50K business)
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Search & Table Area -->
+  <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col gap-4">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+      <div>
+        <h2 class="text-sm font-bold text-[var(--text-1)] m-0">Customer Segment Directory</h2>
+        <p class="text-[11px] text-[var(--text-3)] m-0 mt-0.5">List of all customers cross-referenced with total business value and current pricing tier.</p>
+      </div>
+
+      <!-- Search bar -->
+      <div class="relative w-full md:w-80">
+        <i data-lucide="search" class="absolute left-3 top-2.5 text-[var(--text-3)]" style="width:14px;height:14px;"></i>
+        <input 
+          type="text" 
+          placeholder="Filter local segment..." 
+          x-model="segmentsSearch"
+          @input="segmentsPage = 1"
+          class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] pl-9 pr-4 py-2 outline-none focus:border-[var(--accent)] w-full"
+        />
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="overflow-x-auto border border-[var(--border)] rounded-xl">
+      <table class="w-full text-left border-collapse" style="min-width: 800px;">
+        <thead>
+          <tr class="bg-[var(--bg-card2)] border-b border-[var(--border)]">
+            <th class="p-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-2)] cursor-pointer" @click="segmentsSortKey = 'name'; segmentsSortDesc = !segmentsSortDesc">
+              Customer Details
+              <span x-show="segmentsSortKey === 'name'" x-text="segmentsSortDesc ? '▼' : '▲'"></span>
+            </th>
+            <th class="p-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-2)] cursor-pointer" @click="segmentsSortKey = 'tier'; segmentsSortDesc = !segmentsSortDesc">
+              CRM Tier &amp; Contact
+              <span x-show="segmentsSortKey === 'tier'" x-text="segmentsSortDesc ? '▼' : '▲'"></span>
+            </th>
+            <th class="p-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-2)] text-right cursor-pointer" @click="segmentsSortKey = 'quote_count'; segmentsSortDesc = !segmentsSortDesc">
+              Orders Generated
+              <span x-show="segmentsSortKey === 'quote_count'" x-text="segmentsSortDesc ? '▼' : '▲'"></span>
+            </th>
+            <th class="p-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-2)] text-right cursor-pointer" @click="segmentsSortKey = 'total_value'; segmentsSortDesc = !segmentsSortDesc">
+              Business Volume
+              <span x-show="segmentsSortKey === 'total_value'" x-text="segmentsSortDesc ? '▼' : '▲'"></span>
+            </th>
+            <th class="p-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-2)] text-center cursor-pointer" @click="segmentsSortKey = 'segment'; segmentsSortDesc = !segmentsSortDesc">
+              Automatic Segment
+              <span x-show="segmentsSortKey === 'segment'" x-text="segmentsSortDesc ? '▼' : '▲'"></span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loadingSegments">
+            <tr>
+              <td colspan="5" class="p-8 text-center text-xs text-[var(--text-3)]">
+                <div class="animate-spin rounded-full h-5 w-5 border-2 border-[var(--accent)] border-t-transparent mx-auto mb-2"></div>
+                <span>Loading segments...</span>
+              </td>
+            </tr>
+          </template>
+
+          <template x-if="!loadingSegments && sortedSegments().length === 0">
+            <tr>
+              <td colspan="5" class="p-8 text-center text-xs text-[var(--text-3)] italic">No customer segments found matching query.</td>
+            </tr>
+          </template>
+
+          <template x-for="item in paginatedSegments()" :key="item.email">
+            <tr class="border-b border-[var(--border)] hover:bg-[var(--bg-card2)]/40 transition-colors">
+              <!-- Name & Email -->
+              <td class="p-3.5">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center font-bold text-xs uppercase" x-text="item.name.slice(0, 2)"></div>
+                  <div>
+                    <div class="font-bold text-[var(--text-1)] text-xs" x-text="item.name"></div>
+                    <div class="text-[10px] text-[var(--text-3)] font-mono mt-0.5" x-text="item.email"></div>
+                  </div>
+                </div>
+              </td>
+
+              <!-- CRM Tier & Contact -->
+              <td class="p-3.5">
+                <div class="flex flex-col gap-1">
+                  <div>
+                    <span 
+                      class="px-2 py-0.5 rounded text-[9px] font-bold uppercase"
+                      :class="{
+                        'bg-blue-500/10 text-blue-400': item.tier === 'wholesale',
+                        'bg-orange-500/10 text-orange-400': item.tier === 'contractor',
+                        'bg-slate-500/10 text-slate-400': item.tier === 'retail'
+                      }"
+                      x-text="item.tier"
+                    ></span>
+                  </div>
+                  <div class="text-[10px] text-[var(--text-3)]" x-text="item.phone"></div>
+                </div>
+              </td>
+
+              <!-- Orders Count -->
+              <td class="p-3.5 text-right font-mono text-xs text-[var(--text-1)] font-semibold" x-text="item.quote_count"></td>
+
+              <!-- Business Volume -->
+              <td class="p-3.5 text-right font-mono text-xs text-[var(--text-1)] font-bold" x-text="fmt(item.total_value)"></td>
+
+              <!-- Auto assigned Segment -->
+              <td class="p-3.5 text-center">
+                <span 
+                  class="px-3 py-1 rounded-full text-[10px] font-bold inline-block"
+                  :style="{
+                    'background': item.segment === 'enterprise' ? 'rgba(168, 85, 247, 0.12)' : item.segment === 'vip' ? 'rgba(234, 179, 8, 0.12)' : item.segment === 'growth' ? 'rgba(20, 184, 166, 0.12)' : 'rgba(100, 116, 139, 0.12)',
+                    'color': item.segment === 'enterprise' ? '#c084fc' : item.segment === 'vip' ? '#facc15' : item.segment === 'growth' ? '#2dd4bf' : '#94a3b8',
+                    'border': item.segment === 'enterprise' ? '1px solid rgba(168, 85, 247, 0.2)' : item.segment === 'vip' ? '1px solid rgba(234, 179, 8, 0.2)' : item.segment === 'growth' ? '1px solid rgba(20, 184, 166, 0.2)' : '1px solid rgba(100, 116, 139, 0.2)'
+                  }"
+                  x-text="item.segment_label"
+                ></span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination Footer -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-2);">
+      <div x-text="`Showing ${paginatedSegments().length} of ${sortedSegments().length} customers`"></div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button @click="if(segmentsPage > 1) segmentsPage--" :disabled="segmentsPage === 1" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Prev</button>
+        <span x-text="`Page ${segmentsPage} of ${segmentsTotalPages()}`"></span>
+        <button @click="if(segmentsPage < segmentsTotalPages()) segmentsPage++" :disabled="segmentsPage === segmentsTotalPages()" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Next</button>
+      </div>
+    </div>
+
+  </div>
+
+</div>

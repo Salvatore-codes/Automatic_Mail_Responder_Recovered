@@ -36,7 +36,7 @@ SALES_EXECUTIVE_TITLE = os.environ.get("SALES_EXECUTIVE_TITLE", "Sales Executive
 SALES_EXECUTIVE_PHONE = os.environ.get("SALES_EXECUTIVE_PHONE", "+91 98765 43210")
 SALES_EXECUTIVE_EMAIL = os.environ.get("SALES_EXECUTIVE_EMAIL", "sales@trofeosolution.com")
 
-def _run_ingestion(text, catalog, client, tenant_id):
+def _run_ingestion(text, catalog, client, tenant_id, customer_email=None):
     from src.database_sqlite import get_setting
     default_engine = 'B' if client else 'A'
     ingestion_engine = get_setting("ingestion_engine", default_engine, tenant_id)
@@ -44,19 +44,36 @@ def _run_ingestion(text, catalog, client, tenant_id):
     if ingestion_engine == 'B' and client:
         try:
             print(f"[Ingestion Engine] Using Engine B (AI Hybrid) for parsing.")
-            return run_scenario_hybrid(text, catalog)
+            matched = run_scenario_hybrid(text, catalog)
         except Exception as e:
             print(f"[Ingestion Engine] Engine B failed: {e}. Falling back to Engine A.")
-            
-    # Default fallback to Engine A (Local Free Fuzzy Matcher)
-    print(f"[Ingestion Engine] Using Engine A (Local Fuzzy) for parsing.")
-    
-    # Strip prior conversation history if injected to avoid parsing historical quotes/items
-    parse_text = text
-    if "[Customer's latest message:]" in text:
-        parse_text = text.split("[Customer's latest message:]")[-1].strip()
+            # Strip prior conversation history if injected to avoid parsing historical quotes/items
+            parse_text = text
+            if "[Customer's latest message:]" in text:
+                parse_text = text.split("[Customer's latest message:]")[-1].strip()
+            matched = run_scenario_free(parse_text, catalog, gemini_client=client)
+    else:
+        # Default fallback to Engine A (Local Free Fuzzy Matcher)
+        print(f"[Ingestion Engine] Using Engine A (Local Fuzzy) for parsing.")
         
-    return run_scenario_free(parse_text, catalog, gemini_client=client)
+        # Strip prior conversation history if injected to avoid parsing historical quotes/items
+        parse_text = text
+        if "[Customer's latest message:]" in text:
+            parse_text = text.split("[Customer's latest message:]")[-1].strip()
+            
+        matched = run_scenario_free(parse_text, catalog, gemini_client=client)
+
+    if customer_email and matched:
+        from src.database_sqlite import get_dynamic_unit_price
+        for line in matched:
+            sku_id = line.get("matched_sku_id")
+            if sku_id and sku_id != "UNKNOWN":
+                base_price = line.get("unit_price", 0.0)
+                category = line.get("category", "General")
+                line["unit_price"] = get_dynamic_unit_price(customer_email, sku_id, base_price, category, tenant_id)
+                line["line_total"] = round(line["quantity"] * line["unit_price"], 2)
+
+    return matched
 
 # Helper: Extract phone number from email body
 def extract_phone_number(body_text):
@@ -493,20 +510,30 @@ def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None, sys
     html_text = "\n".join(html_lines)
     return plain_text, html_text
 
-def is_negotiation_msg(text):
+def is_negotiation_msg(text, tenant_id=None):
     """Checks if the text contains negotiation-related keywords with word boundaries and phrase detection."""
     if not text:
         return False
     text_lower = text.lower()
     
-    # 1. Keywords that must match as full words
-    word_keywords = [
-        r"discounts?", r"cheaper", r"reductions?", r"reduce", 
-        r"negotiat\w*", r"deals?", r"concessions?"
-    ]
+    # 1. Load negotiation keywords from database
+    try:
+        from src.database_sqlite import get_negotiation_keywords
+        word_keywords = get_negotiation_keywords(tenant_id)
+    except Exception as e:
+        print(f"[Warning] Failed to load negotiation keywords: {e}")
+        word_keywords = [
+            "discount", "discounts", "cheaper", "reduction", "reductions", "reduce", 
+            "negotiate", "negotiating", "negotiation", "negotiations", "deal", "deals", 
+            "concession", "concessions", "cash", "special", "better", "lower", "less"
+        ]
+        
     # Check if any full word keyword matches
     for kw in word_keywords:
-        if re.search(r'\b' + kw + r'\b', text_lower):
+        pattern = re.escape(kw)
+        if kw.endswith("s"):
+            pattern = pattern[:-1] + "s?"
+        if re.search(r'\b' + pattern + r'\b', text_lower):
             return True
             
     # 2. Percentage match: e.g. "10%" or "10 %" or "10 percent"
@@ -783,14 +810,14 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
     # Process conversational thread replies if we have the quotation metadata
     if meta and existing_invoice_id:
         # Run ingestion first to see if they are modifying/adding products
-        matched_lines = _run_ingestion(latest_customer_message, catalog, client, tenant_id)
+        matched_lines = _run_ingestion(latest_customer_message, catalog, client, tenant_id, customer_email=email_addr)
         has_valid_matches = matched_lines and any(
             line['matched_sku_id'] != "UNKNOWN" and line['confidence'] >= 80.0 
             for line in matched_lines
         )
         
         # 1. Check if this is a negotiation request (takes priority ONLY if they are not adding/modifying products)
-        if is_negotiation_msg(latest_customer_message) and not has_valid_matches:
+        if is_negotiation_msg(latest_customer_message, tenant_id=tenant_id) and not has_valid_matches:
             requested_discount = extract_requested_discount(latest_customer_message)
             chat_history = meta.get("chat_history", [])
             chat_history.append({"sender": "customer", "text": latest_customer_message})
@@ -921,7 +948,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 # Log to SQLite
                 try:
                     from src.database_sqlite import update_quotation_status, log_chat_msg
-                    db_status = "PENDING_REVIEW" if status == "PENDING_REVIEW" else f"NEGOTIATION_{status}"
+                    db_status = "NEGOTIATION_ESCALATED" if status == "PENDING_REVIEW" else f"NEGOTIATION_{status}"
                     update_quotation_status(existing_invoice_id, db_status, tenant_id=tenant_id)
                     log_chat_msg(existing_invoice_id, "customer", latest_customer_message, tenant_id=tenant_id)
                     log_chat_msg(existing_invoice_id, "ai", reply_text, tenant_id=tenant_id)
@@ -936,7 +963,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                     pass
             
             reply_subject = clean_reply_subject(subject, invoice_id=existing_invoice_id)
-            db_status = "PENDING_REVIEW" if status == "PENDING_REVIEW" else f"NEGOTIATION_{status}"
+            db_status = "NEGOTIATION_ESCALATED" if status == "PENDING_REVIEW" else f"NEGOTIATION_{status}"
             return EmailResponseTuple(reply_subject, reply_payload, pdf_out_path, db_status, existing_invoice_id)
             
         # 2. Check if the customer is modifying the quotation items (high-confidence items only!)
@@ -1168,7 +1195,7 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
     from src.database_sqlite import generate_next_invoice_id
     invoice_id = generate_next_invoice_id(tenant_id=tenant_id)
 
-    matched_lines = _run_ingestion(body_clean, catalog, client, tenant_id)
+    matched_lines = _run_ingestion(body_clean, catalog, client, tenant_id, customer_email=email_addr)
 
     # ── Deduplicate: merge rows with the same SKU ID, summing quantities ──
     # This handles cases where the parser returns the same item multiple times
