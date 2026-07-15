@@ -3085,78 +3085,130 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     flag_label = "AI-Generated Response" if _is_ai else "Human-Generated Response"
     flag_emoji = "🤖" if _is_ai else "🧑"
 
+    # ---- Detect Tamil language from customer details or input lines ----
+    is_tamil = False
+    all_original_lines = "".join(l.get("original_line", "") for l in matched_lines)
+    all_text_to_check = f"{customer_name} {invoice_id} {all_original_lines}"
+    if any(ord(c) in range(0x0B80, 0x0BFF) for c in all_text_to_check):
+        is_tamil = True
+    tanglish_kws = ["venum", "vendum", "thevai", "kudunga", "nanri", "vanakkam", "vilai", "kuda", "pannunga", "pannuka"]
+    if not is_tamil:
+        text_lower = all_text_to_check.lower()
+        if any(kw in text_lower for kw in tanglish_kws):
+            is_tamil = True
+
+    # Translation terms
+    lbl_dear = "Dear" if not is_tamil else "அன்புள்ள"
+    lbl_matched_items = ("Matched Services:" if is_services else "Matched Items:") if not is_tamil else ("பொருந்திய சேவைகள்:" if is_services else "பொருந்திய பொருட்கள்:")
+    lbl_subtotal = "Subtotal" if not is_tamil else "துணைத்தொகை"
+    lbl_discount = f"Volume Discount ({round(discount_pct*100,1)}%)" if not is_tamil else f"சிறப்புத் தள்ளுபடி ({round(discount_pct*100,1)}%)"
+    lbl_gst = "GST (18%)" if not is_tamil else "ஜிஎஸ்டி (18%)"
+    lbl_total = "Total Amount" if not is_tamil else "மொத்தத் தொகை"
+    lbl_total_payable = "Total Payable" if not is_tamil else "மொத்த செலுத்தத்தக்க தொகை"
+    lbl_warm_regard = "Warm regards" if not is_tamil else "அன்புடன்"
+    lbl_discuss = "If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help." if not is_tamil else "விலை நிர்ணயம் குறித்து விவாதிக்க அல்லது ஏதேனும் மாற்றங்கள் செய்ய விரும்பினால், இந்த மின்னஞ்சலுக்குப் பதிலளிக்கவும் - மகிழ்ச்சியுடன் உதவுவோம்."
+    lbl_sys_eff = "System Efficiency Metadata:" if not is_tamil else "அமைப்பு திறனுக்கான மெட்டாடேட்டா:"
+    lbl_mail_rec = "Mail Received:" if not is_tamil else "மின்னஞ்சல் பெறப்பட்டது:"
+    lbl_resp_gen = "Response Generated:" if not is_tamil else "பதில் உருவாக்கப்பட்டது:"
+    lbl_proc_lat = "Processing Latency:" if not is_tamil else "செயலாக்க தாமதம்:"
+    lbl_disclaimer = (
+        ("Please note: Service rates are flexible and differ based on specific project requirements, timelines, and statutory updates." if is_services else "Please note: Product pricing is based on standard catalog values, which may vary occasionally based on raw material fluctuations.")
+        if not is_tamil else
+        ("குறிப்பு: சேவைக்கட்டண விகிதங்கள் திட்டத் தேவைகள், கால அளவு மற்றும் சட்டப்பூர்வ புதுப்பிப்புகளின் அடிப்படையில் மாறுபடலாம்." if is_services else "குறிப்பு: தயாரிப்புகளின் விலை நிலையான அட்டவணையின் அடிப்படையில் அமைந்துள்ளது. கச்சாப் பொருட்களின் விலைக்கு ஏற்ப இது மாறுபடலாம்.")
+    )
+
+    intro_text = ""
+    if is_tamil:
+        if any_quoted:
+            if reply_pattern == "detailed":
+                if is_services:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய சேவைகளுக்கான விரிவான கட்டண விவரம் மற்றும் விலை மதிப்பீடு (குறிப்பு எண்: #{invoice_id}) கீழே வழங்கப்பட்டுள்ளது. இதற்கான முறையான விலைப்பட்டியல் PDF கோப்பு இந்த மின்னஞ்சலுடன் இணைக்கப்பட்டுள்ளது."
+                else:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய பொருட்களுக்கான விரிவான விலை விவரம் மற்றும் விலை மதிப்பீடு (குறிப்பு எண்: #{invoice_id}) கீழே வழங்கப்பட்டுள்ளது. இதற்கான முறையான விலைப்பட்டியல் PDF கோப்பு இந்த மின்னஞ்சலுடன் இணைக்கப்பட்டுள்ளது."
+            else:
+                if is_services:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய சேவைகளுக்கான கட்டணச் சுருக்கத்தை கீழே பார்க்கவும். முழுமையான விலைப்பட்டியல் (குறிப்பு எண்: #{invoice_id}) PDF கோப்பாக இணைக்கப்பட்டுள்ளது."
+                else:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய பொருட்களுக்கான விலைச் சுருக்கத்தை கீழே பார்க்கவும். முழுமையான விலைப்பட்டியல் (குறிப்பு எண்: #{invoice_id}) PDF கோப்பாக இணைக்கப்பட்டுள்ளது."
+        else:
+            if is_services:
+                intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி (குறிப்பு எண்: #{invoice_id}). துரதிர்ஷ்டவசமாக, நீங்கள் கோரிய சேவைகள் தற்போது கிடைக்கவில்லை அல்லது முழுமையாக முன்பதிவு செய்யப்பட்டுள்ளன. எனவே எங்களால் இப்போது விலை மதிப்பீடு வழங்க இயலவில்லை."
+            else:
+                intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி (குறிப்பு எண்: #{invoice_id}). துரதிர்ஷ்டவசமாக, நீங்கள் கோரிய பொருட்கள் தற்போது இருப்பில் இல்லை. எனவே எங்களால் இப்போது விலை மதிப்பீடு வழங்க இயலவில்லை."
+    else:
+        if any_quoted:
+            if reply_pattern == "detailed":
+                if is_services:
+                    intro_text = f"Thank you for your enquiry. Below is the detailed service fee structure and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email."
+                else:
+                    intro_text = f"Thank you for your enquiry. Below is the itemized pricing and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email."
+            else:
+                if is_services:
+                    intro_text = f"Thank you for your enquiry. Please find below the service rate summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF."
+                else:
+                    intro_text = f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF."
+        else:
+            if is_services:
+                intro_text = f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the services you requested are currently unavailable or fully booked for this period, so we are unable to provide a quotation at this time."
+            else:
+                intro_text = f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time."
+
     # ---- 1. Plain Text covering note ----
-    body = [f"Dear {customer_name},", ""]
+    body = [f"{lbl_dear} {customer_name},", ""]
+    body.append(intro_text)
+    
     if any_quoted:
         if reply_pattern == "detailed":
-            if is_services:
-                body.append(f"Thank you for your enquiry. Below is the detailed service fee structure and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email.")
-            else:
-                body.append(f"Thank you for your enquiry. Below is the itemized pricing and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email.")
             body.append("")
-            body.append("Matched Services:" if is_services else "Matched Items:")
+            body.append(lbl_matched_items)
             for line in matched_lines:
                 if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
                     continue
                 item_sub = line['unit_price'] * line['quantity']
-                body.append(f" - {line['quantity']} x {line['matched_sku_name']} @ ₹{line['unit_price']:.2f} each = ₹{item_sub:.2f}")
-        else:
-            if is_services:
-                body.append(f"Thank you for your enquiry. Please find below the service rate summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF.")
-            else:
-                body.append(f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF.")
-            
-        # Price summary line with ₹
-        if discount_pct > 0:
-            body.append("")
-            body.append(f"Summary: Subtotal ₹{raw_subtotal:.2f} | Special Discount ({int(discount_pct*100)}%) -₹{discount_amt:.2f} | GST 18% ₹{tax_amt:.2f} | Total Payable ₹{grand_total:.2f}")
-        else:
-            body.append("")
-            body.append(f"Summary: Subtotal ₹{raw_subtotal:.2f} | GST 18% ₹{tax_amt:.2f} | Total Payable ₹{grand_total:.2f}")
-    else:
-        if is_services:
-            body.append(f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the specific services you requested are currently unavailable or fully booked for this period.")
-        else:
-            body.append(f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.")
-            
-    if unavailable_items:
-        names = ", ".join(unavailable_names)
+                body.append(f" - {line['quantity']} x {line['matched_sku_name']} @ ₹{line['unit_price']:.2f} = ₹{item_sub:.2f}")
+        
+        # Price summary
         body.append("")
-        if is_services:
-            body.append(f"Note: {len(unavailable_items)} service(s) you requested are currently fully booked but are included in this quotation as high-priority scheduling ({names}).")
+        if discount_pct > 0:
+            body.append(f"{lbl_subtotal}: ₹{raw_subtotal:.2f}")
+            body.append(f"{lbl_discount}: -₹{discount_amt:.2f}")
+            body.append(f"{lbl_gst}: ₹{tax_amt:.2f}")
+            body.append(f"{lbl_total}: ₹{grand_total:.2f}")
         else:
-            if customer_name == "Manoranjith":
-                body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation ({names}).")
-            else:
-                body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names}).")
-                
-    # Add Pricing Schedule Disclaimer
+            body.append(f"{lbl_subtotal}: ₹{raw_subtotal:.2f}")
+            body.append(f"{lbl_gst}: ₹{tax_amt:.2f}")
+            body.append(f"{lbl_total}: ₹{grand_total:.2f}")
+            
     body.append("")
-    if is_services:
-        body.append("Please note: Service rates are flexible and differ based on specific project requirements, timelines, and statutory updates.")
-    else:
-        body.append("Please note: Product pricing is based on standard catalog values, which may vary occasionally based on raw material fluctuations.")
-
+    body.append(lbl_disclaimer)
     body.append("")
-    body.append("If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help.")
+    body.append(lbl_discuss)
     body.append("")
-    body.append("Warm regards,")
+    body.append(f"{lbl_warm_regard},")
     body.append(exec_name)
     body.append(f"{exec_title} | {bus_name}")
     body.append(exec_phone)
+    
     if system_efficiency:
         body.append("")
         body.append("=" * 40)
-        body.append("System Efficiency Metadata:")
-        body.append(f"- Mail Received: {system_efficiency['received_time']}")
-        body.append(f"- Response Generated: {system_efficiency['generated_time']}")
-        body.append(f"- Processing Latency: {system_efficiency['latency']:.2f} seconds")
+        body.append(lbl_sys_eff)
+        body.append(f"- {lbl_mail_rec} {system_efficiency['received_time']}")
+        body.append(f"- {lbl_resp_gen} {system_efficiency['generated_time']}")
+        body.append(f"- {lbl_proc_lat} {system_efficiency['latency']:.2f} seconds")
         body.append("=" * 40)
+        
     body.append("")
     body.append(f"[ {flag_emoji} {flag_label} ]")
     plain_text = "\n".join(body)
 
     # ---- 2. HTML covering note with inline summary ----
+    in_stock_count = sum(1 for l in matched_lines if l['matched_sku_id'] != 'UNKNOWN' and l.get('deficit', 0) == 0 and l['quantity'] > 0)
+    lbl_stock_pill = "✓ Available" if not is_tamil else "✓ கிடைக்கும்"
+    lbl_instock_msg = f"{in_stock_count} service(s) active and included in the quotation." if is_services else f"{in_stock_count} item(s) available and included in the quotation."
+    if is_tamil:
+        lbl_instock_msg = f"{in_stock_count} சேவை(கள்) செயலில் உள்ளன மற்றும் விலை மதிப்பீட்டில் சேர்க்கப்பட்டுள்ளன." if is_services else f"{in_stock_count} உருப்படி(கள்) இருப்பில் உள்ளன மற்றும் விலை மதிப்பீட்டில் சேர்க்கப்பட்டுள்ளன."
+        
     html_lines = [
         "<html><head><style>",
         "body { font-family: Arial, 'Helvetica Neue', sans-serif; color: #334155; line-height: 1.6; margin: 0; padding: 24px; font-size: 14px; }",
@@ -3176,18 +3228,18 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
          f"color:{'#4f46e5' if _is_ai else '#059669'}; border:1px solid {'#c7d2fe' if _is_ai else '#a7f3d0'}; "
          f"border-radius:999px; padding:3px 11px; font-size:11px; font-weight:700; margin-bottom:14px;\">"
          f"{flag_emoji} {flag_label}</div>"),
-        f"<p>Dear {html.escape(customer_name)},</p>",
+        f"<p>{lbl_dear} {html.escape(customer_name)},</p>",
+        f"<p>{intro_text}</p>"
     ]
+    
     if any_quoted:
         if reply_pattern == "detailed":
-            if is_services:
-                html_lines.append(f"<p>Thank you for your enquiry. Below is the detailed service fee structure and quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> for your reference. The formal quotation PDF is also attached.</p>")
-            else:
-                html_lines.append(f"<p>Thank you for your enquiry. Below is the detailed itemized quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> for your reference. The formal quotation PDF is also attached.</p>")
-            
             # Detailed itemized table
             html_lines.append("<table class='summary-table'>")
-            html_lines.append(f"<thead><tr><th style='text-align:left;'>{'Service Name' if is_services else 'Product Name'}</th><th style='text-align:center;'>Qty</th><th style='text-align:right;'>Unit Price</th><th style='text-align:right;'>Total</th></tr></thead><tbody>")
+            col_name = 'Service Name' if is_services else 'Product Name'
+            if is_tamil:
+                col_name = 'சேவையின் பெயர்' if is_services else 'தயாரிப்பின் பெயர்'
+            html_lines.append(f"<thead><tr><th style='text-align:left;'>{col_name}</th><th style='text-align:center;'>Qty</th><th style='text-align:right;'>Unit Price</th><th style='text-align:right;'>Total</th></tr></thead><tbody>")
             for line in matched_lines:
                 if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
                     continue
@@ -3195,45 +3247,36 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
                 html_lines.append(f"<tr><td>{html.escape(line['matched_sku_name'])}</td><td style='text-align:center;'>{line['quantity']}</td><td style='text-align:right;'>₹{line['unit_price']:.2f}</td><td style='text-align:right; font-family:monospace;'>₹{item_sub:.2f}</td></tr>")
             html_lines.append("</tbody></table>")
             
-            # ── Inline pricing summary table ──
+            # Inline pricing summary table
             html_lines.append("<table class='summary-table' style='max-width:400px; margin-top:10px;'>")
+            html_lines.append(f"<tr><td class='label'>{lbl_subtotal}</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
             if discount_pct > 0:
-                html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
-                html_lines.append(f"<tr><td class='label'>Special Discount ({int(discount_pct*100)}%)</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
-                html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
-            else:
-                html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
-                html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
-            html_lines.append(f"<tr class='total-row'><td>Total Payable</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
+                html_lines.append(f"<tr><td class='label'>{lbl_discount}</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr><td class='label'>{lbl_gst}</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr class='total-row'><td>{lbl_total_payable}</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
             html_lines.append("</table>")
         else:
-            if is_services:
-                html_lines.append(f"<p>Thank you for your enquiry. Please find below the service rate summary for your reference, with the full quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF.</p>")
-            else:
-                html_lines.append(f"<p>Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF.</p>")
-            
-            # Concise text summary layout
+            # Concise layout summary
             if discount_pct > 0:
-                html_lines.append(f"<p><b>Summary:</b> Subtotal: ₹{raw_subtotal:.2f} | Special Discount ({int(discount_pct*100)}%): -₹{discount_amt:.2f} | GST (18%): ₹{tax_amt:.2f} | <b>Total: ₹{grand_total:.2f}</b></p>")
+                html_lines.append(f"<p><b>Summary:</b> {lbl_subtotal}: ₹{raw_subtotal:.2f} | {lbl_discount}: -₹{discount_amt:.2f} | {lbl_gst}: ₹{tax_amt:.2f} | <b>{lbl_total}: ₹{grand_total:.2f}</b></p>")
             else:
-                html_lines.append(f"<p><b>Summary:</b> Subtotal: ₹{raw_subtotal:.2f} | GST (18%): ₹{tax_amt:.2f} | <b>Total: ₹{grand_total:.2f}</b></p>")
-
-        # ── Stock availability summary ──
-        in_stock_count = sum(1 for l in matched_lines if l['matched_sku_id'] != 'UNKNOWN' and l.get('deficit', 0) == 0 and l['quantity'] > 0)
+                html_lines.append(f"<p><b>Summary:</b> {lbl_subtotal}: ₹{raw_subtotal:.2f} | {lbl_gst}: ₹{tax_amt:.2f} | <b>{lbl_total}: ₹{grand_total:.2f}</b></p>")
+                
+        # Stock availability pill
         if in_stock_count > 0:
-            if is_services:
-                html_lines.append(f"<p><span class='stock-pill in-stock'>✓ Available</span> {in_stock_count} service(s) active and included in the quotation.</p>")
-            else:
-                html_lines.append(f"<p><span class='stock-pill in-stock'>✓ In Stock</span> {in_stock_count} item(s) available and included in the quotation.</p>")
+            html_lines.append(f"<p><span class='stock-pill in-stock'>{lbl_stock_pill}</span> {lbl_instock_msg}</p>")
+            
         if unavailable_items:
             names_esc = html.escape(", ".join(unavailable_names))
             if is_services:
-                html_lines.append(f"<p><b>Scheduling Note:</b> {len(unavailable_items)} service(s) currently require capacity review but are included for prioritization: {names_esc}.</p>")
+                lbl_unavail = f"<b>சேவை குறிப்பு:</b> {len(unavailable_items)} சேவைகள் கூடுதல் மதிப்பாய்வு தேவை ஆனால் முன்னுரிமை அடிப்படையில் சேர்க்கப்பட்டுள்ளது: {names_esc}." if is_tamil else f"<b>Scheduling Note:</b> {len(unavailable_items)} service(s) currently require capacity review but are included for prioritization: {names_esc}."
+                html_lines.append(f"<p>{lbl_unavail}</p>")
             else:
                 if customer_name == "Manoranjith":
-                    html_lines.append(f"<p><b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names_esc}).</p>")
+                    lbl_unavail = f"<b>குறிப்பு:</b> நீங்கள் கேட்ட {len(unavailable_items)} பொருட்கள் கையிருப்பில் இல்லை, ஆனால் உங்கள் தேவைக்கேற்ப தயாரிக்கப்பட்டு விலை மதிப்பீட்டில் சேர்க்கப்பட்டுள்ளது ({names_esc})." if is_tamil else f"<b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names_esc})."
                 else:
-                    html_lines.append(f"<p><b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock but included as made-to-order: {names_esc}.</p>")
+                    lbl_unavail = f"<b>தயாரிப்புகள் குறிப்பு:</b> {len(unavailable_items)} பொருட்கள் கையிருப்பில் இல்லை, ஆனால் உங்கள் தேவைக்கேற்ப தயாரிக்கப்பட்டு சேர்க்கப்பட்டுள்ளது: {names_esc}." if is_tamil else f"<b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock but included as made-to-order: {names_esc}."
+                html_lines.append(f"<p>{lbl_unavail}</p>")
     else:
         if is_services:
             html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the services you requested are currently unavailable or fully booked for this period, so we are unable to provide a quotation at this time.</p>")
@@ -3241,11 +3284,6 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
             html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
             
     # Add Pricing Schedule Disclaimer
-    if is_services:
-        html_lines.append("<p class='note'><i>Please note: Service rates are flexible and differ based on specific project requirements, timelines, and statutory updates.</i></p>")
-    else:
-        html_lines.append("<p class='note'><i>Please note: Product pricing is based on standard catalog values, which may vary occasionally based on raw material fluctuations.</i></p>")
-
     html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
     html_lines.append("<div class='footer'>")
     if logo_cid and any_quoted:
