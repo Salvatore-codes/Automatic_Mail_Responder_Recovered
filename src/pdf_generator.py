@@ -25,6 +25,12 @@ def _register_unicode_fonts():
     candidates = [
         # (regular_path, bold_path, italic_path, name_prefix)
         (
+            r'C:\Windows\Fonts\Nirmala.ttf',
+            r'C:\Windows\Fonts\NirmalaB.ttf',
+            r'C:\Windows\Fonts\Nirmala.ttf',
+            'Nirmala'
+        ),
+        (
             r'C:\Windows\Fonts\arial.ttf',
             r'C:\Windows\Fonts\arialbd.ttf',
             r'C:\Windows\Fonts\ariali.ttf',
