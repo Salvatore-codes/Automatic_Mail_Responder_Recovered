@@ -1,29 +1,12 @@
-# Walkthrough — Advanced Admin Control Panel & HTML Modularization
+# Walkthrough — Advanced Admin Control Panel Implementation
 
-We have successfully refactored the monolithic dashboard frontend and verified the **Advanced Admin Control Panel (Command Center)** for the Trofeo Hardware Automated SKU Matcher & Quotation Engine.
+We have successfully implemented and verified the **Advanced Admin Control Panel (Command Center)** for the Trofeo Hardware Automated SKU Matcher & Quotation Engine. This Command Center gives the admin full Human-in-the-Loop (HITL) manual override gates for managing out-of-stock deficits and price negotiations.
 
 ---
 
 ## 🛠️ Summary of Changes Made
 
-### 1. HTML Modularization Refactoring
-We split the large 2,600+ lines monolithic dashboard from `static/index.html` into clean, maintainable, modular sub-templates inside `templates/components/` and served it dynamically using FastAPI Jinja2 template rendering:
-* [index.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/index.html) - Base layout layout file containing the `<head>`, global structure, styles/scripts, and Jinja2 includes.
-* [sidebar.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/sidebar.html) - Sidebar logo and navigation menu.
-* [overview.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/overview.html) - Operations Kanban board columns.
-* [simulator.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/simulator.html) - Ingestion & routing simulator.
-* [deficits.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/deficits.html) - Shortage resolution list.
-* [negotiations.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/negotiations.html) - Discount negotiation manager table.
-* [inventory.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/inventory.html) - Stock catalog list & direct update actions.
-* [modals.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/modals.html) - Interactive modal dialogs.
-* [app_js.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/app_js.html) - Alpine.js application state, helper methods, API bindings, and routing listeners.
-
-### 2. Backend Routing Update (`src/server.py`)
-* Integrated `FastAPI.templating.Jinja2Templates` pointing to the `/templates` directory.
-* Updated root route `@app.get("/")` to return `templates.TemplateResponse("index.html", {"request": request})`.
-* Cleaned up the static directory by deleting the duplicate monolithic `static/index.html`.
-
-### 3. Database Schema Expansion (`src/database_sqlite.py`)
+### 1. Database Schema Expansion (`src/database_sqlite.py`)
 * **Deficits Table:** Added the `deficits` table definition in `init_db_conn` to persist out-of-stock items:
   - Columns: `id`, `invoice_id`, `sku_id`, `sku_name`, `requested_qty`, `available_qty`, `deficit_qty`, `customer_name`, `customer_email`, `customer_phone`, `status`, and `created_at`.
 * **Helper Functions:** Implemented helper functions to log, retrieve, and resolve deficits (`log_deficit`, `get_all_deficits`, `resolve_deficit`) and retrieve escalated negotiations.
@@ -41,7 +24,7 @@ We split the large 2,600+ lines monolithic dashboard from `static/index.html` in
 * **POST /api/inventory/update:** Direct endpoint to update the on-hand stock of any catalog SKU on disk.
 * **GET /api/inventory/catalog:** Retrieves the entire catalog list with categories, prices, and stock levels.
 
-### 4. Advanced Frontend UI Command Center (Modular Components)
+### 4. Advanced Frontend UI Command Center (`static/index.html`)
 * Restructured the workspace into a cohesive multi-tab view:
   1. **Live Simulator:** Paste orders and simulate scenarios.
   2. **Deficits Manager:** View pending deficits and fulfill/update stock using inline action modals.
@@ -55,7 +38,7 @@ We split the large 2,600+ lines monolithic dashboard from `static/index.html` in
 ## 🧪 Verification and Test Results
 
 ### 1. Programmatic Unit Tests (`test_advanced_admin.py`)
-We created a dedicated script [test_advanced_admin.py](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/test_advanced_admin.py) to programmatically verify deficit logging, status resolution, negotiation escalations, and price/tax/grand total calculations on discount overrides.
+We created a dedicated script [test_advanced_admin.py](file:///D:/sku-matcher-prototype/test_advanced_admin.py) to programmatically verify deficit logging, status resolution, negotiation escalations, and price/tax/grand total calculations on discount overrides.
 * **Command:** `C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe test_advanced_admin.py`
 * **Result:** **PASSED ✅**
 ```
@@ -93,49 +76,12 @@ ALL ADVANCED ADMIN TESTS PASSED SUCCESSFULLY!
 * **Result:** **23/23 PASSED ✅**
 * Confirmed that adjusting stock quantity, email replies, and discount approvals are fully backwards-compatible and work without regressions.
 
-### 3. Lucide Icons Resolution
-* **Problem**: The dashboard was importing Lucide icons using the unversioned CDN link `https://unpkg.com/lucide@latest`. Because `unpkg.com` redirects the default entry point to an ES module (which cannot be processed by standard HTML script tags), the global `lucide` library was undefined and no icons rendered.
-* **Fix**: Updated templates/components/app_js.html and templates/index.html to load the correct UMD build path: `https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js`. All icons in the sidebar, KPI grid, and kanban boards now render correctly.
-
-### 4. Kanban Column Responsiveness and Spacing
-* **Problem**: The Kanban columns in the `warm` (Ivory & Ink) theme were configured with `flex: 1 1 210px; min-width: 200px;`, which allowed them to shrink when the viewport is restricted. This compressed cards horizontally, wrapping content awkwardly and making card footers look misaligned.
-* **Fix**: Standardized the column layout across the base classes and `warm` theme overrides to use `flex: 0 0 280px;`. Columns now maintain a uniform width, align perfectly, and scroll horizontally inside `.kanban-grid` when viewports are constrained.
-
-### 5. Click-to-Filter Specific Record
-* **Problem**: Clicking a Kanban card in the pipeline view switched to the Negotiations or Deficits tab, but showed all records in the list rather than filtering down to the clicked item.
-* **Fix**: 
-  - Updated the `switchTab` method in Alpine.js to reset or set the global `invoiceFilter` property.
-  - Implemented dynamic computed filter methods `getFilteredDeficits()` and `getFilteredNegotiations()` in `templates/components/app_js.html`.
-  - Refactored the `<template x-for>` and empty state loops in both the Negotiations Desk and Deficits Manager tabs (now in [negotiations.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/negotiations.html) and [deficits.html](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/templates/components/deficits.html)) to bind to these filtered arrays.
-  - Clicking any card now displays *only* the specific clicked invoice/SKU record, and clicking a sidebar tab directly resets the filter to show all.
-
-### 6. Microsoft Graph Outlook Connection Setup
-* **Problem**: The user wanted to connect the email handler to the live Outlook inbox `rajarajan@trofeosolution.com` using MS Graph API instead of Gmail IMAP/SMTP.
-* **Fix**:
-  - Created [data/tenants.json](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/data/tenants.json) overrides containing the tenant ID, client ID, and client secret values.
-  - Updated the live-polling condition check in `run_email_listener.py` to allow live mode when `outlook_client_secret` is present.
-  - Added a visual **"Connect Outlook"** action button in the dashboard top header next to the status chip, linking directly to the Microsoft OAuth authorization flow.
-
-### 7. Scope Expansion to Mail.ReadWrite and Manual Graph Mailer Support
-* **Problem**:
-  - The application previously requested only `Mail.Read` scope, which resulted in `HTTP 403 Forbidden` errors when attempting to mark processed emails as read. This created a backlog loop.
-  - The manual action resolution endpoint (when clicking "Approve" or "Reject" on the dashboard) called `send_quotation_email_to_customer()`, which only supported standard SMTP. Since Outlook OAuth does not use an SMTP password, manual decisions would fail or write mock replies.
-* **Fix**:
-  - Expanded all OAuth scopes from `Mail.Read` to `Mail.ReadWrite` in [src/server.py](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/src/server.py) and [src/email_listener.py](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/src/email_listener.py).
-  - Updated `send_quotation_email_to_customer()` in [src/email_listener.py](file:///C:/Users/Admin/.gemini/antigravity-ide/scratch/Automatic_Mail_Responder_Latest/src/email_listener.py) to check for active Outlook credentials and transmit manual responses via Microsoft Graph.
-
-### 8. Cleared Demo Data for Clean Live Slate
-* **Problem**: The system was pre-populated with 600+ demo quotations and logs in `data/trofeo_sales.db`, preventing the dashboard from representing only the user's live Outlook email interactions.
-* **Fix**: Truncated all transaction-related SQLite tables (`quotations`, `quotation_items`, `chat_logs`, `unmatched_items`, `processed_messages`, `deficits`, `inventory_logs`) and executed a database `VACUUM`. The dashboard now correctly initializes at zero and only populates when live emails are received and processed.
-
 ---
 
 ## 🚀 Git Synchronization
 All changes have been successfully committed and synced:
 ```bash
-git rm static/index.html
-git add src/server.py templates/ walkthrough.md
-git commit -m "refactor: modularize monolithic index.html into Jinja2 components and update server routing"
+git add src/database.py src/database_sqlite.py src/email_listener.py src/server.py static/index.html test_advanced_admin.py
+git commit -m "feat: implement advanced admin control panel with stock deficit manager, negotiations desk, and interactive timelines"
 git push origin main
 ```
-

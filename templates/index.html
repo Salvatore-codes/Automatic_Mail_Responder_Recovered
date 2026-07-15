@@ -71,7 +71,7 @@
             <i data-lucide="search" style="width:13px;height:13px;color:var(--text-3);flex-shrink:0;"></i>
             <input 
               type="text" 
-              placeholder="Search invoice, client, SKU…" 
+              :placeholder="t('Search invoice, client, SKU…')" 
               x-model="invoiceFilter"
               @input="handleGlobalSearch"
             />
@@ -96,10 +96,26 @@
               </select>
             </div>
 
+            <!-- Business Type Badge -->
+            <div class="header-chip" 
+                 :style="activeVertical.business_type === 'Services' 
+                   ? 'background:rgba(59,130,246,0.08); border-color:rgba(59,130,246,0.25); color:#3b82f6;' 
+                   : 'background:rgba(16,185,129,0.08); border-color:rgba(16,185,129,0.25); color:#10b981;'">
+              <span class="flex items-center gap-1.5 font-bold uppercase tracking-wider" style="font-size:10px;">
+                <template x-if="activeVertical.business_type === 'Services'">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                </template>
+                <template x-if="activeVertical.business_type !== 'Services'">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><polygon points="12 22.08 12 12 3 6.92 3 17.01 12 22.08"/><polygon points="12 22.08 21 17.01 21 6.92 12 12 12 22.08"/><polygon points="12 12 21 6.92 12 1.84 3 6.92 12 12"/></svg>
+                </template>
+                <span x-text="activeVertical.business_type === 'Services' ? t('Services') : t('Trading / Stocks')"></span>
+              </span>
+            </div>
+
             <!-- Status -->
             <div class="status-chip">
               <div class="status-dot"></div>
-              <span>Live</span>
+              <span x-text="t('Live')"></span>
             </div>
 
             <!-- Mode Switcher Pill Group -->
@@ -111,7 +127,7 @@
                 title="Full Auto-Pilot Mode (Auto-Reply)"
               >
                 <i data-lucide="bot" style="width:11px; height:11px;"></i>
-                <span>Automatic</span>
+                <span x-text="t('Automatic')"></span>
               </button>
               <button 
                 @click="settings.reply_mode = 'manual'; saveSettings();"
@@ -120,7 +136,7 @@
                 title="Human-in-the-Loop Mode (Manual-Reply)"
               >
                 <i data-lucide="user" style="width:11px; height:11px;"></i>
-                <span>Manual</span>
+                <span x-text="t('Manual')"></span>
               </button>
             </div>
 
@@ -133,7 +149,7 @@
                 title="Engine A: Free local rule-based / fuzzy search"
               >
                 <i data-lucide="zap-off" style="width:11px; height:11px;"></i>
-                <span>Engine A (Local)</span>
+                <span x-text="t('Engine A (Local)')"></span>
               </button>
               <button 
                 @click="settings.ingestion_engine = 'B'; saveSettings();"
@@ -142,7 +158,7 @@
                 title="Engine B: AI Hybrid parsing via Gemini API (Free tier)"
               >
                 <i data-lucide="sparkles" style="width:11px; height:11px;" :style="settings.ingestion_engine === 'B' ? 'color:#000;' : ''"></i>
-                <span>Engine B (AI)</span>
+                <span x-text="t('Engine B (AI)')"></span>
               </button>
             </div>
 
@@ -153,7 +169,7 @@
                style="text-decoration:none; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-1); background:linear-gradient(135deg, rgba(176,138,74,0.15), rgba(154,118,69,0.25)); border:1px solid rgba(176,138,74,0.3);" 
                title="Connect or Authorize Outlook Mail Account via Microsoft Graph">
               <i data-lucide="mail" style="width:13px;height:13px;color:var(--accent-2);"></i>
-              <span style="font-size:11px;font-weight:700;">Connect Outlook</span>
+              <span style="font-size:11px;font-weight:700;" x-text="t('Connect Outlook')"></span>
             </a>
 
             <!-- Theme -->
@@ -187,6 +203,7 @@
           {% include 'components/inventory.html' %}
           {% include 'components/pricing.html' %}
           {% include 'components/training.html' %}
+          {% include 'components/verticals.html' %}
           {% include 'components/customers.html' %}
           {% include 'components/activity_log.html' %}
 

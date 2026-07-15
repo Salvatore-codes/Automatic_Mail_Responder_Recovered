@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Mr. Rajesh Kumar",
+    "email": "rajesh@kumarindustries.in",
+    "phone": "+91-98765-43210",
+    "company": "Kumar Industries"
+  },
+  {
+    "name": "Mrs. Anjali Sharma",
+    "email": "anjali@sharmatech.com",
+    "phone": "+91-98765-43211",
+    "company": "Sharma Tech Solutions"
+  },
+  {
+    "name": "Mr. Amit Patel",
+    "email": "apatel@patelfoods.co.in",
+    "phone": "+91-98765-43212",
+    "company": "Patel Agro Foods"
+  },
+  {
+    "name": "Ms. Priya Nair",
+    "email": "priya@nairlogistics.com",
+    "phone": "+91-98765-43213",
+    "company": "Nair Logistics Pvt Ltd"
+  }
+]

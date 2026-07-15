@@ -44,7 +44,7 @@ def _run_ingestion(text, catalog, client, tenant_id, customer_email=None):
     if ingestion_engine == 'B' and client:
         try:
             print(f"[Ingestion Engine] Using Engine B (AI Hybrid) for parsing.")
-            matched = run_scenario_hybrid(text, catalog)
+            matched = run_scenario_hybrid(text, catalog, tenant_id=tenant_id)
         except Exception as e:
             print(f"[Ingestion Engine] Engine B failed: {e}. Falling back to Engine A.")
             # Strip prior conversation history if injected to avoid parsing historical quotes/items
@@ -249,194 +249,18 @@ def get_crm_discount(email_addr, crm_path):
         try:
             with open(crm_path, 'r', encoding='utf-8') as f:
                 customers = json.load(f)
-                profile = customers.get(email_addr)
+                if isinstance(customers, list):
+                    customers = {c["email"].lower().strip(): c for c in customers if "email" in c}
+                
+                email_addr_clean = email_addr.lower().strip()
+                profile = customers.get(email_addr_clean)
                 if profile:
-                    return profile["discount"], profile["name"], profile.get("phone", "+91 90000 00000")
+                    return profile.get("discount", 0.0), profile.get("name", "Valued Client"), profile.get("phone", "+91 90000 00000")
         except Exception:
             pass
     return 0.0, "Walk-in Retail Client", "+91 90000 00000"
 
-def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None, customer_email=None, customer_phone=None, system_efficiency=None, origin="ai"):
-    """Builds a covering-note reply (Plain Text + HTML).
 
-    Toggles between detailed itemized list or concise summary based on reply_pattern setting.
-    """
-    tenant_id = tenant_config.get("id", "default") if tenant_config else "default"
-    from src.database_sqlite import get_setting
-    exec_name = get_setting("exec_name", tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME, tenant_id)
-    exec_title = get_setting("exec_title", tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE, tenant_id)
-    bus_name = get_setting("business_name", tenant_config.get("business_name", BUSINESS_NAME) if tenant_config else BUSINESS_NAME, tenant_id)
-    exec_phone = get_setting("exec_phone", tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE, tenant_id)
-    exec_email = get_setting("exec_email", tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL, tenant_id)
-
-    # Get reply pattern setting (default is summary)
-    reply_pattern = get_setting("reply_pattern", "summary", tenant_id)
-
-    # Compute subtotal, grand total and out-of-stock items (math unchanged)
-    raw_subtotal = 0.0
-    unavailable_items = []
-    for line in matched_lines:
-        if line['matched_sku_id'] == "UNKNOWN":
-            continue
-        qty = line['quantity']
-        deficit = line.get("deficit", 0)
-        if deficit > 0:
-            unavailable_items.append({
-                "name": line['matched_sku_name'],
-                "requested": line.get('original_requested_qty', qty),
-                "available": line.get('stock_avail', 0)
-            })
-        if qty > 0:
-            raw_subtotal += line['unit_price'] * qty
-
-    any_quoted = raw_subtotal > 0.0
-    discount_amt = raw_subtotal * discount_pct
-    net_subtotal = raw_subtotal - discount_amt
-    tax_amt = net_subtotal * 0.18
-    grand_total = (net_subtotal + tax_amt) if any_quoted else 0.0
-
-    unavailable_names = [item['name'] for item in unavailable_items]
-
-    # Origin flag shown at the top of the email (auto-quotes are AI-generated).
-    _is_ai = str(origin).lower() in ("ai", "bot", "auto", "system", "assistant")
-    flag_label = "AI-Generated Response" if _is_ai else "Human-Generated Response"
-    flag_emoji = "🤖" if _is_ai else "🧑"
-
-    # ---- 1. Plain Text covering note ----
-    body = [f"Dear {customer_name},", ""]
-    if any_quoted:
-        if reply_pattern == "detailed":
-            body.append(f"Thank you for your enquiry. Below is the itemized pricing and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email.")
-            body.append("")
-            body.append("Matched Items:")
-            for line in matched_lines:
-                if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
-                    continue
-                item_sub = line['unit_price'] * line['quantity']
-                body.append(f" - {line['quantity']} x {line['matched_sku_name']} @ ₹{line['unit_price']:.2f} each = ₹{item_sub:.2f}")
-        else:
-            body.append(f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF.")
-            
-        # Price summary line with ₹
-        if discount_pct > 0:
-            body.append("")
-            body.append(f"Summary: Subtotal ₹{raw_subtotal:.2f} | Special Discount ({int(discount_pct*100)}%) -₹{discount_amt:.2f} | GST 18% ₹{tax_amt:.2f} | Total Payable ₹{grand_total:.2f}")
-        else:
-            body.append("")
-            body.append(f"Summary: Subtotal ₹{raw_subtotal:.2f} | GST 18% ₹{tax_amt:.2f} | Total Payable ₹{grand_total:.2f}")
-    else:
-        body.append(f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.")
-    if unavailable_items:
-        names = ", ".join(unavailable_names)
-        body.append("")
-        if customer_name == "Manoranjith":
-            body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock and are not included in this quotation ({names}).")
-        else:
-            body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names}).")
-    body.append("")
-    body.append("If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help.")
-    body.append("")
-    body.append("Warm regards,")
-    body.append(exec_name)
-    body.append(f"{exec_title} | {bus_name}")
-    body.append(exec_phone)
-    if system_efficiency:
-        body.append("")
-        body.append("=" * 40)
-        body.append("System Efficiency Metadata:")
-        body.append(f"- Mail Received: {system_efficiency['received_time']}")
-        body.append(f"- Response Generated: {system_efficiency['generated_time']}")
-        body.append(f"- Processing Latency: {system_efficiency['latency']:.2f} seconds")
-        body.append("=" * 40)
-    body.append("")
-    body.append(f"[ {flag_emoji} {flag_label} ]")
-    plain_text = "\n".join(body)
-
-    # ---- 2. HTML covering note with inline summary ----
-    html_lines = [
-        "<html><head><style>",
-        "body { font-family: Arial, 'Helvetica Neue', sans-serif; color: #334155; line-height: 1.6; margin: 0; padding: 24px; font-size: 14px; }",
-        ".note { color: #64748b; font-size: 13px; margin: 16px 0; }",
-        ".summary-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }",
-        ".summary-table th { background: #f8fafc; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; font-weight: 700; color: #475569; }",
-        ".summary-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }",
-        ".summary-table .label { color: #64748b; }",
-        ".summary-table .amount { text-align: right; font-family: monospace; }",
-        ".summary-table .total-row td { font-weight: 700; color: #1e293b; border-top: 2px solid #334155; border-bottom: none; }",
-        ".stock-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }",
-        ".in-stock { background:#dcfce7; color:#166534; }",
-        ".footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 18px; color: #64748b; font-size: 13px; }",
-        ".footer b { color: #1e293b; }",
-        "</style></head><body>",
-        (f"<div style=\"display:inline-block; background:{'#eef2ff' if _is_ai else '#ecfdf5'}; "
-         f"color:{'#4f46e5' if _is_ai else '#059669'}; border:1px solid {'#c7d2fe' if _is_ai else '#a7f3d0'}; "
-         f"border-radius:999px; padding:3px 11px; font-size:11px; font-weight:700; margin-bottom:14px;\">"
-         f"{flag_emoji} {flag_label}</div>"),
-        f"<p>Dear {html.escape(customer_name)},</p>",
-    ]
-    if any_quoted:
-        if reply_pattern == "detailed":
-            html_lines.append(f"<p>Thank you for your enquiry. Below is the detailed itemized quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> for your reference. The formal quotation PDF is also attached.</p>")
-            
-            # Detailed itemized table
-            html_lines.append("<table class='summary-table'>")
-            html_lines.append("<thead><tr><th style='text-align:left;'>Product Name</th><th style='text-align:center;'>Qty</th><th style='text-align:right;'>Unit Price</th><th style='text-align:right;'>Total</th></tr></thead><tbody>")
-            for line in matched_lines:
-                if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
-                    continue
-                item_sub = line['unit_price'] * line['quantity']
-                html_lines.append(f"<tr><td>{html.escape(line['matched_sku_name'])}</td><td style='text-align:center;'>{line['quantity']}</td><td style='text-align:right;'>₹{line['unit_price']:.2f}</td><td style='text-align:right; font-family:monospace;'>₹{item_sub:.2f}</td></tr>")
-            html_lines.append("</tbody></table>")
-            
-            # ── Inline pricing summary table ──
-            html_lines.append("<table class='summary-table' style='max-width:400px; margin-top:10px;'>")
-            if discount_pct > 0:
-                html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
-                html_lines.append(f"<tr><td class='label'>Special Discount ({int(discount_pct*100)}%)</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
-                html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
-            else:
-                html_lines.append(f"<tr><td class='label'>Subtotal</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
-                html_lines.append(f"<tr><td class='label'>GST (18%)</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
-            html_lines.append(f"<tr class='total-row'><td>Total Payable</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
-            html_lines.append("</table>")
-        else:
-            html_lines.append(f"<p>Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation <b>(Ref: #{html.escape(str(invoice_id))})</b> attached as a PDF.</p>")
-            # Concise text summary layout
-            if discount_pct > 0:
-                html_lines.append(f"<p><b>Summary:</b> Subtotal: ₹{raw_subtotal:.2f} | Special Discount ({int(discount_pct*100)}%): -₹{discount_amt:.2f} | GST (18%): ₹{tax_amt:.2f} | <b>Total: ₹{grand_total:.2f}</b></p>")
-            else:
-                html_lines.append(f"<p><b>Summary:</b> Subtotal: ₹{raw_subtotal:.2f} | GST (18%): ₹{tax_amt:.2f} | <b>Total: ₹{grand_total:.2f}</b></p>")
-
-        # ── Stock availability summary ──
-        in_stock_count = sum(1 for l in matched_lines if l['matched_sku_id'] != 'UNKNOWN' and l.get('deficit', 0) == 0 and l['quantity'] > 0)
-        if in_stock_count > 0:
-            html_lines.append(f"<p><span class='stock-pill in-stock'>✓ In Stock</span> {in_stock_count} item(s) available and included in the quotation.</p>")
-        if unavailable_items:
-            names_esc = html.escape(", ".join(unavailable_names))
-            if customer_name == "Manoranjith":
-                html_lines.append(f"<p><b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names_esc}).</p>")
-            else:
-                html_lines.append(f"<p><b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock but included as made-to-order: {names_esc}.</p>")
-    else:
-        html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
-    html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
-    html_lines.append("<div class='footer'>")
-    if logo_cid and any_quoted:
-        html_lines.append(f"<img src='cid:{logo_cid}' alt='{bus_name}' style='max-height: 50px; margin-bottom: 12px; display:block;'>")
-    html_lines.append(f"Warm regards,<br><b>{exec_name}</b><br>{exec_title} &nbsp;|&nbsp; {bus_name}<br><span style='color:#94a3b8;'>{exec_phone} &nbsp;&bull;&nbsp; {exec_email}</span>")
-    if system_efficiency:
-        html_lines.append(
-            f"<div style='margin-top: 24px; padding: 12px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 11px; color: #475569;'>"
-            f"  <b style='color: #1e293b;'>System Efficiency Metadata:</b><br>"
-            f"  &bull; Mail Received: {html.escape(system_efficiency['received_time'])}<br>"
-            f"  &bull; Response Generated: {html.escape(system_efficiency['generated_time'])}<br>"
-            f"  &bull; Processing Latency: {system_efficiency['latency']:.2f} seconds"
-            f"</div>"
-        )
-    html_lines.append("</div></body></html>")
-    html_text = "\n".join(html_lines)
-
-    return (plain_text, html_text), grand_total
 
 
 def build_empty_reply_body(customer_name, logo_cid=None, tenant_config=None, system_efficiency=None):
@@ -1357,6 +1181,8 @@ def load_crm_emails(crm_path):
     try:
         with open(crm_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+            if isinstance(data, list):
+                return {c["email"].lower().strip() for c in data if "email" in c}
             return {email_addr.lower().strip() for email_addr in data.keys()}
     except Exception as e:
         print(f"[Warning] Failed to load CRM customer emails: {e}")
@@ -2439,7 +2265,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 mark_outlook_message_read(token, email_user, msg_id)
                 continue
             
-            ai_result = classify_and_extract(sender_email, subject, body)
+            ai_result = classify_and_extract(sender_email, subject, body, tenant_id=tenant_id)
             if ai_result and ai_result.get("intent") == "IRRELEVANT":
                 # Even if AI says irrelevant, don't block if body contains a quotation reference
                 body_has_qtn_ref = bool(re.search(r'\[Quotation\s+#|QTN-[A-Z0-9\-]+', body[:2000], re.IGNORECASE))
@@ -2844,7 +2670,7 @@ def call_with_retry(api_func, max_retries=3, initial_delay=1.0, backoff_factor=2
             else:
                 raise e
 
-def classify_and_extract(sender, subject, body):
+def classify_and_extract(sender, subject, body, tenant_id=None):
     """
     Tier 2 AI-powered filter. Uses Gemini 2.5 Flash to classify email intent
     and extract product items in a single API call.
@@ -2857,8 +2683,16 @@ def classify_and_extract(sender, subject, body):
         return None  # Fallback signal
     
     try:
-        prompt = f"""You are an email classifier for a hardware and industrial supplies company.
+        from src.database_sqlite import get_active_vertical
+        active_vertical = get_active_vertical(tenant_id)
+        industry = active_vertical.get("industry", "hardware and industrial supplies")
+        guidelines = active_vertical.get("guidelines", "")
+        
+        prompt = f"""You are an email classifier for a {industry} company.
 Analyze the following email and determine if it is a genuine product enquiry or purchase request.
+
+Company Guidelines to follow:
+{guidelines}
 
 Email From: {sender}
 Email Subject: {subject}
@@ -2911,42 +2745,55 @@ Classification rules:
         return None
 
 
-def is_email_relevant(sender, subject, body, catalog, crm_emails, attachment_text="", email_has_attachments=False):
+def is_email_relevant(sender, subject, body, catalog, crm_emails, attachment_text="", email_has_attachments=False, tenant_id=None):
     """
-    Checks if an incoming email is relevant to Trofeo Hardware.
-    An email is relevant if:
-    1. It passes automated/system/marketing blocklists.
-    2. Sender's email is in our CRM database.
-    3. Subject contains a quotation reference (e.g. [Quotation #1635]) or is a reply.
-    4. Body contains any SKU ID from our catalog.
-    5. Subject matches enquiry interest keywords AND body contains catalog product keywords.
-    6. Body contains catalog product keywords AND quantity patterns.
-    7. Attachment text (extracted via Gemini) contains product keywords.
-    8. Email has attachments AND subject suggests product enquiry.
+    Checks if an incoming email is relevant to the ACTIVE business vertical.
+
+    All keyword matching is fully dynamic — derived at runtime from:
+      1. The active vertical's trained relevance keywords (saved via AI Onboarding or manual training)
+      2. SKU names and descriptions from the active catalog
+      3. A small set of universal intent signals that apply to ANY business
+
+    This means switching verticals (e.g. Hardware → Facility Management → Medical)
+    automatically changes what counts as a relevant email — NO code changes needed.
     """
     sender_lower = sender.lower().strip()
     subject_lower = subject.lower().strip()
     combined_body = ((body or "") + "\n" + (attachment_text or "")).strip()
     body_lower = combined_body.lower()
-    
-    # 1. Blocklist check for automated/promotional senders & bounce daemons (unless registered in CRM)
+
+    # Tamil-to-English translation mapping for common keywords to aid relevance matching
+    tamil_trans_map = {
+        "ஆணி": "bolt", "மறை": "nut", "திருகு": "screw", "உறை": "tape", "தாள்": "sheet",
+        "ஆடிட்": "audit", "வரி": "tax", "ஜிஎஸ்டி": "gst", "கணக்கு": "account", "சேவை": "service",
+        "பிரிவு": "epf", "பங்கு": "esic", "தாக்கல்": "filing", "உதவி": "assistance",
+        "ஆர்டர்": "order", "விலை": "price", "தேவை": "need", "விவரம்": "enquiry",
+        "venum": "need", "vendum": "need", "thevai": "need", "vilai": "price"
+    }
+    for tam_w, eng_w in tamil_trans_map.items():
+        if tam_w in body_lower:
+            body_lower += f" {eng_w}"
+        if tam_w in subject_lower:
+            subject_lower += f" {eng_w}"
+
+    # ── 1. Blocklist: automated/system/marketing senders ───────────────────────
+    # Only applied when sender is NOT a registered CRM client
     if sender_lower not in crm_emails:
         system_sender_keywords = [
-            "mailer-daemon", "daemon", "postmaster", "bounce", "noreply", "no-reply", 
-            "donotreply", "do-not-reply", "newsletter", "notification", "alert", 
-            "support", "marketing", "promo", "digest", "feedback", "updates", "news", 
+            "mailer-daemon", "daemon", "postmaster", "bounce", "noreply", "no-reply",
+            "donotreply", "do-not-reply", "newsletter", "notification", "alert",
+            "marketing", "promo", "digest", "feedback", "updates", "news",
             "community", "info@", "hello@", "welcome@", "billing@", "invoice@", "receipt@",
             "delivery@", "shipping@", "track@", "status@"
         ]
         if any(kw in sender_lower for kw in system_sender_keywords):
             print(f"[Email Filter] REJECT: Sender {sender} matched automated/system email blocklist.")
             return False
-            
+
         system_display_names = [
-            "subsystem", "daemon", "service", "system", "mindvalley", "apollo", 
-            "odoo", "github", "gitlab", "google", "microsoft", "zoom", "slack", 
-            "linkedin", "facebook", "twitter", "instagram", "amazon", "paypal", 
-            "stripe"
+            "subsystem", "daemon", "mindvalley", "apollo",
+            "odoo", "github", "gitlab", "google", "microsoft", "zoom", "slack",
+            "linkedin", "facebook", "twitter", "instagram", "amazon", "paypal", "stripe"
         ]
         display_name = ""
         if "<" in sender:
@@ -2959,99 +2806,205 @@ def is_email_relevant(sender, subject, body, catalog, crm_emails, attachment_tex
             return False
 
         system_subject_keywords = [
-            "delivery status", "undeliverable", "returned mail", "bounce", "failure notice", 
-            "out of office", "auto-reply", "auto reply", "vacation", "spam", "unsubscribed", 
-            "newsletter", "digest", "invoice paid", "payment receipt", "receipt for", 
+            "delivery status", "undeliverable", "returned mail", "bounce", "failure notice",
+            "out of office", "auto-reply", "auto reply", "vacation", "spam", "unsubscribed",
+            "newsletter", "digest", "invoice paid", "payment receipt", "receipt for",
             "welcome to", "verification code", "otp", "security alert", "password reset"
         ]
         if any(kw in subject_lower for kw in system_subject_keywords):
             print(f"[Email Filter] REJECT: Subject '{subject}' matched automated/bounce subject blocklist.")
             return False
 
-    # 2. Check if sender is a registered CRM client
+    # ── 2. Registered CRM client — always accept ────────────────────────────────
     if sender_lower in crm_emails:
         print(f"[Email Filter] MATCH: Sender {sender} is a registered CRM client.")
         return True
-        
-    # 3. Check if subject has Quotation ID reference (e.g. Quotation #1635)
-    if "quotation #" in subject_lower or "quote #" in subject_lower:
+
+    # ── 3. Quotation reference in subject — always accept ───────────────────────
+    if "quotation #" in subject_lower or "quote #" in subject_lower or re.search(r'qtn-\d+', subject_lower):
         print(f"[Email Filter] MATCH: Subject refers to an active quotation reference.")
         return True
-        
-    # 4. Check if body contains any SKU ID from the catalog
+
+    # ── 4. SKU ID directly mentioned in body ───────────────────────────────────
     for sku in catalog.skus:
         sku_id = sku.get("sku_id", "")
         if sku_id and sku_id.lower() in body_lower:
             print(f"[Email Filter] MATCH: Body contains SKU ID '{sku_id}'.")
             return True
-            
-    # 5. Check if body contains catalog product keywords
-    product_keywords = [
-        # Plumbing / Fittings
-        "elbow", "fitting", "coupling", "joint", "valve", "gate valve", "pipe", "nipple", "adapter", 
-        "teflon", "ptfe", "gasket", "seal", "hose", "pvc", "brass", "copper", "union", "plumbing",
-        # Fasteners
-        "bolt", "nut", "screw", "washer", "fastener", "rivet", "anchor", "nail", "thread", "threaded",
-        # Tools
-        "hammer", "claw hammer", "level", "spirit level", "tape", "seal tape", "brush", "paint brush", 
-        "tool", "tools", "wrench", "screwdriver", "pliers", "saw", "drill", "lubricant", "wd-40", "spray",
-        # General Hardware Materials
-        "hardware", "steel", "metal", "iron", "zinc", "silicone", "sealant", "adhesive", "mounting"
-    ]
-    body_has_product_keywords = False
-    matched_pk = ""
-    for pk in product_keywords:
-        if re.search(r'\b' + re.escape(pk) + r'\b', body_lower) or re.search(r'\b' + re.escape(pk) + r'\b', subject_lower):
-            body_has_product_keywords = True
-            matched_pk = pk
-            break
-            
-    # 6. Check general sales/RFQ keywords in subject
-    interest_keywords = [
-        "enquiry", "inquiry", "order", "rfq", "quote", "purchase", "materials", "material", "request", 
-        "quotation", "price", "pricing", "cost", "negotiate", "discount", "estimate", "invoice", "proforma", 
-        "po", "billing", "rate", "rates", "rfp", "specsheet", "specification", "specifications", "tender", 
-        "supplier", "vendor", "delivery", "leadtime", "lead time", "payment", "terms", "requisition", "valves",
-        "fitting", "fittings", "bolts", "nuts", "screws", "fasteners", "washers"
-    ]
-    subject_matches_interest = any(kw in subject_lower for kw in interest_keywords)
+
+    # ── 5. Build DYNAMIC vertical keyword set from catalog + training data ──────
+    # This is the core of the vertical-aware matching.
+    # Every time you change the active vertical, these keywords update automatically.
     
-    if subject_matches_interest and body_has_product_keywords:
-        print(f"[Email Filter] MATCH: Subject matched interest keywords and body/subject matched product keyword '{matched_pk}'.")
-        return True
+    # Generic intent/business words to exclude from vertical-specific checks
+    generic_words = {
+        "quote", "quotation", "enquiry", "enquiries", "inquiry", "inquiries", 
+        "pricing", "need", "needed", "material", "materials", "mtl", "mtls", 
+        "rfq", "purchase", "order", "price", "prices", "request", "spec", "specs", 
+        "specification", "specifications", "rfp", "tender", "tenders", "bid", "bids", 
+        "rate", "rates", "cost", "costs", "billing", "invoice", "proforma", 
+        "attached", "attachment", "items", "details", "welcome", "discussion", 
+        "onboarding", "agreement", "contract", "sign", "setup", "register", 
+        "registration", "proposal", "proposals", "commercial", "commercials", 
+        "offer", "offers", "please", "send", "give", "provide", "service", "services",
+        "product", "products", "company", "business", "client", "customer", "and", "the", "for", "with"
+    }
+
+    from src.database_sqlite import get_all_verticals
+    all_verts = get_all_verticals(tenant_id)
+    active_vert = next((v for v in all_verts if v.get("is_active") == 1), None)
+    active_vert_id = active_vert.get("id") if active_vert else "hardware"
+
+    # Build active vertical's clean keyword set
+    active_keywords = set()
+    try:
+        from src.database_sqlite import get_training_keywords
+        trained_kws = get_training_keywords(tenant_id) or []
+        for kw in trained_kws:
+            kw_clean = kw.lower().strip()
+            if len(kw_clean) >= 3 and kw_clean not in generic_words:
+                active_keywords.add(kw_clean)
+    except Exception:
+        pass
+
+    for sku in catalog.skus:
+        sku_name = sku.get("sku_name", "").lower()
+        sku_desc = sku.get("description", "").lower()
+        sku_cat  = sku.get("category", "").lower()
+        for token in re.split(r'[\s,&/\-–]+', f"{sku_name} {sku_desc} {sku_cat}"):
+            token = token.strip()
+            if len(token) >= 3 and token not in generic_words:
+                active_keywords.add(token)
+
+    # Build other verticals' keywords set for cross-validation
+    other_keywords = set()
+    for v in all_verts:
+        if v.get("id") != active_vert_id:
+            c_path = v.get("catalog_path")
+            if c_path:
+                project_root = os.path.dirname(os.path.dirname(__file__))
+                abs_c_path = os.path.join(project_root, c_path) if not os.path.isabs(c_path) else c_path
+                if os.path.exists(abs_c_path):
+                    try:
+                        import csv
+                        with open(abs_c_path, "r", encoding="utf-8") as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                s_name = row.get("sku_name", row.get("name", "")).lower()
+                                s_desc = row.get("description", "").lower()
+                                s_cat = row.get("category", "").lower()
+                                for tok in re.split(r'[\s,&/\-–]+', f"{s_name} {s_desc} {s_cat}"):
+                                    tok = tok.strip()
+                                    if len(tok) >= 3 and tok not in generic_words:
+                                        other_keywords.add(tok)
+                    except Exception:
+                        pass
+
+    # ── 6. Check for active keyword matches in both subject and body ──────────────
+    body_has_active_keyword = False
+    matched_vk = ""
+    for vk in active_keywords:
+        if re.search(r'\b' + re.escape(vk) + r'\b', body_lower) or \
+           re.search(r'\b' + re.escape(vk) + r'\b', subject_lower):
+            body_has_active_keyword = True
+            matched_vk = vk
+            break
+
+    # Check for other vertical keywords (for cross-vertical rejection)
+    has_other_keyword = False
+    matched_other_vk = ""
+    for vk in other_keywords:
+        if re.search(r'\b' + re.escape(vk) + r'\b', body_lower) or \
+           re.search(r'\b' + re.escape(vk) + r'\b', subject_lower):
+            has_other_keyword = True
+            matched_other_vk = vk
+            break
+
+    # ── 7. REJECT Cross-Vertical Mis-matches ────────────────────────────────────
+    # If the email matches another vertical's keyword strongly but not the active vertical, REJECT.
+    if has_other_keyword and not body_has_active_keyword:
+        print(f"[Email Filter] REJECT: Email matches another vertical's keyword '{matched_other_vk}' but not active vertical '{active_vert_id}'.")
+        return False
+
+    # Check if subject contains wrong vertical keyword directly
+    for vk in other_keywords:
+        if re.search(r'\b' + re.escape(vk) + r'\b', subject_lower) and not body_has_active_keyword:
+            print(f"[Email Filter] REJECT: Subject directly refers to wrong vertical keyword '{vk}'.")
+            return False
+
+    # ── 8. Universal intent signals — apply to EVERY vertical ──────────────────
+    # These are buyer-intent phrases that make sense regardless of industry.
+    universal_interest_signals = [
+        "enquiry", "inquiry", "rfq", "quote", "quotation", "estimate", "proforma",
+        "order", "purchase", "buy", "buying", "procurement",
+        "need", "need a", "need this", "i need", "require", "required", "requirement",
+        "want", "wanted", "looking for", "seeking", "interested", "interested in",
+        "request", "requesting",
+        "price", "pricing", "cost", "rate", "rates", "charges", "fees", "fee",
+        "how much", "what is the cost", "tariff",
+        "please provide", "please send", "can you", "could you", "would you",
+        "kindly", "please quote", "please share",
+        "invoice", "po", "billing", "payment terms", "tender", "proposal",
+        "vendor", "supplier", "contract", "retainer", "agreement",
+        "specification", "specifications", "rfp", "availability",
         
-    # 7. Check if body matches catalog product keywords and quantity patterns
-    has_quantity_pattern = False
-    if re.search(r'\b\d+(?:\.\d+)?\s*(?:x|units?|rolls?|pcs?|pieces?|cans?|lengths?|boxes?|bottles?|counts?|nos?|numbers?|qty|packet|pack|pkt|bags?|mts?|meters?|mtrs?)\b', combined_body, re.IGNORECASE):
-        has_quantity_pattern = True
-        
-    if body_has_product_keywords and has_quantity_pattern:
-        print(f"[Email Filter] MATCH: Body matched product keywords and quantity pattern.")
+        # Tamil & Romanized Tamil intent signals
+        "விவரம்", "விலை", "தேவை", "கேட்பு", "மதிப்பீடு", "கொட்டேஷன்", "ஆர்டர்", "பில்",
+        "venum", "vendum", "keta", "ketka", "thevai", "vilai", "kuda", "kudunga"
+    ]
+
+    subject_has_intent = any(sig in subject_lower for sig in universal_interest_signals)
+    body_has_intent = any(sig in body_lower for sig in universal_interest_signals)
+
+    # ── 9. Match: active vertical keyword + intent signal found ────────────────
+    if body_has_active_keyword and (subject_has_intent or body_has_intent):
+        print(f"[Email Filter] MATCH: Active Vertical keyword '{matched_vk}' + intent signal found.")
         return True
 
-    # 7.5. Subject matches interest and body has quantity patterns (custom RFQ for unrecognized items)
-    if subject_matches_interest and has_quantity_pattern:
-        print(f"[Email Filter] MATCH: Subject matches interest keywords and body contains quantity patterns.")
+    # ── 10. Active Vertical keyword alone in subject is sufficient ──────────────
+    for vk in active_keywords:
+        if re.search(r'\b' + re.escape(vk) + r'\b', subject_lower):
+            print(f"[Email Filter] MATCH: Subject directly contains active vertical keyword '{vk}'.")
+            return True
+
+    # ── 11. Quantity pattern + active vertical keyword (product order style) ────
+    has_quantity_pattern = bool(re.search(
+        r'\b\d+(?:\.\d+)?\s*(?:x|units?|rolls?|pcs?|pieces?|cans?|lengths?|boxes?|bottles?|'
+        r'counts?|nos?|numbers?|qty|packet|pack|pkt|bags?|mts?|meters?|mtrs?)\b',
+        combined_body, re.IGNORECASE
+    ))
+    if body_has_active_keyword and has_quantity_pattern:
+        print(f"[Email Filter] MATCH: Active Vertical keyword + quantity pattern found.")
         return True
 
-    # 8. If attachment text was extracted and contains product-relevant info, pass it through
+    # ── 12. Intent signal alone + quantity pattern (applicable only to Trading) ──
+    # For Services, we do not want raw quantity numbers to trigger intent blindly
+    if active_vert and active_vert.get("business_type") != "Services":
+        if subject_has_intent and has_quantity_pattern:
+            print(f"[Email Filter] MATCH: Intent signal in subject + quantity pattern in body (Trading).")
+            return True
+
+    # ── 13. Attachment extracted and non-empty ───────────────────────────────────
     if attachment_text and attachment_text.strip() and attachment_text.upper() != "NONE":
-        print(f"[Email Filter] MATCH: Attachment text extracted — treating as potential product enquiry.")
-        return True
+        # Ensure it has either vertical keyword or intent signal
+        if body_has_active_keyword or subject_has_intent or body_has_intent:
+            print(f"[Email Filter] MATCH: Attachment text extracted and matched relevance criteria.")
+            return True
 
-    # 9. Email has attachments AND subject suggests it is a product enquiry with document
-    #    (e.g. customer sends image/PDF of product without textual body)
+    # ── 14. Attachment present + subject suggests document enquiry ───────────────
     if email_has_attachments:
         attachment_subject_hints = [
-            "product", "item", "want", "need", "require", "attached", "attach", 
+            "product", "item", "want", "need", "require", "attached", "attach",
             "image", "photo", "picture", "document", "doc", "file", "list",
             "buy", "purchase", "order", "get", "stock", "available", "price"
         ]
-        if any(hint in subject_lower for hint in attachment_subject_hints):
-            print(f"[Email Filter] MATCH: Email has attachment + subject hints at product enquiry ('{subject}').")
+        if any(hint in subject_lower for hint in attachment_subject_hints) and (body_has_active_keyword or not has_other_keyword):
+            print(f"[Email Filter] MATCH: Email has attachment + subject hints at enquiry ('{subject}').")
             return True
 
+    print(f"[Email Filter] REJECT: No vertical match for subject='{subject}' from {sender}")
     return False
+
 
 def send_master_notification(smtp_server, smtp_port, email_user, email_pass, master_email, subject, body_text):
     """Sends a notification email to the Master/Admin user using the SMTP settings."""
@@ -3079,6 +3032,276 @@ def send_master_notification(smtp_server, smtp_port, email_user, email_pass, mas
         print(f"[Master Notification] Sent notification to {recipients} (Subject: {subject})")
     except Exception as e:
         print(f"[Warning] Failed to send master notification: {e}")
+
+def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_id, logo_cid=None, tenant_config=None, customer_email=None, customer_phone=None, system_efficiency=None, origin="ai"):
+    """Builds a covering-note reply (Plain Text + HTML).
+
+    Toggles between detailed itemized list or concise summary based on reply_pattern setting.
+    Adapts terminology and disclaimers dynamically based on whether the business type is 'Trading' or 'Services'.
+    """
+    tenant_id = tenant_config.get("id", "default") if tenant_config else "default"
+    from src.database_sqlite import get_setting, get_active_vertical
+    exec_name = get_setting("exec_name", tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME, tenant_id)
+    exec_title = get_setting("exec_title", tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE, tenant_id)
+    bus_name = get_setting("business_name", tenant_config.get("business_name", BUSINESS_NAME) if tenant_config else BUSINESS_NAME, tenant_id)
+    exec_phone = get_setting("exec_phone", tenant_config.get("sales_executive_phone", SALES_EXECUTIVE_PHONE) if tenant_config else SALES_EXECUTIVE_PHONE, tenant_id)
+    exec_email = get_setting("exec_email", tenant_config.get("sales_executive_email", SALES_EXECUTIVE_EMAIL) if tenant_config else SALES_EXECUTIVE_EMAIL, tenant_id)
+
+    # Load active vertical to check business type
+    active_vert = get_active_vertical(tenant_id)
+    business_type = active_vert.get("business_type", "Trading") if active_vert else "Trading"
+    is_services = (business_type == "Services")
+
+    # Get reply pattern setting (default is summary)
+    reply_pattern = get_setting("reply_pattern", "summary", tenant_id)
+
+    # Compute subtotal, grand total and out-of-stock items (math unchanged)
+    raw_subtotal = 0.0
+    unavailable_items = []
+    for line in matched_lines:
+        if line['matched_sku_id'] == "UNKNOWN":
+            continue
+        qty = line['quantity']
+        deficit = line.get("deficit", 0)
+        if deficit > 0:
+            unavailable_items.append({
+                "name": line['matched_sku_name'],
+                "requested": line.get('original_requested_qty', qty),
+                "available": line.get('stock_avail', 0)
+            })
+        if qty > 0:
+            raw_subtotal += line['unit_price'] * qty
+
+    any_quoted = raw_subtotal > 0.0
+    discount_amt = raw_subtotal * discount_pct
+    net_subtotal = raw_subtotal - discount_amt
+    tax_amt = net_subtotal * 0.18
+    grand_total = (net_subtotal + tax_amt) if any_quoted else 0.0
+
+    unavailable_names = [item['name'] for item in unavailable_items]
+
+    # Origin flag shown at the top of the email (auto-quotes are AI-generated).
+    _is_ai = str(origin).lower() in ("ai", "bot", "auto", "system", "assistant")
+    flag_label = "AI-Generated Response" if _is_ai else "Human-Generated Response"
+    flag_emoji = "🤖" if _is_ai else "🧑"
+
+    # ---- Detect Tamil language from customer details or input lines ----
+    is_tamil = False
+    all_original_lines = "".join(l.get("original_line", "") for l in matched_lines)
+    all_text_to_check = f"{customer_name} {invoice_id} {all_original_lines}"
+    if any(ord(c) in range(0x0B80, 0x0BFF) for c in all_text_to_check):
+        is_tamil = True
+    tanglish_kws = ["venum", "vendum", "thevai", "kudunga", "nanri", "vanakkam", "vilai", "kuda", "pannunga", "pannuka"]
+    if not is_tamil:
+        text_lower = all_text_to_check.lower()
+        if any(kw in text_lower for kw in tanglish_kws):
+            is_tamil = True
+
+    # Translation terms
+    lbl_dear = "Dear" if not is_tamil else "அன்புள்ள"
+    lbl_matched_items = ("Matched Services:" if is_services else "Matched Items:") if not is_tamil else ("பொருந்திய சேவைகள்:" if is_services else "பொருந்திய பொருட்கள்:")
+    lbl_subtotal = "Subtotal" if not is_tamil else "துணைத்தொகை"
+    lbl_discount = f"Volume Discount ({round(discount_pct*100,1)}%)" if not is_tamil else f"சிறப்புத் தள்ளுபடி ({round(discount_pct*100,1)}%)"
+    lbl_gst = "GST (18%)" if not is_tamil else "ஜிஎஸ்டி (18%)"
+    lbl_total = "Total Amount" if not is_tamil else "மொத்தத் தொகை"
+    lbl_total_payable = "Total Payable" if not is_tamil else "மொத்த செலுத்தத்தக்க தொகை"
+    lbl_warm_regard = "Warm regards" if not is_tamil else "அன்புடன்"
+    lbl_discuss = "If you'd like to discuss the pricing or need any changes, feel free to reply to this email — happy to help." if not is_tamil else "விலை நிர்ணயம் குறித்து விவாதிக்க அல்லது ஏதேனும் மாற்றங்கள் செய்ய விரும்பினால், இந்த மின்னஞ்சலுக்குப் பதிலளிக்கவும் - மகிழ்ச்சியுடன் உதவுவோம்."
+    lbl_sys_eff = "System Efficiency Metadata:" if not is_tamil else "அமைப்பு திறனுக்கான மெட்டாடேட்டா:"
+    lbl_mail_rec = "Mail Received:" if not is_tamil else "மின்னஞ்சல் பெறப்பட்டது:"
+    lbl_resp_gen = "Response Generated:" if not is_tamil else "பதில் உருவாக்கப்பட்டது:"
+    lbl_proc_lat = "Processing Latency:" if not is_tamil else "செயலாக்க தாமதம்:"
+    lbl_disclaimer = (
+        ("Please note: Service rates are flexible and differ based on specific project requirements, timelines, and statutory updates." if is_services else "Please note: Product pricing is based on standard catalog values, which may vary occasionally based on raw material fluctuations.")
+        if not is_tamil else
+        ("குறிப்பு: சேவைக்கட்டண விகிதங்கள் திட்டத் தேவைகள், கால அளவு மற்றும் சட்டப்பூர்வ புதுப்பிப்புகளின் அடிப்படையில் மாறுபடலாம்." if is_services else "குறிப்பு: தயாரிப்புகளின் விலை நிலையான அட்டவணையின் அடிப்படையில் அமைந்துள்ளது. கச்சாப் பொருட்களின் விலைக்கு ஏற்ப இது மாறுபடலாம்.")
+    )
+
+    intro_text = ""
+    if is_tamil:
+        if any_quoted:
+            if reply_pattern == "detailed":
+                if is_services:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய சேவைகளுக்கான விரிவான கட்டண விவரம் மற்றும் விலை மதிப்பீடு (குறிப்பு எண்: #{invoice_id}) கீழே வழங்கப்பட்டுள்ளது. இதற்கான முறையான விலைப்பட்டியல் PDF கோப்பு இந்த மின்னஞ்சலுடன் இணைக்கப்பட்டுள்ளது."
+                else:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய பொருட்களுக்கான விரிவான விலை விவரம் மற்றும் விலை மதிப்பீடு (குறிப்பு எண்: #{invoice_id}) கீழே வழங்கப்பட்டுள்ளது. இதற்கான முறையான விலைப்பட்டியல் PDF கோப்பு இந்த மின்னஞ்சலுடன் இணைக்கப்பட்டுள்ளது."
+            else:
+                if is_services:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய சேவைகளுக்கான கட்டணச் சுருக்கத்தை கீழே பார்க்கவும். முழுமையான விலைப்பட்டியல் (குறிப்பு எண்: #{invoice_id}) PDF கோப்பாக இணைக்கப்பட்டுள்ளது."
+                else:
+                    intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி. நீங்கள் கோரிய பொருட்களுக்கான விலைச் சுருக்கத்தை கீழே பார்க்கவும். முழுமையான விலைப்பட்டியல் (குறிப்பு எண்: #{invoice_id}) PDF கோப்பாக இணைக்கப்பட்டுள்ளது."
+        else:
+            if is_services:
+                intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி (குறிப்பு எண்: #{invoice_id}). துரதிர்ஷ்டவசமாக, நீங்கள் கோரிய சேவைகள் தற்போது கிடைக்கவில்லை அல்லது முழுமையாக முன்பதிவு செய்யப்பட்டுள்ளன. எனவே எங்களால் இப்போது விலை மதிப்பீடு வழங்க இயலவில்லை."
+            else:
+                intro_text = f"உங்கள் மின்அஞ்சலுக்கு நன்றி (குறிப்பு எண்: #{invoice_id}). துரதிர்ஷ்டவசமாக, நீங்கள் கோரிய பொருட்கள் தற்போது இருப்பில் இல்லை. எனவே எங்களால் இப்போது விலை மதிப்பீடு வழங்க இயலவில்லை."
+    else:
+        if any_quoted:
+            if reply_pattern == "detailed":
+                if is_services:
+                    intro_text = f"Thank you for your enquiry. Below is the detailed service fee structure and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email."
+                else:
+                    intro_text = f"Thank you for your enquiry. Below is the itemized pricing and quotation summary (Ref: #{invoice_id}) for your reference. The formal quotation PDF is also attached to this email."
+            else:
+                if is_services:
+                    intro_text = f"Thank you for your enquiry. Please find below the service rate summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF."
+                else:
+                    intro_text = f"Thank you for your enquiry. Please find below the pricing summary for your reference, with the full quotation (Ref: #{invoice_id}) attached as a PDF."
+        else:
+            if is_services:
+                intro_text = f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the services you requested are currently unavailable or fully booked for this period, so we are unable to provide a quotation at this time."
+            else:
+                intro_text = f"Thank you for your enquiry (Ref: #{invoice_id}). Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time."
+
+    # ---- 1. Plain Text covering note ----
+    body = [f"{lbl_dear} {customer_name},", ""]
+    body.append(intro_text)
+    
+    if any_quoted:
+        if reply_pattern == "detailed":
+            body.append("")
+            body.append(lbl_matched_items)
+            for line in matched_lines:
+                if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
+                    continue
+                item_sub = line['unit_price'] * line['quantity']
+                body.append(f" - {line['quantity']} x {line['matched_sku_name']} @ ₹{line['unit_price']:.2f} = ₹{item_sub:.2f}")
+        
+        # Price summary
+        body.append("")
+        if discount_pct > 0:
+            body.append(f"{lbl_subtotal}: ₹{raw_subtotal:.2f}")
+            body.append(f"{lbl_discount}: -₹{discount_amt:.2f}")
+            body.append(f"{lbl_gst}: ₹{tax_amt:.2f}")
+            body.append(f"{lbl_total}: ₹{grand_total:.2f}")
+        else:
+            body.append(f"{lbl_subtotal}: ₹{raw_subtotal:.2f}")
+            body.append(f"{lbl_gst}: ₹{tax_amt:.2f}")
+            body.append(f"{lbl_total}: ₹{grand_total:.2f}")
+            
+    body.append("")
+    body.append(lbl_disclaimer)
+    body.append("")
+    body.append(lbl_discuss)
+    body.append("")
+    body.append(f"{lbl_warm_regard},")
+    body.append(exec_name)
+    body.append(f"{exec_title} | {bus_name}")
+    body.append(exec_phone)
+    
+    if system_efficiency:
+        body.append("")
+        body.append("=" * 40)
+        body.append(lbl_sys_eff)
+        body.append(f"- {lbl_mail_rec} {system_efficiency['received_time']}")
+        body.append(f"- {lbl_resp_gen} {system_efficiency['generated_time']}")
+        body.append(f"- {lbl_proc_lat} {system_efficiency['latency']:.2f} seconds")
+        body.append("=" * 40)
+        
+    body.append("")
+    body.append(f"[ {flag_emoji} {flag_label} ]")
+    plain_text = "\n".join(body)
+
+    # ---- 2. HTML covering note with inline summary ----
+    in_stock_count = sum(1 for l in matched_lines if l['matched_sku_id'] != 'UNKNOWN' and l.get('deficit', 0) == 0 and l['quantity'] > 0)
+    lbl_stock_pill = "✓ Available" if not is_tamil else "✓ கிடைக்கும்"
+    lbl_instock_msg = f"{in_stock_count} service(s) active and included in the quotation." if is_services else f"{in_stock_count} item(s) available and included in the quotation."
+    if is_tamil:
+        lbl_instock_msg = f"{in_stock_count} சேவை(கள்) செயலில் உள்ளன மற்றும் விலை மதிப்பீட்டில் சேர்க்கப்பட்டுள்ளன." if is_services else f"{in_stock_count} உருப்படி(கள்) இருப்பில் உள்ளன மற்றும் விலை மதிப்பீட்டில் சேர்க்கப்பட்டுள்ளன."
+        
+    html_lines = [
+        "<html><head><style>",
+        "body { font-family: Arial, 'Helvetica Neue', sans-serif; color: #334155; line-height: 1.6; margin: 0; padding: 24px; font-size: 14px; }",
+        ".note { color: #64748b; font-size: 13px; margin: 16px 0; }",
+        ".summary-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }",
+        ".summary-table th { background: #f8fafc; padding: 8px 10px; border-bottom: 2px solid #cbd5e1; font-weight: 700; color: #475569; }",
+        ".summary-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }",
+        ".summary-table .label { color: #64748b; }",
+        ".summary-table .amount { text-align: right; font-family: monospace; }",
+        ".summary-table .total-row td { font-weight: 700; color: #1e293b; border-top: 2px solid #334155; border-bottom: none; }",
+        ".stock-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }",
+        ".in-stock { background:#dcfce7; color:#166534; }",
+        ".footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 18px; color: #64748b; font-size: 13px; }",
+        ".footer b { color: #1e293b; }",
+        "</style></head><body>",
+        (f"<div style=\"display:inline-block; background:{'#eef2ff' if _is_ai else '#ecfdf5'}; "
+         f"color:{'#4f46e5' if _is_ai else '#059669'}; border:1px solid {'#c7d2fe' if _is_ai else '#a7f3d0'}; "
+         f"border-radius:999px; padding:3px 11px; font-size:11px; font-weight:700; margin-bottom:14px;\">"
+         f"{flag_emoji} {flag_label}</div>"),
+        f"<p>{lbl_dear} {html.escape(customer_name)},</p>",
+        f"<p>{intro_text}</p>"
+    ]
+    
+    if any_quoted:
+        if reply_pattern == "detailed":
+            # Detailed itemized table
+            html_lines.append("<table class='summary-table'>")
+            col_name = 'Service Name' if is_services else 'Product Name'
+            if is_tamil:
+                col_name = 'சேவையின் பெயர்' if is_services else 'தயாரிப்பின் பெயர்'
+            html_lines.append(f"<thead><tr><th style='text-align:left;'>{col_name}</th><th style='text-align:center;'>Qty</th><th style='text-align:right;'>Unit Price</th><th style='text-align:right;'>Total</th></tr></thead><tbody>")
+            for line in matched_lines:
+                if line['matched_sku_id'] == "UNKNOWN" or line['quantity'] <= 0:
+                    continue
+                item_sub = line['unit_price'] * line['quantity']
+                html_lines.append(f"<tr><td>{html.escape(line['matched_sku_name'])}</td><td style='text-align:center;'>{line['quantity']}</td><td style='text-align:right;'>₹{line['unit_price']:.2f}</td><td style='text-align:right; font-family:monospace;'>₹{item_sub:.2f}</td></tr>")
+            html_lines.append("</tbody></table>")
+            
+            # Inline pricing summary table
+            html_lines.append("<table class='summary-table' style='max-width:400px; margin-top:10px;'>")
+            html_lines.append(f"<tr><td class='label'>{lbl_subtotal}</td><td class='amount'>₹{raw_subtotal:.2f}</td></tr>")
+            if discount_pct > 0:
+                html_lines.append(f"<tr><td class='label'>{lbl_discount}</td><td class='amount' style='color:#dc2626;'>-₹{discount_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr><td class='label'>{lbl_gst}</td><td class='amount'>₹{tax_amt:.2f}</td></tr>")
+            html_lines.append(f"<tr class='total-row'><td>{lbl_total_payable}</td><td class='amount'>₹{grand_total:.2f}</td></tr>")
+            html_lines.append("</table>")
+        else:
+            # Concise layout summary
+            if discount_pct > 0:
+                html_lines.append(f"<p><b>Summary:</b> {lbl_subtotal}: ₹{raw_subtotal:.2f} | {lbl_discount}: -₹{discount_amt:.2f} | {lbl_gst}: ₹{tax_amt:.2f} | <b>{lbl_total}: ₹{grand_total:.2f}</b></p>")
+            else:
+                html_lines.append(f"<p><b>Summary:</b> {lbl_subtotal}: ₹{raw_subtotal:.2f} | {lbl_gst}: ₹{tax_amt:.2f} | <b>{lbl_total}: ₹{grand_total:.2f}</b></p>")
+                
+        # Stock availability pill
+        if in_stock_count > 0:
+            html_lines.append(f"<p><span class='stock-pill in-stock'>{lbl_stock_pill}</span> {lbl_instock_msg}</p>")
+            
+        if unavailable_items:
+            names_esc = html.escape(", ".join(unavailable_names))
+            if is_services:
+                lbl_unavail = f"<b>சேவை குறிப்பு:</b> {len(unavailable_items)} சேவைகள் கூடுதல் மதிப்பாய்வு தேவை ஆனால் முன்னுரிமை அடிப்படையில் சேர்க்கப்பட்டுள்ளது: {names_esc}." if is_tamil else f"<b>Scheduling Note:</b> {len(unavailable_items)} service(s) currently require capacity review but are included for prioritization: {names_esc}."
+                html_lines.append(f"<p>{lbl_unavail}</p>")
+            else:
+                if customer_name == "Manoranjith":
+                    lbl_unavail = f"<b>குறிப்பு:</b> நீங்கள் கேட்ட {len(unavailable_items)} பொருட்கள் கையிருப்பில் இல்லை, ஆனால் உங்கள் தேவைக்கேற்ப தயாரிக்கப்பட்டு விலை மதிப்பீட்டில் சேர்க்கப்பட்டுள்ளது ({names_esc})." if is_tamil else f"<b>Note:</b> {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names_esc})."
+                else:
+                    lbl_unavail = f"<b>தயாரிப்புகள் குறிப்பு:</b> {len(unavailable_items)} பொருட்கள் கையிருப்பில் இல்லை, ஆனால் உங்கள் தேவைக்கேற்ப தயாரிக்கப்பட்டு சேர்க்கப்பட்டுள்ளது: {names_esc}." if is_tamil else f"<b>Unavailable Products:</b> {len(unavailable_items)} item(s) currently out of stock but included as made-to-order: {names_esc}."
+                html_lines.append(f"<p>{lbl_unavail}</p>")
+    else:
+        if is_services:
+            html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the services you requested are currently unavailable or fully booked for this period, so we are unable to provide a quotation at this time.</p>")
+        else:
+            html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
+            
+    # Add Pricing Schedule Disclaimer
+    html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
+    html_lines.append("<div class='footer'>")
+    if logo_cid and any_quoted:
+        html_lines.append(f"<img src='cid:{logo_cid}' alt='{bus_name}' style='max-height: 50px; margin-bottom: 12px; display:block;'>")
+    html_lines.append(f"Warm regards,<br><b>{exec_name}</b><br>{exec_title} &nbsp;|&nbsp; {bus_name}<br><span style='color:#94a3b8;'>{exec_phone} &nbsp;&bull;&nbsp; {exec_email}</span>")
+    if system_efficiency:
+        html_lines.append(
+            f"<div style='margin-top: 24px; padding: 12px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 11px; color: #475569;'>"
+            f"  <b style='color: #1e293b;'>System Efficiency Metadata:</b><br>"
+            f"  &bull; Mail Received: {html.escape(system_efficiency['received_time'])}<br>"
+            f"  &bull; Response Generated: {html.escape(system_efficiency['generated_time'])}<br>"
+            f"  &bull; Processing Latency: {system_efficiency['latency']:.2f} seconds"
+            f"</div>"
+        )
+    html_lines.append("</div></body></html>")
+    html_text = "\n".join(html_lines)
+
+    return (plain_text, html_text), grand_total
 
 def send_unmatched_products_alert(smtp_server, smtp_port, email_user, email_pass, master_email, customer_name, customer_email, customer_phone, original_subject, unmatched_lines):
     """Sends an email notification to the Master/Admin when the customer requests a product not in the catalog."""
@@ -3542,7 +3765,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         if os.path.exists(file_path):
                             os.remove(file_path)
                         continue
-                    ai_result = classify_and_extract(sender, subject, body)
+                    ai_result = classify_and_extract(sender, subject, body, tenant_id=tenant_id)
                     if ai_result and ai_result.get("intent") == "IRRELEVANT":
                         print(f"[AI Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) — Confidence: {ai_result.get('confidence', 0):.2f}")
                         if os.path.exists(file_path):
@@ -3550,7 +3773,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         continue
                     elif ai_result is None:
                         # API unavailable — fall back to existing rule-based filter
-                        if not is_email_relevant(sender, subject, body, catalog, crm_emails):
+                        if not is_email_relevant(sender, subject, body, catalog, crm_emails, tenant_id=tenant_id):
                             print(f"[Email Filter] Skipped irrelevant mock email from {sender} (Subject: {subject}) [rule-based fallback]")
                             if os.path.exists(file_path):
                                 os.remove(file_path)
@@ -4139,7 +4362,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                                 from src.database_sqlite import log_processed_message
                                 log_processed_message(msg_id, "IRRELEVANT", received_at=received_at, tenant_id=tenant_id)
                             continue
-                        ai_result = classify_and_extract(sender, subject, body)
+                        ai_result = classify_and_extract(sender, subject, body, tenant_id=tenant_id)
                         if ai_result and ai_result.get("intent") == "IRRELEVANT":
                             print(f"[AI Filter] Skipped irrelevant email from {sender} (Subject: {subject}) — Confidence: {ai_result.get('confidence', 0):.2f}")
                             mail.store(m_id, '+FLAGS', '\\Seen')
@@ -4150,7 +4373,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         elif ai_result is None:
                             # API unavailable — fall back to existing rule-based filter
                             if not is_email_relevant(sender, subject, body, catalog, crm_emails,
-                                                     attachment_text=clean_attach_text, email_has_attachments=email_has_attach):
+                                                     attachment_text=clean_attach_text, email_has_attachments=email_has_attach, tenant_id=tenant_id):
                                 print(f"[Email Filter] Skipped irrelevant email from {sender} (Subject: {subject}) [rule-based fallback]")
                                 mail.store(m_id, '+FLAGS', '\\Seen')
                                 if msg_id:

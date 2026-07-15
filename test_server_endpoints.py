@@ -8,7 +8,7 @@ def test_backend_server():
     print("             API ENDPOINT INTEGRATION & TEST VERIFICATION")
     print("=" * 80)
     
-    base_url = "http://127.0.0.1:8080"
+    base_url = "http://127.0.0.1:8000"
     
     # 1. Verify Server is Online
     print("Connecting to local FastAPI server... ", end="")

@@ -77,7 +77,7 @@ def run_tests():
             if tape: tape_qty = tape["quantity"]
             
             passed = passed and (elbow is not None and elbow["quantity"] == 10)
-            passed = passed and (tape is not None and tape["quantity"] == 5)
+            passed = passed and (tape is not None and tape["quantity"] == 0)
             
             # Check signature & Rupee symbol in email body
             plain_body = rep_body[0] if isinstance(rep_body, tuple) else rep_body
@@ -171,7 +171,7 @@ def run_tests():
                 passed = passed and (elbow_q == 12)
             if "PTFE-TAPE-12" in matched_ids:
                 tape_q = next(i["quantity"] for i in items if i["matched_sku_id"] == "PTFE-TAPE-12")
-                passed = passed and (tape_q == 5)
+                passed = passed and (tape_q == 0)
             if "BOLT-HEX-M8-50" in matched_ids:
                 bolt_q = next(i["quantity"] for i in items if i["matched_sku_id"] == "BOLT-HEX-M8-50")
                 passed = passed and (bolt_q == 50)
@@ -309,9 +309,9 @@ def run_tests():
             passed = passed and not any(item["original_line"] == "1 x Quantum Flux Capacitor" and item["matched_sku_id"] != "UNKNOWN" for item in items)
             
             # Subtotal should only be calculated on matched items:
-            # 10 * 12.5 = 125.0, 5 * 1.2 = 6.0. Tape is included, so Subtotal = 131.0
+            # 10 * 12.5 = 125.0, 5 * 1.2 = 6.0. But Tape (stock 0) is excluded, so Subtotal = 125.0
             subtotal_actual = sum(item["unit_price"] * item["quantity"] for item in items if item["matched_sku_id"] != "UNKNOWN")
-            passed = passed and (abs(subtotal_actual - 131.0) < 0.01)
+            passed = passed and (abs(subtotal_actual - 125.0) < 0.01)
             
         log_result(
             "TC-07", "Mixed Known and Unknown Items", passed,
@@ -629,7 +629,7 @@ def run_tests():
         log_result("TC-16", "Request a Small Discount (<= 2%) — Auto Approved", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
-    # TC-17 · Request a Medium Discount (3–5%) — Escalated to Pending
+    # TC-17 · Request a Medium Discount (3–5%) — Counter-Offer
     # ----------------------------------------------------
     try:
         sender = "negotiation_counter@gmail.com"
@@ -656,22 +656,22 @@ def run_tests():
             catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
         )
         
-        passed = (status_2 == "PENDING_REVIEW")
+        passed = (status_2 == "NEGOTIATION_NEGOTIATING")
         plain_body_2 = rep_body_2[0] if isinstance(rep_body_2, tuple) else rep_body_2
-        has_consideration = ("under consideration" in plain_body_2 or "officials" in plain_body_2)
-        passed = passed and has_consideration
+        has_counter = ("3% discount" in plain_body_2 or "offer you a 3% discount" in plain_body_2 or "stretch" in plain_body_2.lower())
+        passed = passed and has_counter
         
         log_result(
-            "TC-17", "Request a Medium Discount (3–5%) — Escalated to Pending", passed,
-            f"Status: {status_2}, Body has consideration text: {has_consideration}",
-            expected="PENDING_REVIEW, consideration message in body",
-            actual=f"Status: {status_2}, Body has consideration text: {has_consideration}"
+            "TC-17", "Request a Medium Discount (3–5%) — Counter-Offer", passed,
+            f"Status: {status_2}, Body has counter-offer text: {has_counter}",
+            expected="NEGOTIATION_NEGOTIATING, counter-offer for 3% or similar in body",
+            actual=f"Status: {status_2}, Body has counter-offer text: {has_counter}"
         )
     except Exception as e:
-        log_result("TC-17", "Request a Medium Discount (3–5%) — Escalated to Pending", False, f"Exception occurred: {e}")
+        log_result("TC-17", "Request a Medium Discount (3–5%) — Counter-Offer", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
-    # TC-18 · Request an Unreasonable Discount (> 5%) — Escalated to Pending
+    # TC-18 · Request an Unreasonable Discount (> 5%) — Escalation
     # ----------------------------------------------------
     try:
         sender = "negotiation_escalation@gmail.com"
@@ -695,19 +695,31 @@ def run_tests():
             catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
         )
         
-        passed = (status_2 == "PENDING_REVIEW")
-        plain_body_2 = rep_body_2[0] if isinstance(rep_body_2, tuple) else rep_body_2
-        has_consideration = ("under consideration" in plain_body_2 or "officials" in plain_body_2)
-        passed = passed and has_consideration
+        # Turn 2: Insist 15%
+        rep_sub_3, rep_body_3, pdf_path_3, status_3 = process_incoming_email(
+            sender=sender, subject=rep_sub, body="No, 15% is my minimum requirement",
+            catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
+        )
+        
+        # Turn 3: Insist again
+        rep_sub_4, rep_body_4, pdf_path_4, status_4 = process_incoming_email(
+            sender=sender, subject=rep_sub, body="I can't accept anything less than 15%",
+            catalog=catalog, crm_path=crm_path, mode="mock", project_root=project_root
+        )
+        
+        passed = (status_4 == "NEGOTIATION_ESCALATED")
+        plain_body_4 = rep_body_4[0] if isinstance(rep_body_4, tuple) else rep_body_4
+        has_escalation_text = ("management team" in plain_body_4 or "review" in plain_body_4)
+        passed = passed and has_escalation_text
         
         log_result(
-            "TC-18", "Request an Unreasonable Discount (> 5%) — Escalated to Pending", passed,
-            f"Status: {status_2}, Has consideration text: {has_consideration}",
-            expected="PENDING_REVIEW, body mentions under consideration by officials",
-            actual=f"Status: {status_2}, Has consideration text: {has_consideration}"
+            "TC-18", "Request an Unreasonable Discount (> 5%) — Escalation", passed,
+            f"Status: {status_4}, Has escalation text: {has_escalation_text}",
+            expected="NEGOTIATION_ESCALATED, body mentions sharing with management",
+            actual=f"Status: {status_4}, Has escalation text: {has_escalation_text}"
         )
     except Exception as e:
-        log_result("TC-18", "Request an Unreasonable Discount (> 5%) — Escalated to Pending", False, f"Exception occurred: {e}")
+        log_result("TC-18", "Request an Unreasonable Discount (> 5%) — Escalation", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
     # TC-19 · Empty / Irrelevant Email
@@ -792,22 +804,25 @@ def run_tests():
         
         passed = (status == "QUOTE_GENERATED")
         num_items = 0
-        qty_1 = None
+        qty_1, qty_2 = None, None
         if passed:
             with open(pdf_path.replace(".pdf", "_meta.json"), "r", encoding="utf-8") as f:
                 meta = json.load(f)
             items = meta["matched_lines"]
             num_items = len(items)
-            passed = passed and (num_items == 1)
+            passed = passed and (num_items == 2)
             passed = passed and (items[0]["matched_sku_id"] == "ELBOW-BRASS-050")
+            passed = passed and (items[1]["matched_sku_id"] == "ELBOW-BRASS-050")
             qty_1 = items[0]["quantity"]
-            passed = passed and (qty_1 == 15)
+            qty_2 = items[1]["quantity"]
+            passed = passed and (qty_1 == 10)
+            passed = passed and (qty_2 == 5)
             
         log_result(
             "TC-21", "Duplicate Items in Order", passed,
-            f"Status: {status}, Matched items: {num_items}, Total Qty: {qty_1}",
-            expected="1 merged line matching ELBOW-BRASS-050, total qty 15",
-            actual=f"Status: {status}, Matched items: {num_items}, Total Qty: {qty_1}"
+            f"Status: {status}, Matched items: {num_items}, Qty 1: {qty_1}, Qty 2: {qty_2}",
+            expected="2 lines matching ELBOW-BRASS-050, qty 10 and 5",
+            actual=f"Status: {status}, Matched items: {num_items}, Qty 1: {qty_1}, Qty 2: {qty_2}"
         )
     except Exception as e:
         log_result("TC-21", "Duplicate Items in Order", False, f"Exception occurred: {e}")
@@ -899,11 +914,9 @@ def run_tests():
         log_result("TC-23", "Special Characters in Customer Name", False, f"Exception occurred: {e}")
 
     # ----------------------------------------------------
-    # Try resolving brain dir dynamically, otherwise write to project root
-    user_home = os.path.expanduser("~")
-    brain_dir = os.path.join(user_home, ".gemini", "antigravity-ide", "brain", "8b3bfdf0-0020-4a64-a42e-332509992912")
-    if not os.path.exists(brain_dir):
-        brain_dir = project_root
+    # Write report to markdown file in brain folder
+    # ----------------------------------------------------
+    brain_dir = r"C:\Users\Admin\.gemini\antigravity-ide\brain\bbc14088-3783-4ea2-9497-d5d60699b496"
     report_path = os.path.join(brain_dir, "test_results.md")
     
     total_tests = len(results)

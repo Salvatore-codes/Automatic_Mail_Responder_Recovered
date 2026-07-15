@@ -1,0 +1,339 @@
+<!-- TAB: AI ONBOARDING & VERTICALS -->
+<div class="tab-content" :class="{ 'active': activeTab === 'verticals' }">
+
+  <div class="ov-hero page-hero">
+    <div class="ov-hero-glow" aria-hidden="true"></div>
+    <div class="ov-hero-main">
+      <div class="ov-eyebrow">AI Learning Agent</div>
+      <h1 class="ov-title">Autonomous Business Onboarding</h1>
+      <p class="ov-sub">Paste your company's profile description or website URL. The AI will automatically extract your industry classification, optimal email tone, custom order processing guidelines, and suggest classification keywords to train the system.</p>
+    </div>
+  </div>
+
+  <!-- Main Grid Layout -->
+  <div class="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 mt-5">
+    
+    <!-- Left Column: Onboarding Form & Profile -->
+    <div class="flex flex-col gap-5">
+      
+      <!-- Onboarding Input Form Card -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col gap-5">
+        <div>
+          <h2 class="text-sm font-bold text-[var(--text-1)] m-0 flex items-center gap-2">
+            <i data-lucide="sparkles" style="width:16px; height:16px; color:var(--accent-2);"></i>
+            <span>Onboard New Business Vertical</span>
+          </h2>
+          <p class="text-[11px] text-[var(--text-3)] m-0 mt-0.5">Provide business details or a website link to train the AI match rules.</p>
+        </div>
+
+        <div class="flex flex-col gap-4">
+          <!-- Website URL Input -->
+          <div>
+            <label class="block text-[11px] font-bold text-[var(--text-2)] uppercase mb-1.5">Website URL (Optional)</label>
+            <div class="flex items-center bg-[var(--bg-input)] border border-[var(--border)] rounded-xl px-3 py-2 outline-none focus-within:border-[var(--accent)] w-full">
+              <i data-lucide="globe" style="width:14px; height:14px; color:var(--text-3); margin-right:8px; flex-shrink:0;"></i>
+              <input type="text" x-model="onboardForm.url" placeholder="https://example.com" class="bg-transparent border-none outline-none w-full text-xs text-[var(--text-1)]" />
+            </div>
+            <p class="text-[10px] text-[var(--text-3)] mt-1 ml-0.5">The AI will also attempt to auto-extract the company logo from this URL.</p>
+          </div>
+
+          <!-- Logo Upload + Preview Row -->
+          <div>
+            <label class="block text-[11px] font-bold text-[var(--text-2)] uppercase mb-1.5">Company Logo (Optional)</label>
+            <div class="flex items-center gap-3">
+              <!-- Logo preview thumbnail -->
+              <div class="flex-shrink-0 w-12 h-12 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] flex items-center justify-center overflow-hidden" style="min-width:48px;">
+                <template x-if="onboardForm.logoPreviewUrl">
+                  <img :src="onboardForm.logoPreviewUrl" class="w-full h-full object-contain p-1" alt="Logo preview" />
+                </template>
+                <template x-if="!onboardForm.logoPreviewUrl">
+                  <i data-lucide="image" style="width:20px; height:20px; color:var(--text-3); opacity:0.4;"></i>
+                </template>
+              </div>
+              <!-- File input -->
+              <div class="flex-1 flex items-center bg-[var(--bg-input)] border border-[var(--border)] rounded-xl px-3 py-2 focus-within:border-[var(--accent)] w-full">
+                <i data-lucide="upload" style="width:14px; height:14px; color:var(--text-3); margin-right:8px; flex-shrink:0;"></i>
+                <input type="file" id="onboardLogoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif,image/x-icon"
+                  @change="onLogoFileSelected($event)"
+                  class="bg-transparent border-none outline-none w-full text-xs text-[var(--text-1)] file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-[var(--accent)] file:text-[var(--bg-card)] file:cursor-pointer" />
+              </div>
+            </div>
+            <p class="text-[10px] text-[var(--text-3)] mt-1 ml-0.5">Upload PNG, JPG, SVG, or WebP. If left empty and a website URL is provided, the logo will be auto-detected.</p>
+          </div>
+
+          <!-- Document File Upload -->
+          <div>
+            <label class="block text-[11px] font-bold text-[var(--text-2)] uppercase mb-1.5">Attach Document (PDF, TXT, DOCX) - Optional</label>
+            <div class="flex items-center bg-[var(--bg-input)] border border-[var(--border)] rounded-xl px-3 py-2 outline-none focus-within:border-[var(--accent)] w-full">
+              <i data-lucide="file-text" style="width:14px; height:14px; color:var(--text-3); margin-right:8px; flex-shrink:0;"></i>
+              <input type="file" id="onboardFile" accept=".pdf,.txt,.docx"
+                @change="onDocFileSelected($event)"
+                class="bg-transparent border-none outline-none w-full text-xs text-[var(--text-1)] file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-[var(--accent)] file:text-[var(--bg-card)] file:cursor-pointer" />
+            </div>
+
+            <!-- Attached File Preview Card -->
+            <div x-show="onboardForm.attachedFile" x-transition
+              class="mt-2 flex items-center gap-3 p-3 rounded-xl border"
+              style="background: rgba(176,138,74,0.06); border-color: rgba(176,138,74,0.25);">
+
+              <!-- File type icon -->
+              <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
+                :style="onboardForm.attachedFile && onboardForm.attachedFile.type === 'application/pdf'
+                  ? 'background:rgba(239,68,68,0.12); color:#ef4444;'
+                  : onboardForm.attachedFile && onboardForm.attachedFile.name.endsWith('.docx')
+                  ? 'background:rgba(59,130,246,0.12); color:#3b82f6;'
+                  : 'background:rgba(34,197,94,0.12); color:#22c55e;'">
+                <template x-if="onboardForm.attachedFile && onboardForm.attachedFile.name.endsWith('.pdf')">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+                </template>
+                <template x-if="onboardForm.attachedFile && onboardForm.attachedFile.name.endsWith('.docx')">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>
+                </template>
+                <template x-if="onboardForm.attachedFile && onboardForm.attachedFile.name.endsWith('.txt')">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+                </template>
+              </div>
+
+              <!-- File info -->
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold text-[var(--text-1)] truncate" x-text="onboardForm.attachedFile && onboardForm.attachedFile.name"></div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span class="text-[10px] text-[var(--text-3)]"
+                    x-text="onboardForm.attachedFile ? (onboardForm.attachedFile.name.split('.').pop().toUpperCase() + ' Document') : ''"></span>
+                  <span class="text-[10px] text-[var(--text-3)]">·</span>
+                  <span class="text-[10px] text-[var(--text-3)]"
+                    x-text="onboardForm.attachedFile ? (onboardForm.attachedFile.size > 1048576 ? (onboardForm.attachedFile.size / 1048576).toFixed(1) + ' MB' : (onboardForm.attachedFile.size / 1024).toFixed(0) + ' KB') : ''"></span>
+                </div>
+              </div>
+
+              <!-- Text preview strip (TXT files only) -->
+              <template x-if="onboardForm.attachedFile && onboardForm.attachedFile.name.endsWith('.txt') && onboardForm.attachedFilePreview">
+                <div class="flex-1 min-w-0 text-[10px] text-[var(--text-3)] italic truncate border-l border-[var(--border)] pl-2 ml-1"
+                  x-text="onboardForm.attachedFilePreview"></div>
+              </template>
+
+              <!-- Remove button -->
+              <button @click="removeAttachedFile()"
+                class="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center border-none cursor-pointer transition-all hover:bg-red-500/10"
+                style="background:transparent; color:var(--text-3);" title="Remove file">
+                <i data-lucide="x" style="width:13px; height:13px;"></i>
+              </button>
+            </div>
+          </div>
+
+
+          <!-- Business Profile Textarea -->
+          <div>
+            <label class="block text-[11px] font-bold text-[var(--text-2)] uppercase mb-1.5">Company Profile / Brochure Details</label>
+            <textarea x-model="onboardForm.description_text" rows="5" placeholder="E.g., We are Trofeo Medical. We distribute syringes, sterile surgical gloves, and stethoscopes to clinics. Our response tone should be highly professional and precise..." class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl p-3 w-full text-xs text-[var(--text-1)] outline-none resize-none focus:border-[var(--accent)] font-sans"></textarea>
+          </div>
+
+          <!-- Submit Button -->
+          <button 
+            @click="runOnboardAnalysis()" 
+            class="w-full h-10 bg-[var(--accent)] hover:bg-[var(--accent)]/95 text-[var(--bg-card)] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none"
+            :disabled="onboardLoading"
+          >
+            <template x-if="onboardLoading">
+              <div style="width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#000; border-radius:50%; animation:spin 0.7s linear infinite;"></div>
+            </template>
+            <template x-if="!onboardLoading">
+              <i data-lucide="sparkles" style="width:14px; height:14px;"></i>
+            </template>
+            <span x-text="onboardLoading ? 'AI Analyzing Business Profile...' : 'Analyze &amp; Configure Profile'"></span>
+          </button>
+        </div>
+      </div>
+
+
+      <!-- Current Active Vertical Card -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col gap-4">
+        <h2 class="text-sm font-bold text-[var(--text-1)] m-0 flex items-center gap-2">
+          <i data-lucide="building" style="width:16px; height:16px; color:var(--accent);"></i>
+          <span>Active Business Profile</span>
+        </h2>
+        
+        <!-- Active Vertical Logo + Title row -->
+        <div class="flex items-center gap-4 pb-2">
+          <template x-if="activeVertical.logo_path">
+            <div class="w-14 h-14 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] flex items-center justify-center overflow-hidden flex-shrink-0">
+              <img :src="'/' + activeVertical.logo_path" class="w-full h-full object-contain p-1" alt="Company logo" />
+            </div>
+          </template>
+          <template x-if="!activeVertical.logo_path">
+            <div class="w-14 h-14 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-input)] flex items-center justify-center flex-shrink-0" title="No logo uploaded">
+              <i data-lucide="building-2" style="width:22px; height:22px; color:var(--text-3); opacity:0.4;"></i>
+            </div>
+          </template>
+          <div>
+            <div class="text-sm font-bold text-[var(--text-1)]" x-text="activeVertical.name || 'Loading...'"></div>
+            <div class="text-[11px] text-[var(--text-3)]" x-text="activeVertical.industry || '—'"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-[var(--border)] pt-4">
+          <div>
+            <span class="block text-[9px] uppercase text-[var(--text-3)] font-bold">Company Name</span>
+            <div class="text-xs font-bold text-[var(--text-1)] mt-0.5" x-text="activeVertical.name || 'Loading...'"></div>
+          </div>
+          <div>
+            <span class="block text-[9px] uppercase text-[var(--text-3)] font-bold">Industry Vertical</span>
+            <div class="text-xs font-bold text-[var(--text-2)] mt-0.5" x-text="activeVertical.industry || '—'"></div>
+          </div>
+          <div>
+            <span class="block text-[9px] uppercase text-[var(--text-3)] font-bold">Business Model</span>
+            <div class="text-xs font-bold mt-0.5" :style="activeVertical.business_type === 'Services' ? 'color:#3b82f6;' : 'color:#10b981;'" x-text="activeVertical.business_type || 'Trading'"></div>
+          </div>
+          <div>
+            <span class="block text-[9px] uppercase text-[var(--text-3)] font-bold">Recommended Tone</span>
+            <div class="text-xs font-bold text-[var(--text-2)] mt-0.5" x-text="activeVertical.tone || '—'"></div>
+          </div>
+        </div>
+
+        <div class="border-t border-[var(--border)] pt-4">
+          <span class="block text-[9px] uppercase text-[var(--text-3)] font-bold mb-1">Operational Guidelines</span>
+          <div class="text-xs line-height-relaxed text-[var(--text-2)] bg-[var(--bg-dark)] border border-[var(--border)] p-3.5 rounded-xl whitespace-pre-line" x-text="activeVertical.guidelines || '—'"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: AI Analysis Result Preview & Quick Tips -->
+    <div class="flex flex-col gap-5">
+      
+      <!-- AI Results Card -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col relative h-fit gap-4">
+        
+        <div x-show="!onboardResult" class="flex flex-col items-center justify-center flex-1 text-center text-[var(--text-3)] py-12">
+          <i data-lucide="binary" style="width:40px; height:40px; margin-bottom:12px; opacity:0.3;"></i>
+          <p class="text-xs">Onboarding results will appear here after analysis.</p>
+        </div>
+
+        <div x-show="onboardResult" class="flex flex-col gap-4 flex-1">
+          <h2 class="text-sm font-bold text-[var(--accent)] m-0 flex items-center gap-2">
+            <i data-lucide="check-circle" style="width:16px; height:16px;"></i>
+            <span>AI Suggested Configuration</span>
+          </h2>
+          
+          <div class="flex flex-col gap-3 border-t border-[var(--border)] pt-4">
+            <!-- Logo Preview in AI Results -->
+            <div x-show="onboardResult && (onboardResult.extracted_logo_url || onboardResult.uploaded_logo_path)">
+              <label class="block text-[10px] text-[var(--text-3)] uppercase font-bold mb-1.5">Detected Company Logo</label>
+              <div class="flex items-center gap-3">
+                <div class="w-14 h-14 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <template x-if="onboardResult && onboardResult.uploaded_logo_path">
+                    <img :src="'/' + onboardResult.uploaded_logo_path" class="w-full h-full object-contain p-1.5" alt="Company logo" />
+                  </template>
+                  <template x-if="onboardResult && !onboardResult.uploaded_logo_path && onboardResult.extracted_logo_url">
+                    <img :src="onboardResult.extracted_logo_url" class="w-full h-full object-contain p-1.5" alt="Company logo"
+                      @error="$el.parentElement.innerHTML = '<span style=\'font-size:9px;color:var(--text-3);text-align:center;padding:4px;\''>No preview</span>'" />
+                  </template>
+                </div>
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-[11px] font-semibold text-[var(--green)]" x-show="onboardResult && onboardResult.uploaded_logo_path">✓ Manually uploaded logo ready</span>
+                  <span class="text-[11px] font-semibold text-[var(--accent)]" x-show="onboardResult && !onboardResult.uploaded_logo_path && onboardResult.extracted_logo_url">✓ Logo auto-detected from website</span>
+                  <span class="text-[10px] text-[var(--text-3)]" x-text="onboardResult && (onboardResult.uploaded_logo_path || onboardResult.extracted_logo_url)"></span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label class="block text-[10px] text-[var(--text-3)] uppercase font-bold mb-1">Suggested Name</label>
+              <input type="text" x-model="onboardResult.company_name" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg h-8 px-2.5 text-xs font-bold w-full text-[var(--text-1)] outline-none focus:border-[var(--accent)]" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[10px] text-[var(--text-3)] uppercase font-bold mb-1">Suggested Industry</label>
+                <input type="text" x-model="onboardResult.industry" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg h-8 px-2.5 text-xs font-semibold w-full text-[var(--text-1)] outline-none focus:border-[var(--accent)]" />
+              </div>
+              <div>
+                <label class="block text-[10px] text-[var(--text-3)] uppercase font-bold mb-1">Business Model</label>
+                <select x-model="onboardResult.business_type" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg h-8 px-2.5 text-xs font-bold w-full text-[var(--text-1)] outline-none focus:border-[var(--accent)] cursor-pointer">
+                  <option value="Trading">Trading (Stocks)</option>
+                  <option value="Services">Services</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-[10px] text-[var(--text-3)] uppercase font-bold mb-1">Suggested Tone</label>
+              <input type="text" x-model="onboardResult.tone" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg h-8 px-2.5 text-xs w-full text-[var(--text-1)] outline-none focus:border-[var(--accent)]" />
+            </div>
+            <div>
+              <label class="block text-[10px] text-[var(--text-3)] uppercase font-bold mb-1">Operational Rules</label>
+              <textarea x-model="onboardResult.guidelines" rows="4" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-2 text-xs w-full text-[var(--text-1)] outline-none resize-none focus:border-[var(--accent)] font-sans"></textarea>
+            </div>
+
+            <!-- Suggested Keywords Tags -->
+            <div class="grid grid-cols-2 gap-3 mt-1">
+              <div>
+                <label class="block text-[9px] text-[var(--text-3)] uppercase font-bold mb-1.5">Relevance Keywords</label>
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="kw in onboardResult.suggested_relevance_keywords" :key="kw">
+                    <span class="badge badge-gold" style="font-size:9px; padding:2px 6px;" x-text="kw"></span>
+                  </template>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[9px] text-[var(--text-3)] uppercase font-bold mb-1.5">Negotiation Keywords</label>
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="kw in onboardResult.suggested_negotiation_keywords" :key="kw">
+                    <span class="badge badge-purple" style="font-size:9px; padding:2px 6px;" x-text="kw"></span>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- Suggested Catalog & CRM Summary -->
+            <div class="grid grid-cols-2 gap-3 mt-2 border-t border-[var(--border)] pt-3">
+              <div>
+                <label class="block text-[9px] text-[var(--text-3)] uppercase font-bold mb-1">Synthesized Product Catalog</label>
+                <div class="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 mt-0.5">
+                  <i data-lucide="package" style="width:12px; height:12px; color:var(--accent);"></i>
+                  <span x-text="(onboardResult.suggested_catalog || []).length + ' service items'"></span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[9px] text-[var(--text-3)] uppercase font-bold mb-1">Synthesized CRM Contacts</label>
+                <div class="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 mt-0.5">
+                  <i data-lucide="users" style="width:12px; height:12px; color:var(--accent-2);"></i>
+                  <span x-text="(onboardResult.suggested_crm || []).length + ' mock clients'"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Confirm and Apply Button -->
+          <button 
+            @click="approveOnboardProfile()" 
+            class="w-full h-10 bg-[var(--green)] hover:bg-[var(--green)]/95 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none mt-2 flex-shrink-0"
+            :disabled="approveLoading"
+          >
+            <template x-if="approveLoading">
+              <div style="width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite;"></div>
+            </template>
+            <template x-if="!approveLoading">
+              <i data-lucide="check" style="width:14px; height:14px;"></i>
+            </template>
+            <span x-text="approveLoading ? 'Activating Profile...' : 'Approve &amp; Activate'"></span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Quick Tips Card -->
+      <div class="border rounded-2xl p-5" style="background:rgba(176,138,74,0.05); border-color:rgba(176,138,74,0.2);">
+        <h3 class="text-xs font-bold text-[var(--accent)] m-0 mb-2.5 flex items-center gap-2">
+          <i data-lucide="info" style="width:14px; height:14px;"></i>
+          <span>Learning Agent Tips</span>
+        </h3>
+        <ul class="text-[11px] text-[var(--text-2)] pl-4 list-disc flex flex-col gap-1.5 m-0">
+          <li>A website URL will scrape the homepage content to deduce the business focus.</li>
+          <li>For maximum accuracy, specify vertical-specific rules in the description box.</li>
+          <li>Approving a profile immediately clears catalog caches to load your vertical's SKU mappings.</li>
+        </ul>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>

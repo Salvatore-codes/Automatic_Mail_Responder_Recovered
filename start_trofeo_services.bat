@@ -5,9 +5,8 @@ REM  Starts the Web Server and Email Listener on login.
 REM  Both services stop automatically when the computer shuts down.
 REM ============================================================
 
-SET PYTHON=python
-SET PROJECT=%~dp0
-if "%PROJECT:~-1%"=="\" SET PROJECT=%PROJECT:~0,-1%
+SET PYTHON=C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe
+SET PROJECT=D:\sku-matcher-prototype
 
 echo [Trofeo] Starting Web Server...
 start "Trofeo Web Server" /D "%PROJECT%" /MIN "%PYTHON%" run_server.py

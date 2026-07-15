@@ -4,7 +4,7 @@ load_dotenv()
 import time
 import json
 import random
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, File, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
@@ -57,6 +57,17 @@ app.add_middleware(
 )
 
 # Ensure static and quotes directory exist
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    err_detail = exc.errors()
+    print("[Validation Error] Detail:", err_detail)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": err_detail}
+    )
 os.makedirs(quotes_dir, exist_ok=True)
 
 # Pydantic schemas
@@ -104,6 +115,7 @@ class NegotiationResolveRequest(BaseModel):
 class InventoryUpdateRequest(BaseModel):
     sku_id: str
     new_stock: int
+    new_price: float | None = None
     tenant_id: str = "default"
 
 # Helper: Load CRM Customers for a specific tenant
@@ -1096,25 +1108,31 @@ async def resolve_negotiation_endpoint(req: NegotiationResolveRequest):
 
 @app.post("/api/inventory/update")
 async def update_inventory_stock(req: InventoryUpdateRequest):
-    """Updates the stock of a specific SKU in the catalog and logs the change."""
+    """Updates the stock and price of a specific SKU in the catalog and logs the change."""
     try:
         from src.tenants import get_tenant_catalog
         from src.database_sqlite import log_inventory_update
         catalog = get_tenant_catalog(req.tenant_id)
-        # Capture old stock before update
+        # Capture old values before update
         old_stock = 0
+        old_price = 0.0
         sku_name = req.sku_id
         for sku in catalog.skus:
             if sku["sku_id"] == req.sku_id:
                 old_stock = int(sku.get("stock", 0))
+                old_price = float(sku.get("price", 0.0))
                 sku_name = sku.get("sku_name", req.sku_id)
                 break
-        success = catalog.update_sku_stock(req.sku_id, req.new_stock)
+        success = catalog.update_sku_properties(req.sku_id, new_stock=req.new_stock, new_price=req.new_price)
         if not success:
             raise HTTPException(status_code=404, detail=f"SKU {req.sku_id} not found in catalog.")
         # Log the change to DB
         log_inventory_update(req.sku_id, sku_name, old_stock, req.new_stock, req.tenant_id)
-        return {"status": "SUCCESS", "message": f"Stock for SKU {req.sku_id} updated from {old_stock} to {req.new_stock}."}
+        
+        msg = f"Stock/slots set to {req.new_stock}."
+        if req.new_price is not None:
+            msg += f" Price/rate updated from ₹{old_price:.2f} to ₹{req.new_price:.2f}."
+        return {"status": "SUCCESS", "message": f"Updated {sku_name}: {msg}"}
     except HTTPException:
         raise
     except Exception as e:
@@ -1658,6 +1676,225 @@ async def api_delete_customer_custom_price(price_id: int, tenant_id: str = "defa
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class OnboardRequest(BaseModel):
+    description_text: str | None = None
+    url: str | None = None
+
+class VerticalApproveRequest(BaseModel):
+    id: str
+    name: str
+    industry: str
+    guidelines: str | list[str]
+    tone: str
+    catalog_path: str
+    crm_path: str
+    source_details: str
+    suggested_relevance_keywords: list[str] = []
+    suggested_negotiation_keywords: list[str] = []
+    suggested_catalog: list[dict] = []
+    suggested_crm: list[dict] = []
+    tenant_id: str = "default"
+    logo_path: str = ""                # Pre-uploaded logo path (from manual file upload)
+    extracted_logo_url: str = ""       # Logo URL detected from the company website
+    business_type: str = "Trading"      # 'Trading' or 'Services'
+
+class VerticalActiveRequest(BaseModel):
+    id: str
+    tenant_id: str = "default"
+
+@app.get("/api/verticals")
+async def api_get_verticals(tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_all_verticals
+        verticals = get_all_verticals(tenant_id)
+        return {"verticals": verticals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/verticals/onboard")
+async def api_onboard_vertical(
+    description_text: str | None = Form(None),
+    url: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    logo_file: UploadFile | None = File(None),
+    tenant_id: str = "default"
+):
+    try:
+        from src.onboard_agent import onboard_business
+        
+        extracted_text = ""
+        if file is not None and file.filename:
+            file_bytes = await file.read()
+            filename = file.filename.lower()
+            if filename.endswith(".pdf"):
+                try:
+                    import pypdf
+                    import io
+                    pdf_file = io.BytesIO(file_bytes)
+                    reader = pypdf.PdfReader(pdf_file)
+                    pages_text = []
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t:
+                            pages_text.append(t)
+                    extracted_text = "\n".join(pages_text)
+                except Exception as ex:
+                    extracted_text = f"[Error extracting PDF text: {str(ex)}]"
+            elif filename.endswith(".docx"):
+                try:
+                    import docx
+                    import io
+                    doc_file = io.BytesIO(file_bytes)
+                    doc = docx.Document(doc_file)
+                    extracted_text = "\n".join([p.text for p in doc.paragraphs])
+                except Exception as ex:
+                    extracted_text = f"[Error extracting Word text: {str(ex)}]"
+            else:
+                try:
+                    extracted_text = file_bytes.decode("utf-8", errors="ignore")
+                except Exception as ex:
+                    extracted_text = f"[Error decoding text file: {str(ex)}]"
+        
+        full_description = description_text or ""
+        if extracted_text:
+            if full_description:
+                full_description = full_description + "\n\n--- Extracted Document Content ---\n" + extracted_text
+            else:
+                full_description = extracted_text
+
+        # Handle manually uploaded logo file
+        uploaded_logo_path = ""
+        if logo_file is not None and logo_file.filename:
+            import io
+            logo_bytes = await logo_file.read()
+            logo_ext = os.path.splitext(logo_file.filename)[1].lower() or ".png"
+            logo_filename = f"logo_upload_{tenant_id}{logo_ext}"
+            logos_dir = os.path.join(project_root, "static", "logos")
+            os.makedirs(logos_dir, exist_ok=True)
+            logo_save_path = os.path.join(logos_dir, logo_filename)
+            with open(logo_save_path, "wb") as f:
+                f.write(logo_bytes)
+            uploaded_logo_path = f"static/logos/{logo_filename}"
+            print(f"[Onboard Agent] Uploaded logo saved: {logo_save_path}")
+                
+        res = onboard_business(full_description, url, tenant_id=tenant_id)
+        if "error" in res:
+            raise HTTPException(status_code=400, detail=res["error"])
+
+        # If user uploaded a logo manually, it takes priority over website-scraped one
+        if uploaded_logo_path:
+            res["uploaded_logo_path"] = uploaded_logo_path
+
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/verticals/approve")
+async def api_approve_vertical(req: VerticalApproveRequest):
+    try:
+        from src.database_sqlite import save_vertical_profile, save_training_keywords, save_negotiation_keywords
+        from src.tenants import _CATALOG_CACHE, sanitize_tenant_id
+        
+        # Convert guidelines to string if it is a list
+        guidelines_str = req.guidelines
+        if isinstance(guidelines_str, list):
+            guidelines_str = "\n".join(f"- {g}" for g in guidelines_str)
+
+        # Write generated catalog to disk if provided
+        catalog_path = req.catalog_path
+        if req.suggested_catalog:
+            import csv
+            catalog_filename = f"catalog_{req.id}.csv"
+            catalog_abs_path = os.path.join(project_root, "data", catalog_filename)
+            os.makedirs(os.path.dirname(catalog_abs_path), exist_ok=True)
+            with open(catalog_abs_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["sku_id", "sku_name", "description", "price", "category", "stock"])
+                for item in req.suggested_catalog:
+                    writer.writerow([
+                        item.get("sku_id", ""),
+                        item.get("sku_name", item.get("name", "")),
+                        item.get("description", ""),
+                        item.get("price", item.get("unit_price", 0.0)),
+                        item.get("category", "General"),
+                        item.get("stock", 100)
+                    ])
+            catalog_path = f"data/{catalog_filename}"
+            print(f"[Onboard Agent] Created new custom catalog file: {catalog_path}")
+
+        # Write generated CRM customers to disk if provided
+        crm_path = req.crm_path
+        if req.suggested_crm:
+            crm_filename = f"crm_{req.id}.json"
+            crm_abs_path = os.path.join(project_root, "data", crm_filename)
+            os.makedirs(os.path.dirname(crm_abs_path), exist_ok=True)
+            with open(crm_abs_path, "w", encoding="utf-8") as f:
+                json.dump(req.suggested_crm, f, indent=2)
+            crm_path = f"data/{crm_filename}"
+            print(f"[Onboard Agent] Created new custom CRM file: {crm_path}")
+
+        # Handle logo: download from website URL if extracted, or use uploaded path
+        logo_path_to_save = req.logo_path or ""
+        if not logo_path_to_save and req.extracted_logo_url:
+            from src.onboard_agent import download_logo
+            import re as _re
+            safe_id = _re.sub(r'[^a-z0-9_]', '_', req.id.lower())
+            logo_ext = os.path.splitext(req.extracted_logo_url.split('?')[0])[1] or '.png'
+            logo_filename = f"logo_{safe_id}{logo_ext}"
+            logos_dir = os.path.join(project_root, "static", "logos")
+            logo_save_path = os.path.join(logos_dir, logo_filename)
+            if download_logo(req.extracted_logo_url, logo_save_path):
+                logo_path_to_save = f"static/logos/{logo_filename}"
+                print(f"[Onboard Agent] Website logo downloaded and saved: {logo_path_to_save}")
+
+        # Save vertical profile as active (is_active=1)
+        save_vertical_profile(
+            req.id, req.name, req.industry, guidelines_str, req.tone,
+            catalog_path, crm_path, req.source_details, is_active=1,
+            tenant_id=req.tenant_id, logo_path=logo_path_to_save,
+            business_type=req.business_type
+        )
+        
+        # Save keywords
+        if req.suggested_relevance_keywords:
+            save_training_keywords(req.suggested_relevance_keywords, req.tenant_id)
+        if req.suggested_negotiation_keywords:
+            save_negotiation_keywords(req.suggested_negotiation_keywords, req.tenant_id)
+            
+        # Evict tenant catalog cache to hot-reload the new catalog file
+        t_id = sanitize_tenant_id(req.tenant_id)
+        if t_id in _CATALOG_CACHE:
+            del _CATALOG_CACHE[t_id]
+            print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
+            
+        return {"status": "SUCCESS", "message": f"Vertical profile '{req.name}' successfully approved and activated.", "logo_path": logo_path_to_save}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/verticals/active")
+async def api_set_active_vertical(req: VerticalActiveRequest):
+    try:
+        from src.database_sqlite import set_active_vertical
+        from src.tenants import _CATALOG_CACHE, sanitize_tenant_id
+        
+        success = set_active_vertical(req.id, req.tenant_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update active vertical.")
+            
+        # Evict tenant catalog cache for hot-reload
+        t_id = sanitize_tenant_id(req.tenant_id)
+        if t_id in _CATALOG_CACHE:
+            del _CATALOG_CACHE[t_id]
+            print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
+            
+        return {"status": "SUCCESS", "message": f"Active vertical set to '{req.id}'."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @app.get("/api/customers/segments")
 async def get_customers_segments(tenant_id: str = "default"):
     import json
@@ -1678,12 +1915,23 @@ async def get_customers_segments(tenant_id: str = "default"):
         db_customers = {r['customer_email'].lower().strip(): dict(r) for r in rows if r['customer_email']}
         conn.close()
         
-        # 2. Load CRM customers
+        # 2. Load CRM customers dynamically from config
+        from src.tenants import get_tenant_config
+        tenant_config = get_tenant_config(tenant_id)
         crm_p = os.path.join(project_root, "data", "crm_customers.json")
+        if tenant_config and tenant_config.get("crm_json"):
+            tenant_crm = tenant_config.get("crm_json")
+            if not os.path.isabs(tenant_crm):
+                crm_p = os.path.join(project_root, tenant_crm)
+            else:
+                crm_p = tenant_crm
+                
         crm_data = {}
         if os.path.exists(crm_p):
             with open(crm_p, "r", encoding="utf-8") as f:
                 crm_data = json.load(f)
+                if isinstance(crm_data, list):
+                    crm_data = {c["email"].lower().strip(): c for c in crm_data if "email" in c}
                 
         # Merge data
         all_emails = set(db_customers.keys()) | set(k.lower().strip() for k in crm_data.keys() if k)

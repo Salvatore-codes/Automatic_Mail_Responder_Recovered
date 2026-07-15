@@ -1,0 +1,30 @@
+{
+  "matched_lines": [
+    {
+      "original_line": "\u0b8e\u0b99\u0bcd\u0b95\u0bb3\u0bc1\u0b95\u0bcd\u0b95\u0bc1 15 items Brass Threaded Elbow \u0ba4\u0bc7\u0bb5\u0bc8",
+      "parsed_query": "Brass Threaded Elbow",
+      "quantity": 15,
+      "matched_sku_id": "ELBOW-BRASS-12",
+      "matched_sku_name": "Brass Threaded Elbow Fitting 1/2 Inch",
+      "unit_price": 45.0,
+      "confidence": 100.0,
+      "match_method": "Mock Matcher"
+    },
+    {
+      "original_line": "\u0bae\u0bb1\u0bcd\u0bb1\u0bc1\u0bae\u0bcd 10 teflon tape \u0bb5\u0bc7\u0ba3\u0bcd\u0b9f\u0bc1\u0bae\u0bcd",
+      "parsed_query": "teflon tape",
+      "quantity": 10,
+      "matched_sku_id": "TAPE-TEFLON-12",
+      "matched_sku_name": "PTFE Teflon Seal Tape 12mm",
+      "unit_price": 12.0,
+      "confidence": 100.0,
+      "match_method": "Mock Matcher"
+    }
+  ],
+  "discount_pct": 0.1,
+  "customer_name": "\u0bae\u0ba9\u0bcb\u0bb0\u0b9e\u0bcd\u0b9a\u0bbf\u0ba4\u0bcd (Rajarajan)",
+  "customer_phone": "9876543210",
+  "customer_email": null,
+  "invoice_id": "INV-TEST-TAMIL",
+  "chat_history": []
+}

@@ -14,19 +14,16 @@ DB_PATH = os.path.join(DB_DIR, "trofeo_sales.db")
 INITIALIZED_DBS = set()
 
 def get_connection(tenant_id=None):
+    # Always use the main database file to share tables, logs, and vertical profiles
+    os.makedirs(DB_DIR, exist_ok=True)
+    db_path = DB_PATH
+    
     from src.tenants import sanitize_tenant_id
     t_id = sanitize_tenant_id(tenant_id)
-    
-    os.makedirs(DB_DIR, exist_ok=True)
-    if t_id and t_id != "default":
-        db_path = os.path.join(DB_DIR, f"sales_{t_id}.db")
-    else:
-        db_path = DB_PATH
-        
     db_key = t_id
     if db_key not in INITIALIZED_DBS:
         INITIALIZED_DBS.add(db_key)
-        print(f"[Database] Initializing tenant '{t_id}' at path: {os.path.abspath(db_path)}")
+        print(f"[Database] Initializing database at path: {os.path.abspath(db_path)}")
         conn = sqlite3.connect(db_path, timeout=30.0)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
@@ -238,6 +235,51 @@ def init_db_conn(conn):
         custom_price REAL
     )
     """)
+
+    # 14. Vertical profiles table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS vertical_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        industry TEXT,
+        guidelines TEXT,
+        tone TEXT,
+        catalog_path TEXT,
+        crm_path TEXT,
+        source_details TEXT,
+        is_active INTEGER DEFAULT 0,
+        logo_path TEXT,
+        business_type TEXT DEFAULT 'Trading'
+    )
+    """)
+
+    # Ensure logo_path and business_type columns exist (migration safety)
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN logo_path TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN business_type TEXT DEFAULT 'Trading'")
+    except sqlite3.OperationalError:
+        pass
+
+    # Seed default vertical profile if table is empty
+    cursor.execute("SELECT COUNT(*) FROM vertical_profiles")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+        INSERT INTO vertical_profiles (id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "hardware",
+            "Trofeo Hardware Solution",
+            "Industrial Hardware & Tools",
+            "Analyze customer order enquiries for hardware items like bolts, nuts, elbows, etc.",
+            "Professional & Helpful",
+            "data/sku_catalog.csv",
+            "data/crm_customers.json",
+            "Default seeded hardware profile",
+            1
+        ))
 
     conn.commit()
 
@@ -1034,5 +1076,92 @@ def delete_customer_custom_price(price_id, tenant_id=None):
     conn.commit()
     conn.close()
     return True
+
+
+def save_vertical_profile(profile_id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active=0, tenant_id=None, logo_path=None, business_type='Trading'):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    
+    if is_active == 1:
+        cursor.execute("UPDATE vertical_profiles SET is_active = 0")
+
+    # Ensure logo_path and business_type columns exist (migration safety)
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN logo_path TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN business_type TEXT DEFAULT 'Trading'")
+    except Exception:
+        pass
+    conn.commit()
+        
+    cursor.execute("""
+    INSERT OR REPLACE INTO vertical_profiles (id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (profile_id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path or "", business_type or "Trading"))
+    
+    conn.commit()
+    conn.close()
+    return True
+
+def get_active_vertical(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type
+        FROM vertical_profiles 
+        WHERE is_active = 1 LIMIT 1
+        """)
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+    except Exception as e:
+        print(f"[Database] Error fetching active vertical: {e}")
+    finally:
+        conn.close()
+    
+    return {
+        "id": "hardware",
+        "name": "Trofeo Hardware Solution",
+        "industry": "Industrial Hardware & Tools",
+        "guidelines": "Analyze customer order enquiries for hardware items like bolts, nuts, elbows, etc.",
+        "tone": "Professional & Helpful",
+        "catalog_path": "data/sku_catalog.csv",
+        "crm_path": "data/crm_customers.json",
+        "source_details": "Default seeded hardware profile",
+        "is_active": 1,
+        "logo_path": "",
+        "business_type": "Trading"
+    }
+
+def get_all_verticals(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type FROM vertical_profiles")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"[Database] Error listing verticals: {e}")
+        return []
+    finally:
+        conn.close()
+
+def set_active_vertical(profile_id, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE vertical_profiles SET is_active = 0")
+        cursor.execute("UPDATE vertical_profiles SET is_active = 1 WHERE id = ?", (profile_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Error setting active vertical: {e}")
+        return False
+    finally:
+        conn.close()
+
 
 

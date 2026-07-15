@@ -72,8 +72,20 @@ def sanitize_tenant_id(tenant_id):
 def get_tenant_config(tenant_id):
     t_id = sanitize_tenant_id(tenant_id)
     tenants = load_tenants()
-    # Fallback to default if tenant_id doesn't exist
-    return tenants.get(t_id, tenants.get("default"))
+    config = tenants.get(t_id, tenants.get("default")).copy()
+    
+    try:
+        from src.database_sqlite import get_active_vertical
+        active_vertical = get_active_vertical(t_id)
+        if active_vertical:
+            config["name"] = active_vertical.get("name", config.get("name"))
+            config["business_name"] = active_vertical.get("name", config.get("business_name"))
+            config["catalog_csv"] = active_vertical.get("catalog_path", config.get("catalog_csv"))
+            config["crm_json"] = active_vertical.get("crm_path", config.get("crm_json"))
+    except Exception as e:
+        print(f"[Warning] Failed to merge active vertical config: {e}")
+        
+    return config
 
 def get_tenant_catalog(tenant_id):
     """
@@ -117,6 +129,33 @@ def list_tenants_public():
     Returns a list of tenants with public metadata (no credentials or passwords)
     for the frontend tenant dropdown.
     """
+    try:
+        from src.database_sqlite import get_all_verticals
+        verticals = get_all_verticals("default")
+        if verticals:
+            public_list = []
+            for v in verticals:
+                # Map specific user requested names
+                name = v.get("name") or ""
+                v_id = v.get("id")
+                if v_id == "hardware":
+                    name = "Trofeo Solution Hardware"
+                elif v_id == "dhanya_facility_management_services":
+                    name = "Dhanya Consulting Services"
+                
+                # Filter out the placeholder 'not_provided' vertical to avoid clutter
+                if v_id == "not_provided":
+                    continue
+                    
+                public_list.append({
+                    "id": v_id,
+                    "name": name,
+                    "is_active": v.get("is_active") == 1
+                })
+            return public_list
+    except Exception as e:
+        print(f"[Warning] Failed to list verticals for tenants dropdown: {e}")
+
     tenants = load_tenants()
     public_list = []
     for t_id, t_cfg in tenants.items():

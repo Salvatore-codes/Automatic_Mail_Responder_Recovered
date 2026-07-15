@@ -180,8 +180,8 @@ def run_diagnostic_tests():
             project_root=project_root
         )
         
-        # Verify it went into negotiation loop (should offer 3% or escalate to pending review)
-        if "NEGOTIATION" not in rep_status and rep_status != "PENDING_REVIEW":
+        # Verify it went into negotiation loop (should offer 3% as counter-offer floor/simulation step 1)
+        if "NEGOTIATION" not in rep_status:
             print(f"[FAILED] (Negotiation loop not triggered, status: {rep_status})")
             failures += 1
             return

@@ -681,37 +681,43 @@ class Catalog:
                     final_results.append(self.match_vector(queries[idx], client, threshold, limit))
             return final_results
 
-    def update_sku_stock(self, sku_id, new_stock):
+    def update_sku_properties(self, sku_id, new_stock=None, new_price=None):
         """
-        Updates the stock of a specific SKU in both memory and the catalog CSV file on disk.
+        Updates the stock and/or price of a specific SKU in both memory and the catalog CSV file on disk.
         """
         # 1. Update in memory
         found = False
         for sku in self.skus:
             if sku['sku_id'] == sku_id:
-                sku['stock'] = int(new_stock)
+                if new_stock is not None:
+                    sku['stock'] = int(new_stock)
+                if new_price is not None:
+                    sku['price'] = float(new_price)
                 found = True
                 break
         
         if not found:
-            print(f"[Catalog] Warning: SKU {sku_id} not found in catalog for stock update.")
+            print(f"[Catalog] Warning: SKU {sku_id} not found in catalog for property update.")
             return False
             
         # 2. Write back to CSV file
         try:
-            # Read the current file to get headers and all rows
-            rows = []
+            # Read the current file to get headers
             headers = []
             with open(self.csv_path, mode='r', encoding='utf-8') as f:
                 reader = csv.reader(f)
                 headers = next(reader)
                 
             # Read rows as dicts to preserve structure
+            rows = []
             with open(self.csv_path, mode='r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     if row.get('sku_id') == sku_id:
-                        row['stock'] = str(new_stock)
+                        if new_stock is not None:
+                            row['stock'] = str(new_stock)
+                        if new_price is not None:
+                            row['price'] = f"{float(new_price):.2f}"
                     rows.append(row)
                     
             # Write back to CSV
@@ -720,8 +726,14 @@ class Catalog:
                 writer.writeheader()
                 writer.writerows(rows)
                 
-            print(f"[Catalog] Successfully updated SKU {sku_id} stock to {new_stock} on disk.")
+            print(f"[Catalog] Successfully updated SKU {sku_id} properties (stock={new_stock}, price={new_price}) on disk.")
             return True
         except Exception as e:
-            print(f"[Catalog] Error writing updated stock to CSV: {e}")
+            print(f"[Catalog] Error writing updated properties to CSV: {e}")
             return False
+
+    def update_sku_stock(self, sku_id, new_stock):
+        """
+        Backward-compat method to update stock only.
+        """
+        return self.update_sku_properties(sku_id, new_stock=new_stock)

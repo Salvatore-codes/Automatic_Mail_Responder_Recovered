@@ -7,17 +7,334 @@ function dashboardApp() {
       { id: 'inventory', label: 'Full Inventory', icon: 'warehouse', badge: null, badgeColor: 'blue', description: 'View current stock levels, base prices, and catalog items.' },
       { id: 'pricing', label: 'Dynamic Pricing', icon: 'coins', badge: null, badgeColor: 'blue', description: 'Configure customer contract pricing and category-level discount tiers.' },
       { id: 'training', label: 'AI Training', icon: 'brain', badge: null, badgeColor: 'blue', description: 'Train and configure relevance keywords for automatic email classification.' },
+      { id: 'verticals', label: 'AI Onboarding', icon: 'sparkles', badge: null, badgeColor: 'blue', description: 'Train and configure active vertical guidelines, industry rules, and tones using autonomous AI.' },
       { id: 'customers', label: 'CRM Segments', icon: 'users', badge: null, badgeColor: 'blue', description: 'Group and classify customers based on historical purchase volume and business value.' },
       { id: 'activity', label: 'Activity Log', icon: 'activity', badge: null, badgeColor: 'blue', description: 'Real-time event stream: every email received, quote generated, reply handled, and error logged with timestamps.' }
     ],
     
     activeTab: 'overview',
+    language: localStorage.getItem('language') || 'en',
+    translations: {
+      en: {
+        'Language / மொழி': 'Language / மொழி',
+        'Administrator': 'Administrator',
+        'Operations': 'Operations',
+        'Overview': 'Overview',
+        'Deficits': 'Deficits',
+        'Negotiations': 'Negotiations',
+        'Full Inventory': 'Full Inventory',
+        'Dynamic Pricing': 'Dynamic Pricing',
+        'AI Training': 'AI Training',
+        'AI Onboarding': 'AI Onboarding',
+        'CRM Segments': 'CRM Segments',
+        'Activity Log': 'Activity Log',
+        'Search invoice, client, SKU…': 'Search invoice, client, SKU…',
+        'Automatic': 'Automatic',
+        'Manual': 'Manual',
+        'Live': 'Live',
+        'Services': 'Services',
+        'Trading / Stocks': 'Trading / Stocks'
+      },
+      ta: {
+        'Language / மொழி': 'மொழி (Language)',
+        'Administrator': 'நிர்வாகி',
+        'Operations': 'செயல்பாடுகள்',
+        'Overview': 'கண்ணோட்டம்',
+        'Deficits': 'பற்றாக்குறைகள்',
+        'Negotiations': 'பேச்சுவார்த்தைகள்',
+        'Full Inventory': 'சரக்கு இருப்பு',
+        'Dynamic Pricing': 'விலை நிர்ணயம்',
+        'AI Training': 'AI பயிற்சி',
+        'AI Onboarding': 'AI சேர்க்கை',
+        'CRM Segments': 'வாடிக்கையாளர் பிரிவுகள்',
+        'Activity Log': 'செயல்பாட்டுப் பதிவு',
+        'Search invoice, client, SKU…': 'விலைப்பட்டியல், வாடிக்கையாளர், குறியீடு தேடுக...',
+        'Automatic': 'தானியங்கி',
+        'Manual': 'கைமுறை',
+        'Live': 'நேரடி',
+        'Services': 'சேவைகள்',
+        'Trading / Stocks': 'வர்த்தகம் / பொருட்கள்',
+        'Engine A (Local)': 'இன்ஜின் ஏ (உள்ளூர்)',
+        'Engine B (AI)': 'இன்ஜின் பி (AI)',
+        'Connect Outlook': 'அவுட்லுக்கை இணைக்கவும்',
+        'Ivory & Ink': 'ஐவரி & இங்க்',
+        'Midnight': 'நள்ளிரவு',
+        'Navy Gold': 'நேவி கோல்டு',
+        'Cyberpunk': 'சைபர்பங்க்',
+        'Admin Control Panel': 'நிர்வாகக் கட்டுப்பாட்டு குழு',
+        
+        // Overview Tab Details
+        'Operations Command Center': 'செயல்பாட்டு கட்டுப்பாட்டு மையம்',
+        'Good morning': 'காலை வணக்கம்',
+        'Good afternoon': 'மதிய வணக்கம்',
+        'Good evening': 'மாலை வணக்கம்',
+        'Good morning, Operator': 'காலை வணக்கம், இயக்குநர்',
+        'Good afternoon, Operator': 'மதிய வணக்கம், இயக்குநர்',
+        'Good evening, Operator': 'மாலை வணக்கம், இயக்குநர்',
+        'enquiries handled all-time': 'இதுவரை கையாளப்பட்ட விசாரணைகள்',
+        'Automation Rate': 'தானியங்கி வீதம்',
+        'Processed Enquiries': 'செயலாக்கப்பட்ட விசாரணைகள்',
+        'Total emails ingested': 'மொத்தம் பெறப்பட்ட மின்னஞ்சல்கள்',
+        'Accuracy Score': 'துல்லிய மதிப்பெண்',
+        'Matching engine precision': 'பொருத்த இயந்திரத் துல்லியம்',
+        'Escalated Disputes': 'மேல்முறையீடு செய்யப்பட்டவை',
+        'Requires operator review': 'இயக்குநரின் மதிப்பாய்வு தேவை',
+        'Alt. Matches Found': 'மாற்றுப் பொருட்கள் கண்டறியப்பட்டது',
+        'Deficit alternatives resolved': 'பற்றாக்குறை தீர்வுகள்',
+        'Live Pipeline': 'நேரடி செயல்பாடுகள்',
+        'Sales Intelligence': 'விற்பனைத் தகவல்',
+        'Operations Split': 'செயல்பாட்டுப் பகிர்வு',
+        'Operations Dispatcher Split': 'செயல்பாட்டுப் பகிர்வு வரைபடம்',
+        'Ratio of automated responses vs. human-in-the-loop reviews': 'தானியங்கி பதில்கள் மற்றும் நேரடி மதிப்புரைகளின் விகிதம்',
+        'Automated': 'தானியங்கி',
+        'Auto-Responded': 'தானியங்கி பதிலளிப்பு',
+        'Human Review': 'நேரடி மதிப்பாய்வு',
+        'Total Received': 'மொத்தம் பெறப்பட்டவை',
+        'all-time': 'இதுவரை',
+        'Sales Intelligence & Leakage': 'விற்பனைத் தகவல் & கசிவு பகுப்பாய்வு',
+        'Immediate operational insights, high-value clients, top quotes, and conversion leakages.': 'செயல்பாட்டு நுண்ணறிவு, முக்கிய வாடிக்கையாளர்கள் மற்றும் கசிவு பகுப்பாய்வு.',
+        'Conversion Funnel & Leakage': 'மாற்றப் புனல் & கசிவு',
+        'Total Ingested': 'மொத்தம் பெறப்பட்டவை',
+        'Converted (Quotes Sent)': 'மாற்றப்பட்டது (அனுப்பப்பட்டவை)',
+        'Leakage (Unmatched/Rejected)': 'கசிவு (பொருந்தாதவை/நிராகரிக்கப்பட்டவை)',
+        'Leakage Analysis:': 'கசிவு பகுப்பாய்வு:',
+        'Unmatched items:': 'பொருந்தாத பொருட்கள்:',
+        'Rejected discounts:': 'நிராகரிக்கப்பட்ட தள்ளுபடிகள்:',
+        'enquiries': 'விசாரணைகள்',
+        'Top Customers': 'முக்கிய வாடிக்கையாளர்கள்',
+        'Name / Email': 'பெயர் / மின்னஞ்சல்',
+        'Quotes': 'விலைப்பட்டியல்கள்',
+        'Value': 'மதிப்பு',
+        'No customers record': 'வாடிக்கையாளர் பதிவுகள் இல்லை',
+        'Top Quotations': 'முக்கிய விலைப்பட்டியல்கள்',
+        'Quote ID': 'விலைப்பட்டியல் எண்',
+        'Customer': 'வாடிக்கையாளர்',
+        'Total': 'மொத்தம்',
+        'No quotations record': 'விலைப்பட்டியல் பதிவுகள் இல்லை',
+        'Live Operations Pipeline': 'நேரடி செயல்பாட்டு வரிசை',
+        'Refreshing…': 'புதுப்பிக்கப்படுகிறது...',
+        'Auto-refresh every 10s': 'ஒவ்வொரு 10 வினாடிக்கும் புதுப்பிக்கப்படும்',
+        'Last updated:': 'கடைசியாக புதுப்பிக்கப்பட்டது:',
+        'Refresh Now': 'இப்போது புதுப்பி',
+        'New Mail': 'புதிய மின்னஞ்சல்',
+        'Reply': 'பதில்',
+        'Customer Request': 'வாடிக்கையாளர் கோரிக்கை',
+        'Rejected': 'நிராகரிக்கப்பட்டவை',
+        'Pending': 'நிலுவையில் உள்ளவை',
+        'New Request': 'புதிய கோரிக்கை',
+        'View Request': 'கோரிக்கையைப் பார்',
+        'Auto-Quoted': 'தானியங்கி விலைப்பட்டியல்',
+        'View Thread': 'பின்னணி விபரங்கள்',
+        'View Quote': 'விலைப்பட்டியலைப் பார்',
+        'Replied': 'பதிலளித்தார்',
+        'Escalated': 'மேல்முறையீடு',
+        'Active': 'செயலில் உள்ளவை',
+        'Decide': 'முடிவெடு',
+        'Stock Shortage': 'இருப்பு பற்றாக்குறை',
+        'Shortage:': 'பற்றாக்குறை:',
+        'Resolve': 'தீர்வு காண்',
+        'Draft Quotation': 'வரைவு விலைப்பட்டியல்',
+        'Draft Amount:': 'வரைவு தொகை:',
+        'Review': 'Review (மதிப்பாய்வு)',
+        'Approve & Send': 'Approve & Send (அனுப்பு)',
+        'Unmatched': 'பொருந்தாதவை',
+        'View': 'பார்',
+        'All clear': 'அனைத்தும் சரி',
+        "Today's Enquiries": 'இன்றைய விசாரணைகள்',
+        "Yesterday's Enquiries": 'நேற்றைய விசாரணைகள்',
+        'emails': 'மின்னஞ்சல்கள்',
+        'No enquiries recorded.': 'விசாரணைகள் ஏதும் இல்லை.',
+        'Export': 'ஏற்றுமதி செய்க',
+        'Search deficits...': 'தேடுக...',
+        'Refresh': 'புதுப்பி',
+        'Responded': 'பதிலளிக்கப்பட்டவை',
+        
+        // Deficits Tab Details
+        'Inventory Fulfillment': 'சரக்கு இருப்பு மேலாண்மை',
+        'Stock Deficits': 'இருப்பு பற்றாக்குறைகள்',
+        'Match alternatives and clear out-of-stock order lines before they stall a quotation.': 'மாற்றுப் பொருட்களைப் பொருத்தி, தடையற்ற விலைப்பட்டியலை உறுதி செய்யவும்.',
+        'Outstanding Deficits': 'நிலுவையில் உள்ள பற்றாக்குறைகள்',
+        'Resolved Matches': 'தீர்வு காணப்பட்டவை',
+        'Affected SKUs': 'பாதிக்கப்பட்ட தயாரிப்புகள்',
+        'Customers Waiting': 'காத்திருக்கும் வாடிக்கையாளர்கள்',
+        'Outstanding Stock Deficit Queue': 'நிலுவையில் உள்ள பற்றாக்குறை வரிசை',
+        'Invoice ID': 'விலைப்பட்டியல் எண்',
+        'Missing Catalog SKU': 'பற்றாக்குறை உள்ள தயாரிப்பு',
+        'Customer Name & Contact': 'வாடிக்கையாளர் பெயர் & தொடர்பு',
+        'Qty Shortage': 'பற்றாக்குறை அளவு',
+        'Stock Status': 'இருப்பு நிலை',
+        'Status': 'நிலை',
+        'Operation Action': 'செயல்பாடு',
+        'No deficits or stock shortages detected.': 'இருப்பு பற்றாக்குறைகள் ஏதும் இல்லை.',
+        'Resolve Match': 'தீர்வு காண்',
+        'Done': 'முடிந்தது',
+        
+        // Negotiations Tab Details
+        'Deal Optimization': 'ஒப்பந்த உகப்பாக்கம்',
+        'Escalated Negotiations': 'பேச்சுவார்த்தைகள்',
+        'Review and approve custom discounts requested by high-value customers.': 'முக்கிய வாடிக்கையாளர்களின் சிறப்புத் தள்ளுபடி கோரிக்கைகளை அங்கீகரிக்கவும்.',
+        'Outstanding Requests': 'நிலுவையில் உள்ள கோரிக்கைகள்',
+        'Average Discount': 'சராசரி தள்ளுபடி',
+        'Conversion Potential': 'மாற்ற சாத்தியக்கூறு',
+        'Dispute Resolution Queue': 'தீர்வு வரிசை',
+        'Requested Discount': 'கோரப்பட்ட தள்ளுபடி',
+        'Approve': 'அங்கீகரி',
+        'Reject': 'நிராகரி',
+        'No pending negotiations escalated.': 'நிலுவையில் உள்ள பேச்சுவார்த்தைகள் ஏதும் இல்லை.',
+        
+        // Inventory Tab Details
+        'Stock Overview': 'சரக்கு இருப்பு கண்ணோட்டம்',
+        'Catalog Inventory': 'தயாரிப்பு இருப்புப் பட்டியல்',
+        'Manage items, stock counts, categories, and verify base pricing.': 'தயாரிப்புகள், இருப்பு அளவுகள் மற்றும் விலைகளை நிர்வகிக்கவும்.',
+        'Total Items': 'மொத்த தயாரிப்புகள்',
+        'Low Stock Items': 'குறைந்த இருப்பு தயாரிப்புகள்',
+        'Total Inventory Value': 'மொத்த இருப்பு மதிப்பு',
+        'Master Catalog Queue': 'மாஸ்டர் தயாரிப்பு பட்டியல்',
+        'Search inventory...': 'தேடுக...',
+        'SKU ID': 'தயாரிப்பு குறியீடு',
+        'Product Name': 'தயாரிப்பு பெயர்',
+        'Category': 'பிரிவு',
+        'In Stock Qty': 'இருப்பு அளவு',
+        'Base Price': 'அடிப்படை விலை',
+        'Out of Stock': 'இருப்பு இல்லை',
+        'In Stock': 'இருப்பில் உள்ளது',
+        
+        // Pricing Tab Details
+        'Contract Configuration': 'ஒப்பந்த கட்டமைப்பு',
+        'Dynamic Contract Pricing': 'விலை நிர்ணயம்',
+        'Define client-specific pricing rules, volume discounts, and service tiers.': 'வாடிக்கையாளர் ஒப்பந்த விலைகள் மற்றும் தள்ளுபடி விதிகளை நிர்வகிக்கவும்.',
+        'Active Rules': 'செயலில் உள்ள விதிகள்',
+        'Global Discounts': 'பொதுவான தள்ளுபடிகள்',
+        'Contract Rules Queue': 'ஒப்பந்த விதிகள் வரிசை',
+        'Client Name': 'வாடிக்கையாளர் பெயர்',
+        'Rule Type': 'விதி வகை',
+        'Details': 'விவரங்கள்',
+        'No active contract rules defined.': 'விலை ஒப்பந்த விதிகள் ஏதும் இல்லை.',
+        
+        // AI Onboarding Tab Details
+        'Autonomous AI': 'தன்னாட்சி செயற்கை நுண்ணறிவு',
+        'AI Onboarding & Rules': 'AI சேர்க்கை & விதிகள்',
+        'Configure vertical specific business descriptions, catalogs, contact credentials and training prompts.': 'செயல்பாட்டுப் பிரிவுகளின் வணிக விளக்கங்கள் மற்றும் விதிகளை நிர்வகிக்கவும்.',
+        'Active Verticals': 'செயலில் உள்ள பிரிவுகள்',
+        'System Prompts': 'அமைப்பு அறிவுறுத்தல்கள்',
+        'Registered Clients': 'பதிவு செய்யப்பட்ட வாடிக்கையாளர்கள்',
+        'Vertical Configurations': 'பிரிவு அமைப்புகள்',
+        'Configure parameters': 'அளவீடுகளை அமைக்கவும்',
+        'Vertical Name': 'பிரிவின் பெயர்',
+        'Business Model': 'வணிக வகை',
+        'Support Email': 'ஆதரவு மின்னஞ்சல்',
+        'SMTP Username': 'SMTP பயனர்',
+        'Status Code': 'நிலை',
+        
+        // CRM Segments Tab Details
+        'CRM Directory': 'வாடிக்கையாளர் அடைவு',
+        'CRM Client Directory': 'வாடிக்கையாளர் பட்டியல்',
+        'Segment and view registered clients, contact logs, and history.': 'வாடிக்கையாளர் விபரங்கள் மற்றும் கொள்முதல் வரலாற்றைக் கண்காணிக்கவும்.',
+        'Client Base': 'வாடிக்கையாளர் எண்ணிக்கை',
+        'VIP Tier': 'வி.ஐ.பி பிரிவு',
+        'Regular Tier': 'சாதாரண பிரிவு',
+        'CRM Client Segment Base': 'வாடிக்கையாளர் தகவல் தளம்',
+        'Company': 'நிறுவனம்',
+        'Contact Phone': 'தொலைபேசி எண்',
+        'Contact Email': 'மின்னஞ்சல் முகவரி',
+        'Registered At': 'பதிவு செய்யப்பட்ட தேதி',
+        'Segment': 'பிரிவு',
+        'No clients registered.': 'வாடிக்கையாளர்கள் ஏதும் பதிவு செய்யப்படவில்லை.',
+
+        // AI Training Tab Details
+        'AI Learning': 'AI கற்றல்',
+        'AI Relevance Training': 'AI பயிற்சி',
+        'Train the relevance filter by defining product categories, intent signals, and synonyms.': 'பொருந்தும் தயாரிப்புகள் மற்றும் ஒத்த சொற்களின் மூலம் AI-க்குப் பயிற்சியளிக்கவும்.',
+        'Keywords Trained': 'பயிற்சியளிக்கப்பட்ட சொற்கள்',
+        'Synonyms Map': 'ஒத்த சொற்கள் வரைபடம்',
+        'Intent Keywords': 'நோக்கச் சொற்கள்',
+        'Intent Signals': 'நோக்க சிக்னல்கள்',
+        'Synonyms List': 'ஒத்த சொற்கள் பட்டியல்',
+        'Original Term': 'அசல் சொல்',
+        'Mapped Catalog Term': 'பொருத்தப்பட்ட சொல்',
+        'No training synonyms found.': 'ஒத்த சொற்கள் ஏதும் இல்லை.',
+
+        // Activity Log Tab Details
+        'Event Console': 'நிகழ்வு கன்சோல்',
+        'Activity Log Console': 'செயல்பாட்டு கன்சோல்',
+        'Real-time event stream of email processes, quote dispatches, and system errors.': 'மின்னஞ்சல் செயலாக்கம் மற்றும் கணினி நிகழ்வுகளின் நேரடி பதிவு.',
+        'Total Logs': 'மொத்த பதிவுகள்',
+        'Warning Events': 'எச்சரிக்கை நிகழ்வுகள்',
+        'Error Events': 'பிழை நிகழ்வுகள்',
+        'System Event Stream Log': 'கணினி நிகழ்வு பதிவு',
+        'Timestamp': 'நேரம்',
+        'Event Message': 'நிகழ்வு செய்தி',
+        'Severity': 'தீவிரம்',
+        'No events logged in database.': 'நிகழ்வுப் பதிவுகள் ஏதும் இல்லை.'
+      }
+    },
+    t(key) {
+      if (this.language === 'ta' && this.translations.ta[key]) {
+        return this.translations.ta[key];
+      }
+      return this.translations.en[key] || key;
+    },
+    translateDOM() {
+      const isTa = this.language === 'ta';
+      const dict = this.translations.ta;
+      
+      const walk = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const trimmed = node.nodeValue.trim();
+          if (trimmed && dict[trimmed]) {
+            if (!node.parentElement.dataset.origText) {
+              node.parentElement.dataset.origText = node.nodeValue;
+            }
+            node.nodeValue = node.nodeValue.replace(trimmed, dict[trimmed]);
+          } else if (trimmed && !isTa && node.parentElement && node.parentElement.dataset.origText) {
+            node.nodeValue = node.parentElement.dataset.origText;
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.tagName !== 'SCRIPT' && node.tagName !== 'STYLE' && node.tagName !== 'TEXTAREA') {
+            const placeholder = node.getAttribute('placeholder');
+            if (placeholder) {
+              const pTrimmed = placeholder.trim();
+              if (isTa && dict[pTrimmed]) {
+                if (!node.dataset.origPlaceholder) {
+                  node.dataset.origPlaceholder = placeholder;
+                }
+                node.setAttribute('placeholder', dict[pTrimmed]);
+              } else if (!isTa && node.dataset.origPlaceholder) {
+                node.setAttribute('placeholder', node.dataset.origPlaceholder);
+              }
+            }
+            node.childNodes.forEach(walk);
+          }
+        }
+      };
+      
+      walk(document.body);
+    },
+    setLanguage(lang) {
+      this.language = lang;
+      localStorage.setItem('language', lang);
+      document.title = lang === 'ta' ? "Trofeo Hardware — நிர்வாகக் கட்டுப்பாட்டு குழு" : "Trofeo Hardware — Admin Control Panel";
+      this.translateDOM();
+      this.$nextTick(() => {
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons();
+        }
+      });
+    },
     theme: 'warm',
     selectedTenant: 'default',
     tenants: [{ id: 'default', name: 'Trofeo Hardware Branch' }],
     invoiceFilter: '',
     deficitsSearch: '',
     negSearch: '',
+    
+    // Tab AI Onboarding / Verticals
+    activeVertical: {},
+    onboardForm: { url: '', description_text: '', logoPreviewUrl: '', attachedFile: null, attachedFilePreview: '' },
+    onboardLoading: false,
+    approveLoading: false,
+    onboardResult: null,
+
     activitySearch: '',
     toasts: [],
     connectionStatus: 'connected',
@@ -186,6 +503,7 @@ function dashboardApp() {
     selectedSkuId: '',
     selectedSkuName: '',
     newStockLevel: 0,
+    newPriceLevel: 0.0,
     updatingStock: false,
     
     // Tab 7: Stock logs
@@ -386,6 +704,21 @@ function dashboardApp() {
       this.applyTheme();
       this.loadTenants();
       this.loadSettings();
+      this.loadActiveVertical();
+      
+      // Initialize DOM translation observer
+      this.$nextTick(() => {
+        if (this.language === 'ta') {
+          document.title = "Trofeo Hardware — நிர்வாகக் கட்டுப்பாட்டு குழு";
+        }
+        this.translateDOM();
+        const observer = new MutationObserver(() => {
+          if (this.language === 'ta') {
+            this.translateDOM();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      });
       
       // Auto-refresh dashboard pipeline every 10 seconds
       setInterval(() => {
@@ -449,18 +782,58 @@ function dashboardApp() {
       try {
         const res = await this.safeFetch('/api/tenants');
         const data = await res.json();
+        let list = [];
         if (data.tenants && data.tenants.length > 0) {
-          this.tenants = data.tenants;
+          list = data.tenants;
         } else if (Array.isArray(data) && data.length > 0) {
-          this.tenants = data;
+          list = data;
         }
-        this.handleTenantChange();
+        this.tenants = list;
+        
+        // Find the active vertical to select in the dropdown
+        const active = list.find(t => t.is_active);
+        if (active) {
+          this.selectedTenant = active.id;
+        } else if (list.length > 0) {
+          this.selectedTenant = list[0].id;
+        }
+        
+        // Load initial dashboard metrics without firing a redundant active vertical set request
+        this.fetchOverviewData();
+        this.fetchServiceStatus();
+        this.refreshBadges();
+        this.loadDeficits();
+        this.loadNegotiations();
+        this.loadQuotes();
+        this.loadCatalog();
+        this.loadLogs();
+        this.loadSettings();
+        this.loadActiveVertical();
+        this.loadAnalytics();
+        this.loadActivityLog();
+        this.fetchTrainingData();
+        this.fetchNegotiationData();
+        this.loadPricingData();
+        this.loadCustomerSegments();
       } catch (e) {
-        this.showToast('Error loading branch branches: ' + e.message, 'error');
+        this.showToast('Error loading verticals: ' + e.message, 'error');
       }
     },
     
-    handleTenantChange() {
+    async handleTenantChange() {
+      try {
+        await this.safeFetch('/api/verticals/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: this.selectedTenant,
+            tenant_id: 'default'
+          })
+        });
+      } catch (e) {
+        console.warn('Error setting active vertical:', e);
+      }
+      
       this.fetchOverviewData();
       this.fetchServiceStatus();
       this.refreshBadges();
@@ -470,6 +843,7 @@ function dashboardApp() {
       this.loadCatalog();
       this.loadLogs();
       this.loadSettings();
+      this.loadActiveVertical();
       this.loadAnalytics();
       this.loadActivityLog();
       this.fetchTrainingData();
@@ -497,6 +871,9 @@ function dashboardApp() {
       }
       if (tabId === 'customers') {
         this.loadCustomerSegments();
+      }
+      if (tabId === 'verticals') {
+        this.loadActiveVertical();
       }
       this.$nextTick(() => {
         this.triggerLucide();
@@ -1357,10 +1734,11 @@ function dashboardApp() {
       });
     },
     
-    openStockModal(skuId, skuName, stock) {
+    openStockModal(skuId, skuName, stock, price) {
       this.selectedSkuId = skuId;
       this.selectedSkuName = skuName;
       this.newStockLevel = stock;
+      this.newPriceLevel = price || 0.0;
       this.showStockModal = true;
     },
     
@@ -1373,19 +1751,20 @@ function dashboardApp() {
           body: JSON.stringify({
             sku_id: this.selectedSkuId,
             new_stock: parseInt(this.newStockLevel),
+            new_price: parseFloat(this.newPriceLevel),
             tenant_id: this.selectedTenant
           })
         });
         const data = await res.json();
         if (data.status === 'SUCCESS') {
-          this.showToast('Stock level updated successfully!', 'success');
+          this.showToast('Catalog item updated successfully!', 'success');
           this.showStockModal = false;
           this.loadCatalog();
           this.loadLogs();
           this.refreshBadges();
         }
       } catch (e) {
-        this.showToast('Error updating stock level: ' + e.message, 'error');
+        this.showToast('Error updating catalog item: ' + e.message, 'error');
       } finally {
         this.updatingStock = false;
       }
@@ -1424,6 +1803,164 @@ function dashboardApp() {
         }
       } catch (e) {
         this.showToast('Error saving settings: ' + e.message, 'error');
+      }
+    },
+
+    async loadActiveVertical() {
+      try {
+        const res = await this.safeFetch(`/api/verticals?tenant_id=${this.selectedTenant}`);
+        const data = await res.json();
+        if (data.verticals && data.verticals.length > 0) {
+          const active = data.verticals.find(v => v.is_active === 1);
+          if (active) {
+            const prevActiveId = this.activeVertical ? this.activeVertical.id : null;
+            this.activeVertical = active;
+            if (active.id !== prevActiveId) {
+              const bType = active.business_type === 'Services' ? 'Services based' : 'Trading (Stock based)';
+              this.showToast(`Business Profile Loaded: ${active.name} [${bType}]`, 'success');
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading active vertical:', e);
+      }
+    },
+
+    onLogoFileSelected(event) {
+      const file = event.target.files[0];
+      if (file) {
+        this.onboardForm.logoPreviewUrl = URL.createObjectURL(file);
+      } else {
+        this.onboardForm.logoPreviewUrl = '';
+      }
+    },
+
+    onDocFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) {
+        this.onboardForm.attachedFile = null;
+        this.onboardForm.attachedFilePreview = '';
+        return;
+      }
+      this.onboardForm.attachedFile = file;
+      this.onboardForm.attachedFilePreview = '';
+      // For TXT files, read a short preview of content
+      if (file.name.endsWith('.txt')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          this.onboardForm.attachedFilePreview = (e.target.result || '').slice(0, 120).replace(/\n/g, ' ');
+        };
+        reader.readAsText(file.slice(0, 300));
+      }
+      this.$nextTick(() => this.triggerLucide());
+    },
+
+    removeAttachedFile() {
+      this.onboardForm.attachedFile = null;
+      this.onboardForm.attachedFilePreview = '';
+      const input = document.getElementById('onboardFile');
+      if (input) input.value = '';
+      this.$nextTick(() => this.triggerLucide());
+    },
+
+    async runOnboardAnalysis() {
+      const fileInput = document.getElementById('onboardFile');
+      const file = fileInput ? fileInput.files[0] : null;
+
+      if (!this.onboardForm.url && !this.onboardForm.description_text && !file) {
+        this.showToast('Please provide a website URL, business description text, or attach a document.', 'error');
+        return;
+      }
+      this.onboardLoading = true;
+      this.onboardResult = null;
+      try {
+        const formData = new FormData();
+        if (this.onboardForm.url) {
+          formData.append('url', this.onboardForm.url);
+        }
+        if (this.onboardForm.description_text) {
+          formData.append('description_text', this.onboardForm.description_text);
+        }
+        if (file) {
+          formData.append('file', file);
+        }
+
+        const logoInput = document.getElementById('onboardLogoFile');
+        const logoFile = logoInput ? logoInput.files[0] : null;
+        if (logoFile) {
+          formData.append('logo_file', logoFile);
+        }
+
+        const res = await this.safeFetch(`/api/verticals/onboard?tenant_id=${this.selectedTenant}`, {
+          method: 'POST',
+          body: formData
+        });
+        if (res.status !== 200) {
+          const err = await res.json();
+          this.showToast('Analysis failed: ' + (err.detail || 'Unknown error'), 'error');
+        } else {
+          this.onboardResult = await res.json();
+          this.showToast('AI analysis complete! Suggestion loaded.', 'success');
+        }
+      } catch (e) {
+        this.showToast('Error analyzing business profile: ' + e.message, 'error');
+      } finally {
+        this.onboardLoading = false;
+        this.$nextTick(() => this.triggerLucide());
+      }
+    },
+
+    async approveOnboardProfile() {
+      if (!this.onboardResult) return;
+      this.approveLoading = true;
+      try {
+        const verticalId = this.onboardResult.company_name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const payload = {
+          id: verticalId,
+          name: this.onboardResult.company_name,
+          industry: this.onboardResult.industry,
+          guidelines: this.onboardResult.guidelines,
+          tone: this.onboardResult.tone,
+          catalog_path: this.onboardResult.suggested_catalog ? `data/catalog_${verticalId}.csv` : (this.activeVertical.catalog_path || 'data/sku_catalog.csv'),
+          crm_path: this.onboardResult.suggested_crm ? `data/crm_${verticalId}.json` : (this.activeVertical.crm_path || 'data/crm_customers.json'),
+          source_details: this.onboardForm.description_text || this.onboardForm.url || 'Scraped website onboarding',
+          suggested_relevance_keywords: this.onboardResult.suggested_relevance_keywords || [],
+          suggested_negotiation_keywords: this.onboardResult.suggested_negotiation_keywords || [],
+          suggested_catalog: this.onboardResult.suggested_catalog || [],
+          suggested_crm: this.onboardResult.suggested_crm || [],
+          logo_path: this.onboardResult.uploaded_logo_path || '',
+          extracted_logo_url: this.onboardResult.extracted_logo_url || '',
+          business_type: this.onboardResult.business_type || 'Trading',
+          tenant_id: this.selectedTenant
+        };
+        
+        const res = await this.safeFetch('/api/verticals/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'SUCCESS') {
+          this.showToast('Vertical profile activated & model trained successfully!', 'success');
+          this.loadActiveVertical();
+          this.loadSettings();
+          this.fetchTrainingData();
+          this.fetchNegotiationData();
+          this.onboardResult = null;
+          this.onboardForm = { url: '', description_text: '', logoPreviewUrl: '', attachedFile: null, attachedFilePreview: '' };
+          // Clear logo file inputs
+          const logoInput = document.getElementById('onboardLogoFile');
+          if (logoInput) logoInput.value = '';
+          const docInput = document.getElementById('onboardFile');
+          if (docInput) docInput.value = '';
+        } else {
+          this.showToast('Failed to activate: ' + data.message, 'error');
+        }
+      } catch (e) {
+        this.showToast('Error activating vertical profile: ' + e.message, 'error');
+      } finally {
+        this.approveLoading = false;
+        this.$nextTick(() => this.triggerLucide());
       }
     },
 

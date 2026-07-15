@@ -10,20 +10,20 @@
 
         <!-- Navigation -->
         <nav class="sidebar-nav">
-          <div class="nav-section-label">Operations</div>
+          <div class="nav-section-label" x-text="t('Operations')"></div>
 
           <template x-for="tab in tabs" :key="tab.id">
             <button
               @click="switchTab(tab.id)"
               class="nav-item"
               :class="activeTab === tab.id ? 'active' : ''"
-              :title="tab.description"
+              :title="t(tab.label)"
             >
               <!-- Icon wrap gets gradient when active -->
               <span class="nav-icon-wrap">
                 <i :data-lucide="tab.icon" style="width:14px;height:14px;"></i>
               </span>
-              <span style="flex:1;text-align:left;" x-text="tab.label"></span>
+              <span style="flex:1;text-align:left;" x-text="t(tab.label)"></span>
               <template x-if="tab.badge !== null && tab.badge > 0">
                 <span
                   class="nav-badge"
@@ -35,12 +35,35 @@
           </template>
         </nav>
 
+        <!-- Language Switcher Toggle -->
+        <div style="padding:10px 16px; border-top:1px solid var(--border); margin-top:auto; display:flex; flex-direction:column; gap:6px;">
+          <label class="text-[9px] font-bold text-[var(--text-3)] uppercase tracking-wider" x-text="t('Language / மொழி')"></label>
+          <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;">
+            <button 
+              @click="setLanguage('en')"
+              class="switcher-btn"
+              :class="language === 'en' ? 'active-auto' : ''"
+              style="flex:1; justify-content:center; padding:4px 8px; font-size:10px; border-radius:6px;"
+            >
+              <span>English</span>
+            </button>
+            <button 
+              @click="setLanguage('ta')"
+              class="switcher-btn"
+              :class="language === 'ta' ? 'active-manual' : ''"
+              style="flex:1; justify-content:center; padding:4px 8px; font-size:10px; border-radius:6px;"
+            >
+              <span>தமிழ்</span>
+            </button>
+          </div>
+        </div>
+
         <!-- User Footer -->
         <div class="sidebar-footer">
           <div class="user-avatar">OP</div>
           <div class="user-info">
             <div class="user-name">Operator</div>
-            <div class="user-role">Administrator</div>
+            <div class="user-role" x-text="t('Administrator')"></div>
           </div>
           <div class="online-dot" title="Online"></div>
         </div>
