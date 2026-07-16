@@ -78,21 +78,35 @@
                       :class="{ 'active': overviewSubTab === 'pipeline' }"
                       style="display:flex; align-items:center; gap:6px;">
                 <i data-lucide="zap" class="w-3.5 h-3.5"></i>
-                <span>Live Pipeline</span>
+                <span x-text="t('Live Pipeline')"></span>
+              </button>
+              <button @click="overviewSubTab = 'today'" 
+                      class="switcher-btn"
+                      :class="{ 'active': overviewSubTab === 'today' }"
+                      style="display:flex; align-items:center; gap:6px;">
+                <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+                <span x-text="t('Today\'s Enquiries')"></span>
+              </button>
+              <button @click="overviewSubTab = 'yesterday'" 
+                      class="switcher-btn"
+                      :class="{ 'active': overviewSubTab === 'yesterday' }"
+                      style="display:flex; align-items:center; gap:6px;">
+                <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                <span x-text="t('Yesterday\'s Enquiries')"></span>
               </button>
               <button @click="overviewSubTab = 'intelligence'" 
                       class="switcher-btn"
                       :class="{ 'active': overviewSubTab === 'intelligence' }"
                       style="display:flex; align-items:center; gap:6px;">
                 <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
-                <span>Sales Intelligence</span>
+                <span x-text="t('Sales Intelligence')"></span>
               </button>
               <button @click="overviewSubTab = 'dispatcher'" 
                       class="switcher-btn"
                       :class="{ 'active': overviewSubTab === 'dispatcher' }"
                       style="display:flex; align-items:center; gap:6px;">
                 <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>
-                <span>Operations Split</span>
+                <span x-text="t('Operations Split')"></span>
               </button>
             </div>
 
@@ -624,57 +638,95 @@
               </div>
             </div>
 
-            <!-- Feed Enquiries (Today / Yesterday) -->
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:20px;">
-              <template x-for="feed in [
-                { title: 'Today\'s Enquiries', items: getFilteredList(todayMails), icon: 'calendar', color: 'var(--accent)' },
-                { title: 'Yesterday\'s Enquiries', items: getFilteredList(yesterdayMails), icon: 'history', color: 'var(--text-3)' }
-              ]" :key="feed.title">
-                <div class="section-card">
-                  <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3 class="section-title">
-                      <i :data-lucide="feed.icon" class="w-3.5 h-3.5" :style="'color:'+feed.color"></i>
-                      <span x-text="feed.title"></span>
-                    </h3>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                      <span style="font-size:10.5px;font-weight:600;font-family:var(--font-mono);color:var(--text-3);" x-text="feed.items.length + ' emails'"></span>
-                      <!-- Export Menu -->
-                      <div class="export-container" x-data="{ open: false }" @click.away="open = false">
-                        <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:4px; padding:3px 8px; font-size:10.5px;">
-                          <i data-lucide="download" style="width:10px; height:10px;"></i>
-                          <span>Export</span>
-                        </button>
-                        <div x-show="open" class="export-menu" style="display:none; min-width:110px;">
-                          <button @click="exportEnquiries('csv', feed.title.toLowerCase().includes('today') ? 'today' : 'yesterday'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">CSV</button>
-                          <button @click="exportEnquiries('xlsx', feed.title.toLowerCase().includes('today') ? 'today' : 'yesterday'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">Excel</button>
-                          <button @click="exportEnquiries('pdf', feed.title.toLowerCase().includes('today') ? 'today' : 'yesterday'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">PDF Document</button>
-                        </div>
-                      </div>
+            <!-- Today's Enquiries Tab Panel -->
+            <div class="section-card" x-show="overviewSubTab === 'today'" x-transition style="margin-top:20px;">
+              <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 class="section-title">
+                  <i data-lucide="calendar" class="w-3.5 h-3.5" style="color:var(--accent)"></i>
+                  <span x-text="t('Today\'s Enquiries')"></span>
+                </h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:10.5px;font-weight:600;font-family:var(--font-mono);color:var(--text-3);" x-text="getFilteredList(todayMails).length + ' ' + t('emails')"></span>
+                  <!-- Export Menu -->
+                  <div class="export-container" x-data="{ open: false }" @click.away="open = false">
+                    <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:4px; padding:3px 8px; font-size:10.5px;">
+                      <i data-lucide="download" style="width:10px; height:10px;"></i>
+                      <span x-text="t('Export')"></span>
+                    </button>
+                    <div x-show="open" class="export-menu" style="display:none; min-width:110px;">
+                      <button @click="exportEnquiries('csv', 'today'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">CSV</button>
+                      <button @click="exportEnquiries('xlsx', 'today'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">Excel</button>
+                      <button @click="exportEnquiries('pdf', 'today'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">PDF Document</button>
                     </div>
                   </div>
-                  <div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;padding:14px 16px;">
-                    <template x-if="feed.items.length === 0">
-                      <div style="text-align:center;padding:32px 0;color:var(--text-3);font-size:12px;font-style:italic;">No enquiries recorded.</div>
-                    </template>
-                    <template x-for="(item, idx) in feed.items" :key="idx">
-                      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-canvas);transition:border-color 0.13s;" @mouseenter="$el.style.borderColor='var(--border-glow)'" @mouseleave="$el.style.borderColor='var(--border)'">
-                        <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-                          <div style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:11.5px;font-weight:600;color:var(--text-1);" x-text="item.customer_name"></span>
-                            <span style="font-size:10px;color:var(--text-3);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px;" x-text="item.customer_email"></span>
-                          </div>
-                          <span style="font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="item.description"></span>
-                        </div>
-                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:10px;">
-                          <span style="font-size:9.5px;font-family:var(--font-mono);color:var(--text-3);" x-text="formatTime(item.timestamp).split(' ')[1] || formatTime(item.timestamp)"></span>
-                          <span class="badge" :class="item.status === 'Auto-Filtered' ? 'gray' : 'green'" x-text="item.status"></span>
-                        </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;padding:14px 16px;">
+                <template x-if="getFilteredList(todayMails).length === 0">
+                  <div style="text-align:center;padding:32px 0;color:var(--text-3);font-size:12px;font-style:italic;" x-text="t('No enquiries recorded.')"></div>
+                </template>
+                <template x-for="(item, idx) in getFilteredList(todayMails)" :key="idx">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-canvas);transition:border-color 0.13s;" @mouseenter="$el.style.borderColor='var(--border-glow)'" @mouseleave="$el.style.borderColor='var(--border)'">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:11.5px;font-weight:600;color:var(--text-1);" x-text="item.customer_name"></span>
+                        <span style="font-size:10px;color:var(--text-3);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;" x-text="item.customer_email"></span>
                       </div>
-                    </template>
+                      <span style="font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="item.description"></span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:10px;">
+                      <span style="font-size:9.5px;font-family:var(--font-mono);color:var(--text-3);" x-text="formatTime(item.timestamp).split(' ')[1] || formatTime(item.timestamp)"></span>
+                      <span class="badge" :class="item.status === 'Auto-Filtered' ? 'gray' : 'green'" x-text="item.status"></span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Yesterday's Enquiries Tab Panel -->
+            <div class="section-card" x-show="overviewSubTab === 'yesterday'" x-transition style="margin-top:20px;">
+              <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 class="section-title">
+                  <i data-lucide="history" class="w-3.5 h-3.5" style="color:var(--text-3)"></i>
+                  <span x-text="t('Yesterday\'s Enquiries')"></span>
+                </h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:10.5px;font-weight:600;font-family:var(--font-mono);color:var(--text-3);" x-text="getFilteredList(yesterdayMails).length + ' ' + t('emails')"></span>
+                  <!-- Export Menu -->
+                  <div class="export-container" x-data="{ open: false }" @click.away="open = false">
+                    <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:4px; padding:3px 8px; font-size:10.5px;">
+                      <i data-lucide="download" style="width:10px; height:10px;"></i>
+                      <span x-text="t('Export')"></span>
+                    </button>
+                    <div x-show="open" class="export-menu" style="display:none; min-width:110px;">
+                      <button @click="exportEnquiries('csv', 'yesterday'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">CSV</button>
+                      <button @click="exportEnquiries('xlsx', 'yesterday'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">Excel</button>
+                      <button @click="exportEnquiries('pdf', 'yesterday'); open = false;" class="export-item" style="padding:6px 10px; font-size:10.5px;">PDF Document</button>
+                    </div>
                   </div>
                 </div>
-              </template>
               </div>
+              <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;padding:14px 16px;">
+                <template x-if="getFilteredList(yesterdayMails).length === 0">
+                  <div style="text-align:center;padding:32px 0;color:var(--text-3);font-size:12px;font-style:italic;" x-text="t('No enquiries recorded.')"></div>
+                </template>
+                <template x-for="(item, idx) in getFilteredList(yesterdayMails)" :key="idx">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-canvas);transition:border-color 0.13s;" @mouseenter="$el.style.borderColor='var(--border-glow)'" @mouseleave="$el.style.borderColor='var(--border)'">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:11.5px;font-weight:600;color:var(--text-1);" x-text="item.customer_name"></span>
+                        <span style="font-size:10px;color:var(--text-3);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;" x-text="item.customer_email"></span>
+                      </div>
+                      <span style="font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="item.description"></span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:10px;">
+                      <span style="font-size:9.5px;font-family:var(--font-mono);color:var(--text-3);" x-text="formatTime(item.timestamp).split(' ')[1] || formatTime(item.timestamp)"></span>
+                      <span class="badge" :class="item.status === 'Auto-Filtered' ? 'gray' : 'green'" x-text="item.status"></span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
 
           <!-- System Log Console -->
             <div class="section-card" style="margin-top:20px;">
