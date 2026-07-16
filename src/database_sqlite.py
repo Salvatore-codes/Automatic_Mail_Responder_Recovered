@@ -281,21 +281,62 @@ def init_db_conn(conn):
             1
         ))
 
+    # 15. Users table for role isolation
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        email TEXT PRIMARY KEY,
+        full_name TEXT,
+        role TEXT, -- 'super_admin' or 'employee'
+        active INTEGER DEFAULT 1
+    )
+    """)
+    
+    cursor.execute("SELECT COUNT(*) FROM users")
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany("""
+        INSERT INTO users (email, full_name, role, active)
+        VALUES (?, ?, ?, ?)
+        """, [
+            ("superadmin@trofeo.com", "Super Admin", "super_admin", 1),
+            ("karthi@trofeo.com", "Karthikeyan", "employee", 1),
+            ("operator@trofeo.com", "Standard Operator", "employee", 1)
+        ])
+        
+    # 16. Shared Inbox Assignments — one inbox email shared across N users
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS shared_inbox_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inbox_email TEXT NOT NULL,
+        inbox_label TEXT,
+        user_email TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(inbox_email, user_email)
+    )
+    """)
+
+    # Migrate existing tables to support assigned_operator column
+    for table_name in ["quotations", "deficits", "unmatched_items", "activity_log"]:
+        try:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN assigned_operator TEXT DEFAULT 'operator@trofeo.com'")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+
     conn.commit()
 
 def init_db(tenant_id=None):
     conn = get_connection(tenant_id)
     conn.close()
 
-def log_quotation(invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source='email', tenant_id=None):
+def log_quotation(invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source='email', tenant_id=None, assigned_operator=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     now_str = get_now_ist_str()
+    op = assigned_operator or 'operator@trofeo.com'
     
     cursor.execute("""
-    INSERT OR REPLACE INTO quotations (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, now_str))
+    INSERT OR REPLACE INTO quotations (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, created_at, assigned_operator)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, source, now_str, op))
     
     conn.commit()
     conn.close()
@@ -396,16 +437,25 @@ def log_unmatched_item(customer_email, customer_name, original_body, source="unk
     conn.close()
     return last_id
 
-def get_all_unmatched_items(limit=100, tenant_id=None):
+def get_all_unmatched_items(limit=100, tenant_id=None, operator_email=None, operator_role=None):
     """Returns recent unmatched enquiries for use in reports and the dashboard."""
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, customer_email, customer_name, original_body, source, created_at
-        FROM unmatched_items
-        ORDER BY created_at DESC
-        LIMIT ?
-    """, (limit,))
+    if operator_role == 'employee' and operator_email:
+        cursor.execute("""
+            SELECT id, customer_email, customer_name, original_body, source, created_at
+            FROM unmatched_items
+            WHERE assigned_operator = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (operator_email.lower().strip(), limit))
+    else:
+        cursor.execute("""
+            SELECT id, customer_email, customer_name, original_body, source, created_at
+            FROM unmatched_items
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
     rows = cursor.fetchall()
     items = [dict(row) for row in rows]
     conn.close()
@@ -424,11 +474,14 @@ def delete_unmatched_item(item_id, tenant_id=None):
         conn.close()
 
 
-def get_unmatched_items_count(tenant_id=None):
+def get_unmatched_items_count(tenant_id=None, operator_email=None, operator_role=None):
     """Returns count of unmatched enquiries for dashboard stats."""
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as cnt FROM unmatched_items")
+    if operator_role == 'employee' and operator_email:
+        cursor.execute("SELECT COUNT(*) as cnt FROM unmatched_items WHERE assigned_operator = ?", (operator_email.lower().strip(),))
+    else:
+        cursor.execute("SELECT COUNT(*) as cnt FROM unmatched_items")
     row = cursor.fetchone()
     conn.close()
     return row["cnt"] if row else 0
@@ -538,25 +591,44 @@ def generate_next_invoice_id(tenant_id=None):
 # Initialize default DB on import
 init_db()
 
-def log_deficit(invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, tenant_id=None):
+def log_deficit(invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, tenant_id=None, assigned_operator=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     now_str = get_now_ist_str()
+    op = assigned_operator or 'operator@trofeo.com'
+    
+    if not assigned_operator and invoice_id:
+        try:
+            cursor.execute("SELECT assigned_operator FROM quotations WHERE invoice_id = ?", (invoice_id,))
+            row = cursor.fetchone()
+            if row:
+                op = row["assigned_operator"]
+        except Exception:
+            pass
+            
     cursor.execute("""
-    INSERT INTO deficits (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
-    """, (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, now_str))
+    INSERT INTO deficits (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at, assigned_operator)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+    """, (invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, now_str, op))
     conn.commit()
     conn.close()
 
-def get_all_deficits(tenant_id=None):
+def get_all_deficits(tenant_id=None, operator_email=None, operator_role=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at
-    FROM deficits
-    ORDER BY created_at DESC
-    """)
+    if operator_role == 'employee' and operator_email:
+        cursor.execute("""
+        SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at
+        FROM deficits
+        WHERE assigned_operator = ?
+        ORDER BY created_at DESC
+        """, (operator_email.lower().strip(),))
+    else:
+        cursor.execute("""
+        SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, customer_phone, status, created_at
+        FROM deficits
+        ORDER BY created_at DESC
+        """)
     rows = cursor.fetchall()
     items = [dict(row) for row in rows]
     conn.close()
@@ -569,15 +641,24 @@ def resolve_deficit(deficit_id, tenant_id=None):
     conn.commit()
     conn.close()
 
-def get_escalated_negotiations(tenant_id=None):
+def get_escalated_negotiations(tenant_id=None, operator_email=None, operator_role=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, created_at
-    FROM quotations
-    WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING')
-    ORDER BY created_at DESC
-    """)
+    if operator_role == 'employee' and operator_email:
+        cursor.execute("""
+        SELECT invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, created_at
+        FROM quotations
+        WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING')
+          AND assigned_operator = ?
+        ORDER BY created_at DESC
+        """, (operator_email.lower().strip(),))
+    else:
+        cursor.execute("""
+        SELECT invoice_id, customer_name, customer_email, customer_phone, subtotal, discount_pct, tax_amt, grand_total, status, created_at
+        FROM quotations
+        WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING')
+        ORDER BY created_at DESC
+        """)
     rows = cursor.fetchall()
     items = [dict(row) for row in rows]
     conn.close()
@@ -660,16 +741,26 @@ def get_latest_message_id(invoice_id, tenant_id=None):
         conn.close()
 
 
-def log_activity(event_type, invoice_id=None, customer_name=None, customer_email=None, description=None, tenant_id=None):
+def log_activity(event_type, invoice_id=None, customer_name=None, customer_email=None, description=None, tenant_id=None, assigned_operator=None):
     """Logs a structured activity event to the activity_log table."""
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     now_str = get_now_ist_str()
     try:
+        if not assigned_operator and invoice_id:
+            try:
+                cursor.execute("SELECT assigned_operator FROM quotations WHERE invoice_id = ?", (invoice_id,))
+                row = cursor.fetchone()
+                if row:
+                    assigned_operator = row["assigned_operator"]
+            except Exception:
+                pass
+        
+        op = assigned_operator or 'operator@trofeo.com'
         cursor.execute("""
-        INSERT INTO activity_log (event_type, invoice_id, customer_name, customer_email, description, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (event_type, invoice_id, customer_name, customer_email, description, now_str))
+        INSERT INTO activity_log (event_type, invoice_id, customer_name, customer_email, description, timestamp, assigned_operator)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (event_type, invoice_id, customer_name, customer_email, description, now_str, op))
         conn.commit()
     except Exception as e:
         print(f"[ActivityLog] Failed to log activity: {e}")
@@ -677,17 +768,26 @@ def log_activity(event_type, invoice_id=None, customer_name=None, customer_email
         conn.close()
 
 
-def get_activity_log(limit=200, tenant_id=None):
+def get_activity_log(limit=200, tenant_id=None, operator_email=None, operator_role=None):
     """Returns the most recent structured activity log entries for the dashboard."""
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-            SELECT id, event_type, invoice_id, customer_name, customer_email, description, timestamp
-            FROM activity_log
-            ORDER BY id DESC
-            LIMIT ?
-        """, (limit,))
+        if operator_role == 'employee' and operator_email:
+            cursor.execute("""
+                SELECT id, event_type, invoice_id, customer_name, customer_email, description, timestamp
+                FROM activity_log
+                WHERE assigned_operator = ?
+                ORDER BY id DESC
+                LIMIT ?
+            """, (operator_email.lower().strip(), limit))
+        else:
+            cursor.execute("""
+                SELECT id, event_type, invoice_id, customer_name, customer_email, description, timestamp
+                FROM activity_log
+                ORDER BY id DESC
+                LIMIT ?
+            """, (limit,))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
     except Exception as e:
@@ -1163,5 +1263,133 @@ def set_active_vertical(profile_id, tenant_id=None):
     finally:
         conn.close()
 
+def get_all_users(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT email, full_name, role, active FROM users ORDER BY email ASC")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"[Database] Error listing users: {e}")
+        return []
+    finally:
+        conn.close()
+
+def add_user(email, full_name, role, active=1, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        INSERT OR REPLACE INTO users (email, full_name, role, active)
+        VALUES (?, ?, ?, ?)
+        """, (email.lower().strip(), full_name.strip(), role.strip(), int(active)))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Failed to save user: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_user(email, tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM users WHERE email = ?", (email.lower().strip(),))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Failed to delete user: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+# ── Shared Inbox Assignments ─────────────────────────────────────────────────
+
+def get_shared_inboxes(tenant_id=None):
+    """Return all shared inbox entries grouped: [{inbox_email, inbox_label, users:[...]}, ...]"""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT s.inbox_email, s.inbox_label, s.user_email, u.full_name
+            FROM shared_inbox_assignments s
+            LEFT JOIN users u ON u.email = s.user_email
+            ORDER BY s.inbox_email ASC, s.user_email ASC
+        """)
+        rows = cursor.fetchall()
+        # Group by inbox_email
+        from collections import OrderedDict
+        grouped = OrderedDict()
+        for row in rows:
+            key = row[0]  # inbox_email
+            if key not in grouped:
+                grouped[key] = {"inbox_email": row[0], "inbox_label": row[1] or row[0], "users": []}
+            grouped[key]["users"].append({"user_email": row[2], "full_name": row[3] or row[2]})
+        return list(grouped.values())
+    except Exception as e:
+        print(f"[Database] Error listing shared inboxes: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def add_shared_inbox_assignment(inbox_email, inbox_label, user_email, tenant_id=None):
+    """Assign a user to a shared inbox email."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT OR IGNORE INTO shared_inbox_assignments (inbox_email, inbox_label, user_email)
+            VALUES (?, ?, ?)
+        """, (inbox_email.lower().strip(), inbox_label.strip() if inbox_label else inbox_email.strip(), user_email.lower().strip()))
+        # Update label for all rows with this inbox_email if label changed
+        if inbox_label:
+            cursor.execute(
+                "UPDATE shared_inbox_assignments SET inbox_label = ? WHERE inbox_email = ?",
+                (inbox_label.strip(), inbox_email.lower().strip())
+            )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Failed to add shared inbox assignment: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def remove_shared_inbox_assignment(inbox_email, user_email, tenant_id=None):
+    """Remove a specific user from a shared inbox."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM shared_inbox_assignments WHERE inbox_email = ? AND user_email = ?",
+            (inbox_email.lower().strip(), user_email.lower().strip())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Failed to remove shared inbox assignment: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_shared_inbox(inbox_email, tenant_id=None):
+    """Delete an entire shared inbox and all its assignments."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM shared_inbox_assignments WHERE inbox_email = ?", (inbox_email.lower().strip(),))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Failed to delete shared inbox: {e}")
+        return False
+    finally:
+        conn.close()
 
 

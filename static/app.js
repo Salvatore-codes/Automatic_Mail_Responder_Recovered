@@ -8,11 +8,17 @@ function dashboardApp() {
       { id: 'pricing', label: 'Dynamic Pricing', icon: 'coins', badge: null, badgeColor: 'blue', description: 'Configure customer contract pricing and category-level discount tiers.' },
       { id: 'training', label: 'AI Training', icon: 'brain', badge: null, badgeColor: 'blue', description: 'Train and configure relevance keywords for automatic email classification.' },
       { id: 'verticals', label: 'AI Onboarding', icon: 'sparkles', badge: null, badgeColor: 'blue', description: 'Train and configure active vertical guidelines, industry rules, and tones using autonomous AI.' },
-      { id: 'customers', label: 'CRM Segments', icon: 'users', badge: null, badgeColor: 'blue', description: 'Group and classify customers based on historical purchase volume and business value.' },
-      { id: 'activity', label: 'Activity Log', icon: 'activity', badge: null, badgeColor: 'blue', description: 'Real-time event stream: every email received, quote generated, reply handled, and error logged with timestamps.' }
+      { id: 'activity', label: 'Activity Log', icon: 'activity', badge: null, badgeColor: 'blue', description: 'Real-time event stream: every email received, quote generated, reply handled, and error logged with timestamps.' },
+      { id: 'access', label: 'User Access', icon: 'shield-alert', badge: null, badgeColor: 'blue', description: 'Manage employee system access, roles, and pipeline seniority rights.' }
     ],
     
     activeTab: 'overview',
+    isLoggedIn: false,
+    currentUserEmail: localStorage.getItem('currentUserEmail') || 'superadmin@trofeo.com',
+    currentUser: { email: '', role: '', full_name: '' },
+    selectedOperatorEmail: 'all',
+    usersList: [],
+    sharedInboxes: [],
     language: localStorage.getItem('language') || 'en',
     translations: {
       en: {
@@ -28,7 +34,7 @@ function dashboardApp() {
         'AI Onboarding': 'AI Onboarding',
         'CRM Segments': 'CRM Segments',
         'Activity Log': 'Activity Log',
-        'Search invoice, client, SKU…': 'Search invoice, client, SKU…',
+        'Search invoice, client, SKUâ€¦': 'Search invoice, client, SKUâ€¦',
         'Automatic': 'Automatic',
         'Manual': 'Manual',
         'Live': 'Live',
@@ -48,6 +54,21 @@ function dashboardApp() {
         'AI Onboarding': 'AI சேர்க்கை',
         'CRM Segments': 'வாடிக்கையாளர் பிரிவுகள்',
         'Activity Log': 'செயல்பாட்டுப் பதிவு',
+        'User Access': 'பயனர் அணுகல்',
+        'User Access Control': 'பயனர் அணுகல் கட்டுப்பாடு',
+        'Security & Operations': 'பாதுகாப்பு & செயல்பாடுகள்',
+        'Active Policy': 'செயலில் உள்ள கொள்கை',
+        'Authorized Personnel': 'அங்கீகரிக்கப்பட்ட பணியாளர்கள்',
+        'Grant System Access': 'அணுகல் அனுமதி வழங்கு',
+        'Access Level': 'அணுகல் நிலை',
+        'Sales Operator (Restricted)': 'விற்பனை இயக்குநர் (வரம்புக்குட்பட்டது)',
+        'Super Admin (Full Access)': 'சூப்பர் அட்மின் (முழு அணுகல்)',
+        'Add Authorized User': 'பயனரைச் சேர்',
+        'Access Token / Password': 'அணுகல் டோக்கன் / கடவுச்சொல்',
+        'Viewing': 'பார்ப்பது',
+        'emails': 'மின்னஞ்சல்கள்',
+        'Export': 'ஏற்றுமதி',
+        'No enquiries recorded.': 'விசாரணைகள் எதுவும் பதிவு செய்யப்படவில்லை.',
         'Search invoice, client, SKU…': 'விலைப்பட்டியல், வாடிக்கையாளர், குறியீடு தேடுக...',
         'Automatic': 'தானியங்கி',
         'Manual': 'கைமுறை',
@@ -63,209 +84,210 @@ function dashboardApp() {
         'Cyberpunk': 'சைபர்பங்க்',
         'Admin Control Panel': 'நிர்வாகக் கட்டுப்பாட்டு குழு',
         
+        
         // Overview Tab Details
-        'Operations Command Center': 'செயல்பாட்டு கட்டுப்பாட்டு மையம்',
-        'Good morning': 'காலை வணக்கம்',
-        'Good afternoon': 'மதிய வணக்கம்',
-        'Good evening': 'மாலை வணக்கம்',
-        'Good morning, Operator': 'காலை வணக்கம், இயக்குநர்',
-        'Good afternoon, Operator': 'மதிய வணக்கம், இயக்குநர்',
-        'Good evening, Operator': 'மாலை வணக்கம், இயக்குநர்',
-        'enquiries handled all-time': 'இதுவரை கையாளப்பட்ட விசாரணைகள்',
-        'Automation Rate': 'தானியங்கி வீதம்',
-        'Processed Enquiries': 'செயலாக்கப்பட்ட விசாரணைகள்',
-        'Total emails ingested': 'மொத்தம் பெறப்பட்ட மின்னஞ்சல்கள்',
-        'Accuracy Score': 'துல்லிய மதிப்பெண்',
-        'Matching engine precision': 'பொருத்த இயந்திரத் துல்லியம்',
-        'Escalated Disputes': 'மேல்முறையீடு செய்யப்பட்டவை',
-        'Requires operator review': 'இயக்குநரின் மதிப்பாய்வு தேவை',
-        'Alt. Matches Found': 'மாற்றுப் பொருட்கள் கண்டறியப்பட்டது',
-        'Deficit alternatives resolved': 'பற்றாக்குறை தீர்வுகள்',
-        'Live Pipeline': 'நேரடி செயல்பாடுகள்',
-        'Sales Intelligence': 'விற்பனைத் தகவல்',
-        'Operations Split': 'செயல்பாட்டுப் பகிர்வு',
-        'Operations Dispatcher Split': 'செயல்பாட்டுப் பகிர்வு வரைபடம்',
-        'Ratio of automated responses vs. human-in-the-loop reviews': 'தானியங்கி பதில்கள் மற்றும் நேரடி மதிப்புரைகளின் விகிதம்',
-        'Automated': 'தானியங்கி',
-        'Auto-Responded': 'தானியங்கி பதிலளிப்பு',
-        'Human Review': 'நேரடி மதிப்பாய்வு',
-        'Total Received': 'மொத்தம் பெறப்பட்டவை',
-        'all-time': 'இதுவரை',
-        'Sales Intelligence & Leakage': 'விற்பனைத் தகவல் & கசிவு பகுப்பாய்வு',
-        'Immediate operational insights, high-value clients, top quotes, and conversion leakages.': 'செயல்பாட்டு நுண்ணறிவு, முக்கிய வாடிக்கையாளர்கள் மற்றும் கசிவு பகுப்பாய்வு.',
-        'Conversion Funnel & Leakage': 'மாற்றப் புனல் & கசிவு',
-        'Total Ingested': 'மொத்தம் பெறப்பட்டவை',
-        'Converted (Quotes Sent)': 'மாற்றப்பட்டது (அனுப்பப்பட்டவை)',
-        'Leakage (Unmatched/Rejected)': 'கசிவு (பொருந்தாதவை/நிராகரிக்கப்பட்டவை)',
-        'Leakage Analysis:': 'கசிவு பகுப்பாய்வு:',
-        'Unmatched items:': 'பொருந்தாத பொருட்கள்:',
-        'Rejected discounts:': 'நிராகரிக்கப்பட்ட தள்ளுபடிகள்:',
-        'enquiries': 'விசாரணைகள்',
-        'Top Customers': 'முக்கிய வாடிக்கையாளர்கள்',
-        'Name / Email': 'பெயர் / மின்னஞ்சல்',
-        'Quotes': 'விலைப்பட்டியல்கள்',
-        'Value': 'மதிப்பு',
-        'No customers record': 'வாடிக்கையாளர் பதிவுகள் இல்லை',
-        'Top Quotations': 'முக்கிய விலைப்பட்டியல்கள்',
-        'Quote ID': 'விலைப்பட்டியல் எண்',
-        'Customer': 'வாடிக்கையாளர்',
-        'Total': 'மொத்தம்',
-        'No quotations record': 'விலைப்பட்டியல் பதிவுகள் இல்லை',
-        'Live Operations Pipeline': 'நேரடி செயல்பாட்டு வரிசை',
-        'Refreshing…': 'புதுப்பிக்கப்படுகிறது...',
-        'Auto-refresh every 10s': 'ஒவ்வொரு 10 வினாடிக்கும் புதுப்பிக்கப்படும்',
-        'Last updated:': 'கடைசியாக புதுப்பிக்கப்பட்டது:',
-        'Refresh Now': 'இப்போது புதுப்பி',
-        'New Mail': 'புதிய மின்னஞ்சல்',
-        'Reply': 'பதில்',
-        'Customer Request': 'வாடிக்கையாளர் கோரிக்கை',
-        'Rejected': 'நிராகரிக்கப்பட்டவை',
-        'Pending': 'நிலுவையில் உள்ளவை',
-        'New Request': 'புதிய கோரிக்கை',
-        'View Request': 'கோரிக்கையைப் பார்',
-        'Auto-Quoted': 'தானியங்கி விலைப்பட்டியல்',
-        'View Thread': 'பின்னணி விபரங்கள்',
-        'View Quote': 'விலைப்பட்டியலைப் பார்',
-        'Replied': 'பதிலளித்தார்',
-        'Escalated': 'மேல்முறையீடு',
-        'Active': 'செயலில் உள்ளவை',
-        'Decide': 'முடிவெடு',
-        'Stock Shortage': 'இருப்பு பற்றாக்குறை',
-        'Shortage:': 'பற்றாக்குறை:',
-        'Resolve': 'தீர்வு காண்',
-        'Draft Quotation': 'வரைவு விலைப்பட்டியல்',
-        'Draft Amount:': 'வரைவு தொகை:',
-        'Review': 'Review (மதிப்பாய்வு)',
-        'Approve & Send': 'Approve & Send (அனுப்பு)',
-        'Unmatched': 'பொருந்தாதவை',
-        'View': 'பார்',
-        'All clear': 'அனைத்தும் சரி',
-        "Today's Enquiries": 'இன்றைய விசாரணைகள்',
-        "Yesterday's Enquiries": 'நேற்றைய விசாரணைகள்',
-        'emails': 'மின்னஞ்சல்கள்',
-        'No enquiries recorded.': 'விசாரணைகள் ஏதும் இல்லை.',
-        'Export': 'ஏற்றுமதி செய்க',
-        'Search deficits...': 'தேடுக...',
-        'Refresh': 'புதுப்பி',
-        'Responded': 'பதிலளிக்கப்பட்டவை',
+        'Operations Command Center': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®•à®Ÿà¯�à®Ÿà¯�à®ªà¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®®à¯ˆà®¯à®®à¯�',
+        'Good morning': 'à®•à®¾à®²à¯ˆ à®µà®£à®•à¯�à®•à®®à¯�',
+        'Good afternoon': 'à®®à®¤à®¿à®¯ à®µà®£à®•à¯�à®•à®®à¯�',
+        'Good evening': 'à®®à®¾à®²à¯ˆ à®µà®£à®•à¯�à®•à®®à¯�',
+        'Good morning, Operator': 'à®•à®¾à®²à¯ˆ à®µà®£à®•à¯�à®•à®®à¯�, à®‡à®¯à®•à¯�à®•à¯�à®¨à®°à¯�',
+        'Good afternoon, Operator': 'à®®à®¤à®¿à®¯ à®µà®£à®•à¯�à®•à®®à¯�, à®‡à®¯à®•à¯�à®•à¯�à®¨à®°à¯�',
+        'Good evening, Operator': 'à®®à®¾à®²à¯ˆ à®µà®£à®•à¯�à®•à®®à¯�, à®‡à®¯à®•à¯�à®•à¯�à®¨à®°à¯�',
+        'enquiries handled all-time': 'à®‡à®¤à¯�à®µà®°à¯ˆ à®•à¯ˆà®¯à®¾à®³à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®µà®¿à®šà®¾à®°à®£à¯ˆà®•à®³à¯�',
+        'Automation Rate': 'à®¤à®¾à®©à®¿à®¯à®™à¯�à®•à®¿ à®µà¯€à®¤à®®à¯�',
+        'Processed Enquiries': 'à®šà¯†à®¯à®²à®¾à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®µà®¿à®šà®¾à®°à®£à¯ˆà®•à®³à¯�',
+        'Total emails ingested': 'à®®à¯Šà®¤à¯�à®¤à®®à¯� à®ªà¯†à®±à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯�à®•à®³à¯�',
+        'Accuracy Score': 'à®¤à¯�à®²à¯�à®²à®¿à®¯ à®®à®¤à®¿à®ªà¯�à®ªà¯†à®£à¯�',
+        'Matching engine precision': 'à®ªà¯Šà®°à¯�à®¤à¯�à®¤ à®‡à®¯à®¨à¯�à®¤à®¿à®°à®¤à¯� à®¤à¯�à®²à¯�à®²à®¿à®¯à®®à¯�',
+        'Escalated Disputes': 'à®®à¯‡à®²à¯�à®®à¯�à®±à¯ˆà®¯à¯€à®Ÿà¯� à®šà¯†à®¯à¯�à®¯à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ',
+        'Requires operator review': 'à®‡à®¯à®•à¯�à®•à¯�à®¨à®°à®¿à®©à¯� à®®à®¤à®¿à®ªà¯�à®ªà®¾à®¯à¯�à®µà¯� à®¤à¯‡à®µà¯ˆ',
+        'Alt. Matches Found': 'à®®à®¾à®±à¯�à®±à¯�à®ªà¯� à®ªà¯Šà®°à¯�à®Ÿà¯�à®•à®³à¯� à®•à®£à¯�à®Ÿà®±à®¿à®¯à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¤à¯�',
+        'Deficit alternatives resolved': 'à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆ à®¤à¯€à®°à¯�à®µà¯�à®•à®³à¯�',
+        'Live Pipeline': 'à®¨à¯‡à®°à®Ÿà®¿ à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®•à®³à¯�',
+        'Sales Intelligence': 'à®µà®¿à®±à¯�à®ªà®©à¯ˆà®¤à¯� à®¤à®•à®µà®²à¯�',
+        'Operations Split': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯�à®ªà¯� à®ªà®•à®¿à®°à¯�à®µà¯�',
+        'Operations Dispatcher Split': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯�à®ªà¯� à®ªà®•à®¿à®°à¯�à®µà¯� à®µà®°à¯ˆà®ªà®Ÿà®®à¯�',
+        'Ratio of automated responses vs. human-in-the-loop reviews': 'à®¤à®¾à®©à®¿à®¯à®™à¯�à®•à®¿ à®ªà®¤à®¿à®²à¯�à®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®¨à¯‡à®°à®Ÿà®¿ à®®à®¤à®¿à®ªà¯�à®ªà¯�à®°à¯ˆà®•à®³à®¿à®©à¯� à®µà®¿à®•à®¿à®¤à®®à¯�',
+        'Automated': 'à®¤à®¾à®©à®¿à®¯à®™à¯�à®•à®¿',
+        'Auto-Responded': 'à®¤à®¾à®©à®¿à®¯à®™à¯�à®•à®¿ à®ªà®¤à®¿à®²à®³à®¿à®ªà¯�à®ªà¯�',
+        'Human Review': 'à®¨à¯‡à®°à®Ÿà®¿ à®®à®¤à®¿à®ªà¯�à®ªà®¾à®¯à¯�à®µà¯�',
+        'Total Received': 'à®®à¯Šà®¤à¯�à®¤à®®à¯� à®ªà¯†à®±à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ',
+        'all-time': 'à®‡à®¤à¯�à®µà®°à¯ˆ',
+        'Sales Intelligence & Leakage': 'à®µà®¿à®±à¯�à®ªà®©à¯ˆà®¤à¯� à®¤à®•à®µà®²à¯� & à®•à®šà®¿à®µà¯� à®ªà®•à¯�à®ªà¯�à®ªà®¾à®¯à¯�à®µà¯�',
+        'Immediate operational insights, high-value clients, top quotes, and conversion leakages.': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®¨à¯�à®£à¯�à®£à®±à®¿à®µà¯�, à®®à¯�à®•à¯�à®•à®¿à®¯ à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�à®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®•à®šà®¿à®µà¯� à®ªà®•à¯�à®ªà¯�à®ªà®¾à®¯à¯�à®µà¯�.',
+        'Conversion Funnel & Leakage': 'à®®à®¾à®±à¯�à®±à®ªà¯� à®ªà¯�à®©à®²à¯� & à®•à®šà®¿à®µà¯�',
+        'Total Ingested': 'à®®à¯Šà®¤à¯�à®¤à®®à¯� à®ªà¯†à®±à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ',
+        'Converted (Quotes Sent)': 'à®®à®¾à®±à¯�à®±à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¤à¯� (à®…à®©à¯�à®ªà¯�à®ªà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ)',
+        'Leakage (Unmatched/Rejected)': 'à®•à®šà®¿à®µà¯� (à®ªà¯Šà®°à¯�à®¨à¯�à®¤à®¾à®¤à®µà¯ˆ/à®¨à®¿à®°à®¾à®•à®°à®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ)',
+        'Leakage Analysis:': 'à®•à®šà®¿à®µà¯� à®ªà®•à¯�à®ªà¯�à®ªà®¾à®¯à¯�à®µà¯�:',
+        'Unmatched items:': 'à®ªà¯Šà®°à¯�à®¨à¯�à®¤à®¾à®¤ à®ªà¯Šà®°à¯�à®Ÿà¯�à®•à®³à¯�:',
+        'Rejected discounts:': 'à®¨à®¿à®°à®¾à®•à®°à®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®¤à®³à¯�à®³à¯�à®ªà®Ÿà®¿à®•à®³à¯�:',
+        'enquiries': 'à®µà®¿à®šà®¾à®°à®£à¯ˆà®•à®³à¯�',
+        'Top Customers': 'à®®à¯�à®•à¯�à®•à®¿à®¯ à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�à®•à®³à¯�',
+        'Name / Email': 'à®ªà¯†à®¯à®°à¯� / à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯�',
+        'Quotes': 'à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�à®•à®³à¯�',
+        'Value': 'à®®à®¤à®¿à®ªà¯�à®ªà¯�',
+        'No customers record': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®ªà®¤à®¿à®µà¯�à®•à®³à¯� à®‡à®²à¯�à®²à¯ˆ',
+        'Top Quotations': 'à®®à¯�à®•à¯�à®•à®¿à®¯ à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�à®•à®³à¯�',
+        'Quote ID': 'à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯� à®Žà®£à¯�',
+        'Customer': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�',
+        'Total': 'à®®à¯Šà®¤à¯�à®¤à®®à¯�',
+        'No quotations record': 'à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯� à®ªà®¤à®¿à®µà¯�à®•à®³à¯� à®‡à®²à¯�à®²à¯ˆ',
+        'Live Operations Pipeline': 'à®¨à¯‡à®°à®Ÿà®¿ à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®µà®°à®¿à®šà¯ˆ',
+        'Refreshingâ€¦': 'à®ªà¯�à®¤à¯�à®ªà¯�à®ªà®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®•à®¿à®±à®¤à¯�...',
+        'Auto-refresh every 10s': 'à®’à®µà¯�à®µà¯Šà®°à¯� 10 à®µà®¿à®©à®¾à®Ÿà®¿à®•à¯�à®•à¯�à®®à¯� à®ªà¯�à®¤à¯�à®ªà¯�à®ªà®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®®à¯�',
+        'Last updated:': 'à®•à®Ÿà¯ˆà®šà®¿à®¯à®¾à®• à®ªà¯�à®¤à¯�à®ªà¯�à®ªà®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¤à¯�:',
+        'Refresh Now': 'à®‡à®ªà¯�à®ªà¯‹à®¤à¯� à®ªà¯�à®¤à¯�à®ªà¯�à®ªà®¿',
+        'New Mail': 'à®ªà¯�à®¤à®¿à®¯ à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯�',
+        'Reply': 'à®ªà®¤à®¿à®²à¯�',
+        'Customer Request': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®•à¯‹à®°à®¿à®•à¯�à®•à¯ˆ',
+        'Rejected': 'à®¨à®¿à®°à®¾à®•à®°à®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ',
+        'Pending': 'à®¨à®¿à®²à¯�à®µà¯ˆà®¯à®¿à®²à¯� à®‰à®³à¯�à®³à®µà¯ˆ',
+        'New Request': 'à®ªà¯�à®¤à®¿à®¯ à®•à¯‹à®°à®¿à®•à¯�à®•à¯ˆ',
+        'View Request': 'à®•à¯‹à®°à®¿à®•à¯�à®•à¯ˆà®¯à¯ˆà®ªà¯� à®ªà®¾à®°à¯�',
+        'Auto-Quoted': 'à®¤à®¾à®©à®¿à®¯à®™à¯�à®•à®¿ à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�',
+        'View Thread': 'à®ªà®¿à®©à¯�à®©à®£à®¿ à®µà®¿à®ªà®°à®™à¯�à®•à®³à¯�',
+        'View Quote': 'à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯ˆà®ªà¯� à®ªà®¾à®°à¯�',
+        'Replied': 'à®ªà®¤à®¿à®²à®³à®¿à®¤à¯�à®¤à®¾à®°à¯�',
+        'Escalated': 'à®®à¯‡à®²à¯�à®®à¯�à®±à¯ˆà®¯à¯€à®Ÿà¯�',
+        'Active': 'à®šà¯†à®¯à®²à®¿à®²à¯� à®‰à®³à¯�à®³à®µà¯ˆ',
+        'Decide': 'à®®à¯�à®Ÿà®¿à®µà¯†à®Ÿà¯�',
+        'Stock Shortage': 'à®‡à®°à¯�à®ªà¯�à®ªà¯� à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆ',
+        'Shortage:': 'à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆ:',
+        'Resolve': 'à®¤à¯€à®°à¯�à®µà¯� à®•à®¾à®£à¯�',
+        'Draft Quotation': 'à®µà®°à¯ˆà®µà¯� à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�',
+        'Draft Amount:': 'à®µà®°à¯ˆà®µà¯� à®¤à¯Šà®•à¯ˆ:',
+        'Review': 'Review (à®®à®¤à®¿à®ªà¯�à®ªà®¾à®¯à¯�à®µà¯�)',
+        'Approve & Send': 'Approve & Send (à®…à®©à¯�à®ªà¯�à®ªà¯�)',
+        'Unmatched': 'à®ªà¯Šà®°à¯�à®¨à¯�à®¤à®¾à®¤à®µà¯ˆ',
+        'View': 'à®ªà®¾à®°à¯�',
+        'All clear': 'à®…à®©à¯ˆà®¤à¯�à®¤à¯�à®®à¯� à®šà®°à®¿',
+        "Today's Enquiries": 'à®‡à®©à¯�à®±à¯ˆà®¯ à®µà®¿à®šà®¾à®°à®£à¯ˆà®•à®³à¯�',
+        "Yesterday's Enquiries": 'à®¨à¯‡à®±à¯�à®±à¯ˆà®¯ à®µà®¿à®šà®¾à®°à®£à¯ˆà®•à®³à¯�',
+        'emails': 'à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯�à®•à®³à¯�',
+        'No enquiries recorded.': 'à®µà®¿à®šà®¾à®°à®£à¯ˆà®•à®³à¯� à®�à®¤à¯�à®®à¯� à®‡à®²à¯�à®²à¯ˆ.',
+        'Export': 'à®�à®±à¯�à®±à¯�à®®à®¤à®¿ à®šà¯†à®¯à¯�à®•',
+        'Search deficits...': 'à®¤à¯‡à®Ÿà¯�à®•...',
+        'Refresh': 'à®ªà¯�à®¤à¯�à®ªà¯�à®ªà®¿',
+        'Responded': 'à®ªà®¤à®¿à®²à®³à®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ',
         
         // Deficits Tab Details
-        'Inventory Fulfillment': 'சரக்கு இருப்பு மேலாண்மை',
-        'Stock Deficits': 'இருப்பு பற்றாக்குறைகள்',
-        'Match alternatives and clear out-of-stock order lines before they stall a quotation.': 'மாற்றுப் பொருட்களைப் பொருத்தி, தடையற்ற விலைப்பட்டியலை உறுதி செய்யவும்.',
-        'Outstanding Deficits': 'நிலுவையில் உள்ள பற்றாக்குறைகள்',
-        'Resolved Matches': 'தீர்வு காணப்பட்டவை',
-        'Affected SKUs': 'பாதிக்கப்பட்ட தயாரிப்புகள்',
-        'Customers Waiting': 'காத்திருக்கும் வாடிக்கையாளர்கள்',
-        'Outstanding Stock Deficit Queue': 'நிலுவையில் உள்ள பற்றாக்குறை வரிசை',
-        'Invoice ID': 'விலைப்பட்டியல் எண்',
-        'Missing Catalog SKU': 'பற்றாக்குறை உள்ள தயாரிப்பு',
-        'Customer Name & Contact': 'வாடிக்கையாளர் பெயர் & தொடர்பு',
-        'Qty Shortage': 'பற்றாக்குறை அளவு',
-        'Stock Status': 'இருப்பு நிலை',
-        'Status': 'நிலை',
-        'Operation Action': 'செயல்பாடு',
-        'No deficits or stock shortages detected.': 'இருப்பு பற்றாக்குறைகள் ஏதும் இல்லை.',
-        'Resolve Match': 'தீர்வு காண்',
-        'Done': 'முடிந்தது',
+        'Inventory Fulfillment': 'à®šà®°à®•à¯�à®•à¯� à®‡à®°à¯�à®ªà¯�à®ªà¯� à®®à¯‡à®²à®¾à®£à¯�à®®à¯ˆ',
+        'Stock Deficits': 'à®‡à®°à¯�à®ªà¯�à®ªà¯� à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆà®•à®³à¯�',
+        'Match alternatives and clear out-of-stock order lines before they stall a quotation.': 'à®®à®¾à®±à¯�à®±à¯�à®ªà¯� à®ªà¯Šà®°à¯�à®Ÿà¯�à®•à®³à¯ˆà®ªà¯� à®ªà¯Šà®°à¯�à®¤à¯�à®¤à®¿, à®¤à®Ÿà¯ˆà®¯à®±à¯�à®± à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯ˆ à®‰à®±à¯�à®¤à®¿ à®šà¯†à®¯à¯�à®¯à®µà¯�à®®à¯�.',
+        'Outstanding Deficits': 'à®¨à®¿à®²à¯�à®µà¯ˆà®¯à®¿à®²à¯� à®‰à®³à¯�à®³ à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆà®•à®³à¯�',
+        'Resolved Matches': 'à®¤à¯€à®°à¯�à®µà¯� à®•à®¾à®£à®ªà¯�à®ªà®Ÿà¯�à®Ÿà®µà¯ˆ',
+        'Affected SKUs': 'à®ªà®¾à®¤à®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯�à®•à®³à¯�',
+        'Customers Waiting': 'à®•à®¾à®¤à¯�à®¤à®¿à®°à¯�à®•à¯�à®•à¯�à®®à¯� à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�à®•à®³à¯�',
+        'Outstanding Stock Deficit Queue': 'à®¨à®¿à®²à¯�à®µà¯ˆà®¯à®¿à®²à¯� à®‰à®³à¯�à®³ à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆ à®µà®°à®¿à®šà¯ˆ',
+        'Invoice ID': 'à®µà®¿à®²à¯ˆà®ªà¯�à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯� à®Žà®£à¯�',
+        'Missing Catalog SKU': 'à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆ à®‰à®³à¯�à®³ à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯�',
+        'Customer Name & Contact': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®ªà¯†à®¯à®°à¯� & à®¤à¯Šà®Ÿà®°à¯�à®ªà¯�',
+        'Qty Shortage': 'à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆ à®…à®³à®µà¯�',
+        'Stock Status': 'à®‡à®°à¯�à®ªà¯�à®ªà¯� à®¨à®¿à®²à¯ˆ',
+        'Status': 'à®¨à®¿à®²à¯ˆ',
+        'Operation Action': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�',
+        'No deficits or stock shortages detected.': 'à®‡à®°à¯�à®ªà¯�à®ªà¯� à®ªà®±à¯�à®±à®¾à®•à¯�à®•à¯�à®±à¯ˆà®•à®³à¯� à®�à®¤à¯�à®®à¯� à®‡à®²à¯�à®²à¯ˆ.',
+        'Resolve Match': 'à®¤à¯€à®°à¯�à®µà¯� à®•à®¾à®£à¯�',
+        'Done': 'à®®à¯�à®Ÿà®¿à®¨à¯�à®¤à®¤à¯�',
         
         // Negotiations Tab Details
-        'Deal Optimization': 'ஒப்பந்த உகப்பாக்கம்',
-        'Escalated Negotiations': 'பேச்சுவார்த்தைகள்',
-        'Review and approve custom discounts requested by high-value customers.': 'முக்கிய வாடிக்கையாளர்களின் சிறப்புத் தள்ளுபடி கோரிக்கைகளை அங்கீகரிக்கவும்.',
-        'Outstanding Requests': 'நிலுவையில் உள்ள கோரிக்கைகள்',
-        'Average Discount': 'சராசரி தள்ளுபடி',
-        'Conversion Potential': 'மாற்ற சாத்தியக்கூறு',
-        'Dispute Resolution Queue': 'தீர்வு வரிசை',
-        'Requested Discount': 'கோரப்பட்ட தள்ளுபடி',
-        'Approve': 'அங்கீகரி',
-        'Reject': 'நிராகரி',
-        'No pending negotiations escalated.': 'நிலுவையில் உள்ள பேச்சுவார்த்தைகள் ஏதும் இல்லை.',
+        'Deal Optimization': 'à®’à®ªà¯�à®ªà®¨à¯�à®¤ à®‰à®•à®ªà¯�à®ªà®¾à®•à¯�à®•à®®à¯�',
+        'Escalated Negotiations': 'à®ªà¯‡à®šà¯�à®šà¯�à®µà®¾à®°à¯�à®¤à¯�à®¤à¯ˆà®•à®³à¯�',
+        'Review and approve custom discounts requested by high-value customers.': 'à®®à¯�à®•à¯�à®•à®¿à®¯ à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�à®•à®³à®¿à®©à¯� à®šà®¿à®±à®ªà¯�à®ªà¯�à®¤à¯� à®¤à®³à¯�à®³à¯�à®ªà®Ÿà®¿ à®•à¯‹à®°à®¿à®•à¯�à®•à¯ˆà®•à®³à¯ˆ à®…à®™à¯�à®•à¯€à®•à®°à®¿à®•à¯�à®•à®µà¯�à®®à¯�.',
+        'Outstanding Requests': 'à®¨à®¿à®²à¯�à®µà¯ˆà®¯à®¿à®²à¯� à®‰à®³à¯�à®³ à®•à¯‹à®°à®¿à®•à¯�à®•à¯ˆà®•à®³à¯�',
+        'Average Discount': 'à®šà®°à®¾à®šà®°à®¿ à®¤à®³à¯�à®³à¯�à®ªà®Ÿà®¿',
+        'Conversion Potential': 'à®®à®¾à®±à¯�à®± à®šà®¾à®¤à¯�à®¤à®¿à®¯à®•à¯�à®•à¯‚à®±à¯�',
+        'Dispute Resolution Queue': 'à®¤à¯€à®°à¯�à®µà¯� à®µà®°à®¿à®šà¯ˆ',
+        'Requested Discount': 'à®•à¯‹à®°à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®¤à®³à¯�à®³à¯�à®ªà®Ÿà®¿',
+        'Approve': 'à®…à®™à¯�à®•à¯€à®•à®°à®¿',
+        'Reject': 'à®¨à®¿à®°à®¾à®•à®°à®¿',
+        'No pending negotiations escalated.': 'à®¨à®¿à®²à¯�à®µà¯ˆà®¯à®¿à®²à¯� à®‰à®³à¯�à®³ à®ªà¯‡à®šà¯�à®šà¯�à®µà®¾à®°à¯�à®¤à¯�à®¤à¯ˆà®•à®³à¯� à®�à®¤à¯�à®®à¯� à®‡à®²à¯�à®²à¯ˆ.',
         
         // Inventory Tab Details
-        'Stock Overview': 'சரக்கு இருப்பு கண்ணோட்டம்',
-        'Catalog Inventory': 'தயாரிப்பு இருப்புப் பட்டியல்',
-        'Manage items, stock counts, categories, and verify base pricing.': 'தயாரிப்புகள், இருப்பு அளவுகள் மற்றும் விலைகளை நிர்வகிக்கவும்.',
-        'Total Items': 'மொத்த தயாரிப்புகள்',
-        'Low Stock Items': 'குறைந்த இருப்பு தயாரிப்புகள்',
-        'Total Inventory Value': 'மொத்த இருப்பு மதிப்பு',
-        'Master Catalog Queue': 'மாஸ்டர் தயாரிப்பு பட்டியல்',
-        'Search inventory...': 'தேடுக...',
-        'SKU ID': 'தயாரிப்பு குறியீடு',
-        'Product Name': 'தயாரிப்பு பெயர்',
-        'Category': 'பிரிவு',
-        'In Stock Qty': 'இருப்பு அளவு',
-        'Base Price': 'அடிப்படை விலை',
-        'Out of Stock': 'இருப்பு இல்லை',
-        'In Stock': 'இருப்பில் உள்ளது',
+        'Stock Overview': 'à®šà®°à®•à¯�à®•à¯� à®‡à®°à¯�à®ªà¯�à®ªà¯� à®•à®£à¯�à®£à¯‹à®Ÿà¯�à®Ÿà®®à¯�',
+        'Catalog Inventory': 'à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯� à®‡à®°à¯�à®ªà¯�à®ªà¯�à®ªà¯� à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�',
+        'Manage items, stock counts, categories, and verify base pricing.': 'à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯�à®•à®³à¯�, à®‡à®°à¯�à®ªà¯�à®ªà¯� à®…à®³à®µà¯�à®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®µà®¿à®²à¯ˆà®•à®³à¯ˆ à®¨à®¿à®°à¯�à®µà®•à®¿à®•à¯�à®•à®µà¯�à®®à¯�.',
+        'Total Items': 'à®®à¯Šà®¤à¯�à®¤ à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯�à®•à®³à¯�',
+        'Low Stock Items': 'à®•à¯�à®±à¯ˆà®¨à¯�à®¤ à®‡à®°à¯�à®ªà¯�à®ªà¯� à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯�à®•à®³à¯�',
+        'Total Inventory Value': 'à®®à¯Šà®¤à¯�à®¤ à®‡à®°à¯�à®ªà¯�à®ªà¯� à®®à®¤à®¿à®ªà¯�à®ªà¯�',
+        'Master Catalog Queue': 'à®®à®¾à®¸à¯�à®Ÿà®°à¯� à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯� à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�',
+        'Search inventory...': 'à®¤à¯‡à®Ÿà¯�à®•...',
+        'SKU ID': 'à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯� à®•à¯�à®±à®¿à®¯à¯€à®Ÿà¯�',
+        'Product Name': 'à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯� à®ªà¯†à®¯à®°à¯�',
+        'Category': 'à®ªà®¿à®°à®¿à®µà¯�',
+        'In Stock Qty': 'à®‡à®°à¯�à®ªà¯�à®ªà¯� à®…à®³à®µà¯�',
+        'Base Price': 'à®…à®Ÿà®¿à®ªà¯�à®ªà®Ÿà¯ˆ à®µà®¿à®²à¯ˆ',
+        'Out of Stock': 'à®‡à®°à¯�à®ªà¯�à®ªà¯� à®‡à®²à¯�à®²à¯ˆ',
+        'In Stock': 'à®‡à®°à¯�à®ªà¯�à®ªà®¿à®²à¯� à®‰à®³à¯�à®³à®¤à¯�',
         
         // Pricing Tab Details
-        'Contract Configuration': 'ஒப்பந்த கட்டமைப்பு',
-        'Dynamic Contract Pricing': 'விலை நிர்ணயம்',
-        'Define client-specific pricing rules, volume discounts, and service tiers.': 'வாடிக்கையாளர் ஒப்பந்த விலைகள் மற்றும் தள்ளுபடி விதிகளை நிர்வகிக்கவும்.',
-        'Active Rules': 'செயலில் உள்ள விதிகள்',
-        'Global Discounts': 'பொதுவான தள்ளுபடிகள்',
-        'Contract Rules Queue': 'ஒப்பந்த விதிகள் வரிசை',
-        'Client Name': 'வாடிக்கையாளர் பெயர்',
-        'Rule Type': 'விதி வகை',
-        'Details': 'விவரங்கள்',
-        'No active contract rules defined.': 'விலை ஒப்பந்த விதிகள் ஏதும் இல்லை.',
+        'Contract Configuration': 'à®’à®ªà¯�à®ªà®¨à¯�à®¤ à®•à®Ÿà¯�à®Ÿà®®à¯ˆà®ªà¯�à®ªà¯�',
+        'Dynamic Contract Pricing': 'à®µà®¿à®²à¯ˆ à®¨à®¿à®°à¯�à®£à®¯à®®à¯�',
+        'Define client-specific pricing rules, volume discounts, and service tiers.': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®’à®ªà¯�à®ªà®¨à¯�à®¤ à®µà®¿à®²à¯ˆà®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®¤à®³à¯�à®³à¯�à®ªà®Ÿà®¿ à®µà®¿à®¤à®¿à®•à®³à¯ˆ à®¨à®¿à®°à¯�à®µà®•à®¿à®•à¯�à®•à®µà¯�à®®à¯�.',
+        'Active Rules': 'à®šà¯†à®¯à®²à®¿à®²à¯� à®‰à®³à¯�à®³ à®µà®¿à®¤à®¿à®•à®³à¯�',
+        'Global Discounts': 'à®ªà¯Šà®¤à¯�à®µà®¾à®© à®¤à®³à¯�à®³à¯�à®ªà®Ÿà®¿à®•à®³à¯�',
+        'Contract Rules Queue': 'à®’à®ªà¯�à®ªà®¨à¯�à®¤ à®µà®¿à®¤à®¿à®•à®³à¯� à®µà®°à®¿à®šà¯ˆ',
+        'Client Name': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®ªà¯†à®¯à®°à¯�',
+        'Rule Type': 'à®µà®¿à®¤à®¿ à®µà®•à¯ˆ',
+        'Details': 'à®µà®¿à®µà®°à®™à¯�à®•à®³à¯�',
+        'No active contract rules defined.': 'à®µà®¿à®²à¯ˆ à®’à®ªà¯�à®ªà®¨à¯�à®¤ à®µà®¿à®¤à®¿à®•à®³à¯� à®�à®¤à¯�à®®à¯� à®‡à®²à¯�à®²à¯ˆ.',
         
         // AI Onboarding Tab Details
-        'Autonomous AI': 'தன்னாட்சி செயற்கை நுண்ணறிவு',
-        'AI Onboarding & Rules': 'AI சேர்க்கை & விதிகள்',
-        'Configure vertical specific business descriptions, catalogs, contact credentials and training prompts.': 'செயல்பாட்டுப் பிரிவுகளின் வணிக விளக்கங்கள் மற்றும் விதிகளை நிர்வகிக்கவும்.',
-        'Active Verticals': 'செயலில் உள்ள பிரிவுகள்',
-        'System Prompts': 'அமைப்பு அறிவுறுத்தல்கள்',
-        'Registered Clients': 'பதிவு செய்யப்பட்ட வாடிக்கையாளர்கள்',
-        'Vertical Configurations': 'பிரிவு அமைப்புகள்',
-        'Configure parameters': 'அளவீடுகளை அமைக்கவும்',
-        'Vertical Name': 'பிரிவின் பெயர்',
-        'Business Model': 'வணிக வகை',
-        'Support Email': 'ஆதரவு மின்னஞ்சல்',
-        'SMTP Username': 'SMTP பயனர்',
-        'Status Code': 'நிலை',
+        'Autonomous AI': 'à®¤à®©à¯�à®©à®¾à®Ÿà¯�à®šà®¿ à®šà¯†à®¯à®±à¯�à®•à¯ˆ à®¨à¯�à®£à¯�à®£à®±à®¿à®µà¯�',
+        'AI Onboarding & Rules': 'AI à®šà¯‡à®°à¯�à®•à¯�à®•à¯ˆ & à®µà®¿à®¤à®¿à®•à®³à¯�',
+        'Configure vertical specific business descriptions, catalogs, contact credentials and training prompts.': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯�à®ªà¯� à®ªà®¿à®°à®¿à®µà¯�à®•à®³à®¿à®©à¯� à®µà®£à®¿à®• à®µà®¿à®³à®•à¯�à®•à®™à¯�à®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®µà®¿à®¤à®¿à®•à®³à¯ˆ à®¨à®¿à®°à¯�à®µà®•à®¿à®•à¯�à®•à®µà¯�à®®à¯�.',
+        'Active Verticals': 'à®šà¯†à®¯à®²à®¿à®²à¯� à®‰à®³à¯�à®³ à®ªà®¿à®°à®¿à®µà¯�à®•à®³à¯�',
+        'System Prompts': 'à®…à®®à¯ˆà®ªà¯�à®ªà¯� à®…à®±à®¿à®µà¯�à®±à¯�à®¤à¯�à®¤à®²à¯�à®•à®³à¯�',
+        'Registered Clients': 'à®ªà®¤à®¿à®µà¯� à®šà¯†à®¯à¯�à®¯à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�à®•à®³à¯�',
+        'Vertical Configurations': 'à®ªà®¿à®°à®¿à®µà¯� à®…à®®à¯ˆà®ªà¯�à®ªà¯�à®•à®³à¯�',
+        'Configure parameters': 'à®…à®³à®µà¯€à®Ÿà¯�à®•à®³à¯ˆ à®…à®®à¯ˆà®•à¯�à®•à®µà¯�à®®à¯�',
+        'Vertical Name': 'à®ªà®¿à®°à®¿à®µà®¿à®©à¯� à®ªà¯†à®¯à®°à¯�',
+        'Business Model': 'à®µà®£à®¿à®• à®µà®•à¯ˆ',
+        'Support Email': 'à®†à®¤à®°à®µà¯� à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯�',
+        'SMTP Username': 'SMTP à®ªà®¯à®©à®°à¯�',
+        'Status Code': 'à®¨à®¿à®²à¯ˆ',
         
         // CRM Segments Tab Details
-        'CRM Directory': 'வாடிக்கையாளர் அடைவு',
-        'CRM Client Directory': 'வாடிக்கையாளர் பட்டியல்',
-        'Segment and view registered clients, contact logs, and history.': 'வாடிக்கையாளர் விபரங்கள் மற்றும் கொள்முதல் வரலாற்றைக் கண்காணிக்கவும்.',
-        'Client Base': 'வாடிக்கையாளர் எண்ணிக்கை',
-        'VIP Tier': 'வி.ஐ.பி பிரிவு',
-        'Regular Tier': 'சாதாரண பிரிவு',
-        'CRM Client Segment Base': 'வாடிக்கையாளர் தகவல் தளம்',
-        'Company': 'நிறுவனம்',
-        'Contact Phone': 'தொலைபேசி எண்',
-        'Contact Email': 'மின்னஞ்சல் முகவரி',
-        'Registered At': 'பதிவு செய்யப்பட்ட தேதி',
-        'Segment': 'பிரிவு',
-        'No clients registered.': 'வாடிக்கையாளர்கள் ஏதும் பதிவு செய்யப்படவில்லை.',
+        'CRM Directory': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®…à®Ÿà¯ˆà®µà¯�',
+        'CRM Client Directory': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�',
+        'Segment and view registered clients, contact logs, and history.': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®µà®¿à®ªà®°à®™à¯�à®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®•à¯Šà®³à¯�à®®à¯�à®¤à®²à¯� à®µà®°à®²à®¾à®±à¯�à®±à¯ˆà®•à¯� à®•à®£à¯�à®•à®¾à®£à®¿à®•à¯�à®•à®µà¯�à®®à¯�.',
+        'Client Base': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®Žà®£à¯�à®£à®¿à®•à¯�à®•à¯ˆ',
+        'VIP Tier': 'à®µà®¿.à®�.à®ªà®¿ à®ªà®¿à®°à®¿à®µà¯�',
+        'Regular Tier': 'à®šà®¾à®¤à®¾à®°à®£ à®ªà®¿à®°à®¿à®µà¯�',
+        'CRM Client Segment Base': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯� à®¤à®•à®µà®²à¯� à®¤à®³à®®à¯�',
+        'Company': 'à®¨à®¿à®±à¯�à®µà®©à®®à¯�',
+        'Contact Phone': 'à®¤à¯Šà®²à¯ˆà®ªà¯‡à®šà®¿ à®Žà®£à¯�',
+        'Contact Email': 'à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯� à®®à¯�à®•à®µà®°à®¿',
+        'Registered At': 'à®ªà®¤à®¿à®µà¯� à®šà¯†à®¯à¯�à®¯à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®¤à¯‡à®¤à®¿',
+        'Segment': 'à®ªà®¿à®°à®¿à®µà¯�',
+        'No clients registered.': 'à®µà®¾à®Ÿà®¿à®•à¯�à®•à¯ˆà®¯à®¾à®³à®°à¯�à®•à®³à¯� à®�à®¤à¯�à®®à¯� à®ªà®¤à®¿à®µà¯� à®šà¯†à®¯à¯�à®¯à®ªà¯�à®ªà®Ÿà®µà®¿à®²à¯�à®²à¯ˆ.',
 
         // AI Training Tab Details
-        'AI Learning': 'AI கற்றல்',
-        'AI Relevance Training': 'AI பயிற்சி',
-        'Train the relevance filter by defining product categories, intent signals, and synonyms.': 'பொருந்தும் தயாரிப்புகள் மற்றும் ஒத்த சொற்களின் மூலம் AI-க்குப் பயிற்சியளிக்கவும்.',
-        'Keywords Trained': 'பயிற்சியளிக்கப்பட்ட சொற்கள்',
-        'Synonyms Map': 'ஒத்த சொற்கள் வரைபடம்',
-        'Intent Keywords': 'நோக்கச் சொற்கள்',
-        'Intent Signals': 'நோக்க சிக்னல்கள்',
-        'Synonyms List': 'ஒத்த சொற்கள் பட்டியல்',
-        'Original Term': 'அசல் சொல்',
-        'Mapped Catalog Term': 'பொருத்தப்பட்ட சொல்',
-        'No training synonyms found.': 'ஒத்த சொற்கள் ஏதும் இல்லை.',
+        'AI Learning': 'AI à®•à®±à¯�à®±à®²à¯�',
+        'AI Relevance Training': 'AI à®ªà®¯à®¿à®±à¯�à®šà®¿',
+        'Train the relevance filter by defining product categories, intent signals, and synonyms.': 'à®ªà¯Šà®°à¯�à®¨à¯�à®¤à¯�à®®à¯� à®¤à®¯à®¾à®°à®¿à®ªà¯�à®ªà¯�à®•à®³à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®’à®¤à¯�à®¤ à®šà¯Šà®±à¯�à®•à®³à®¿à®©à¯� à®®à¯‚à®²à®®à¯� AI-à®•à¯�à®•à¯�à®ªà¯� à®ªà®¯à®¿à®±à¯�à®šà®¿à®¯à®³à®¿à®•à¯�à®•à®µà¯�à®®à¯�.',
+        'Keywords Trained': 'à®ªà®¯à®¿à®±à¯�à®šà®¿à®¯à®³à®¿à®•à¯�à®•à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®šà¯Šà®±à¯�à®•à®³à¯�',
+        'Synonyms Map': 'à®’à®¤à¯�à®¤ à®šà¯Šà®±à¯�à®•à®³à¯� à®µà®°à¯ˆà®ªà®Ÿà®®à¯�',
+        'Intent Keywords': 'à®¨à¯‹à®•à¯�à®•à®šà¯� à®šà¯Šà®±à¯�à®•à®³à¯�',
+        'Intent Signals': 'à®¨à¯‹à®•à¯�à®• à®šà®¿à®•à¯�à®©à®²à¯�à®•à®³à¯�',
+        'Synonyms List': 'à®’à®¤à¯�à®¤ à®šà¯Šà®±à¯�à®•à®³à¯� à®ªà®Ÿà¯�à®Ÿà®¿à®¯à®²à¯�',
+        'Original Term': 'à®…à®šà®²à¯� à®šà¯Šà®²à¯�',
+        'Mapped Catalog Term': 'à®ªà¯Šà®°à¯�à®¤à¯�à®¤à®ªà¯�à®ªà®Ÿà¯�à®Ÿ à®šà¯Šà®²à¯�',
+        'No training synonyms found.': 'à®’à®¤à¯�à®¤ à®šà¯Šà®±à¯�à®•à®³à¯� à®�à®¤à¯�à®®à¯� à®‡à®²à¯�à®²à¯ˆ.',
 
         // Activity Log Tab Details
-        'Event Console': 'நிகழ்வு கன்சோல்',
-        'Activity Log Console': 'செயல்பாட்டு கன்சோல்',
-        'Real-time event stream of email processes, quote dispatches, and system errors.': 'மின்னஞ்சல் செயலாக்கம் மற்றும் கணினி நிகழ்வுகளின் நேரடி பதிவு.',
-        'Total Logs': 'மொத்த பதிவுகள்',
-        'Warning Events': 'எச்சரிக்கை நிகழ்வுகள்',
-        'Error Events': 'பிழை நிகழ்வுகள்',
-        'System Event Stream Log': 'கணினி நிகழ்வு பதிவு',
-        'Timestamp': 'நேரம்',
-        'Event Message': 'நிகழ்வு செய்தி',
-        'Severity': 'தீவிரம்',
-        'No events logged in database.': 'நிகழ்வுப் பதிவுகள் ஏதும் இல்லை.'
+        'Event Console': 'à®¨à®¿à®•à®´à¯�à®µà¯� à®•à®©à¯�à®šà¯‹à®²à¯�',
+        'Activity Log Console': 'à®šà¯†à®¯à®²à¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®•à®©à¯�à®šà¯‹à®²à¯�',
+        'Real-time event stream of email processes, quote dispatches, and system errors.': 'à®®à®¿à®©à¯�à®©à®žà¯�à®šà®²à¯� à®šà¯†à®¯à®²à®¾à®•à¯�à®•à®®à¯� à®®à®±à¯�à®±à¯�à®®à¯� à®•à®£à®¿à®©à®¿ à®¨à®¿à®•à®´à¯�à®µà¯�à®•à®³à®¿à®©à¯� à®¨à¯‡à®°à®Ÿà®¿ à®ªà®¤à®¿à®µà¯�.',
+        'Total Logs': 'à®®à¯Šà®¤à¯�à®¤ à®ªà®¤à®¿à®µà¯�à®•à®³à¯�',
+        'Warning Events': 'à®Žà®šà¯�à®šà®°à®¿à®•à¯�à®•à¯ˆ à®¨à®¿à®•à®´à¯�à®µà¯�à®•à®³à¯�',
+        'Error Events': 'à®ªà®¿à®´à¯ˆ à®¨à®¿à®•à®´à¯�à®µà¯�à®•à®³à¯�',
+        'System Event Stream Log': 'à®•à®£à®¿à®©à®¿ à®¨à®¿à®•à®´à¯�à®µà¯� à®ªà®¤à®¿à®µà¯�',
+        'Timestamp': 'à®¨à¯‡à®°à®®à¯�',
+        'Event Message': 'à®¨à®¿à®•à®´à¯�à®µà¯� à®šà¯†à®¯à¯�à®¤à®¿',
+        'Severity': 'à®¤à¯€à®µà®¿à®°à®®à¯�',
+        'No events logged in database.': 'à®¨à®¿à®•à®´à¯�à®µà¯�à®ªà¯� à®ªà®¤à®¿à®µà¯�à®•à®³à¯� à®�à®¤à¯�à®®à¯� à®‡à®²à¯�à®²à¯ˆ.'
       }
     },
     t(key) {
@@ -281,12 +303,12 @@ function dashboardApp() {
       const walk = (node) => {
         if (node.nodeType === Node.TEXT_NODE) {
           const trimmed = node.nodeValue.trim();
-          if (trimmed && dict[trimmed]) {
+          if (isTa && trimmed && dict[trimmed]) {
             if (!node.parentElement.dataset.origText) {
               node.parentElement.dataset.origText = node.nodeValue;
             }
             node.nodeValue = node.nodeValue.replace(trimmed, dict[trimmed]);
-          } else if (trimmed && !isTa && node.parentElement && node.parentElement.dataset.origText) {
+          } else if (!isTa && node.parentElement && node.parentElement.dataset.origText) {
             node.nodeValue = node.parentElement.dataset.origText;
           }
         } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -313,7 +335,7 @@ function dashboardApp() {
     setLanguage(lang) {
       this.language = lang;
       localStorage.setItem('language', lang);
-      document.title = lang === 'ta' ? "Trofeo Hardware — நிர்வாகக் கட்டுப்பாட்டு குழு" : "Trofeo Hardware — Admin Control Panel";
+      document.title = lang === 'ta' ? "Trofeo Hardware â€” à®¨à®¿à®°à¯�à®µà®¾à®•à®•à¯� à®•à®Ÿà¯�à®Ÿà¯�à®ªà¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®•à¯�à®´à¯�" : "Trofeo Hardware â€” Admin Control Panel";
       this.translateDOM();
       this.$nextTick(() => {
         if (typeof lucide !== 'undefined') {
@@ -441,9 +463,9 @@ function dashboardApp() {
     simNegLoading: false,
     simNegStatus: 'Active',
     presets: [
-      { label: '📧 Email with Deficits', text: 'Subject: Quotation Request - Order SKU-2026-X\nDear Sales Team,\nPlease send pricing and quotes for the following parts:\n1. 10 units of Plastic Tool Box 19 Inch\n2. 5 units of Heavy Duty Staple Tacker Gun\n3. 2 units of Spirit Level Aluminum 24 Inch\nThanks,\nRajarajan (rajarajanodooimplementers@gmail.com)' },
-      { label: '💬 WhatsApp Shorthand', text: 'Hi, need stock check and discount for:\n- 3 qty box-tool-19\n- 8 qty staple gun\nUrgently need delivery to our site tomorrow. Let me know the total with tax.' },
-      { label: '⚠️ Deficit Trigger (High Qty)', text: 'Order inquiry:\n- 15 units of Plastic Tool Box 19 Inch (BOX-TOOL-19)\nNeed invoice asap.' }
+      { label: 'ðŸ“§ Email with Deficits', text: 'Subject: Quotation Request - Order SKU-2026-X\nDear Sales Team,\nPlease send pricing and quotes for the following parts:\n1. 10 units of Plastic Tool Box 19 Inch\n2. 5 units of Heavy Duty Staple Tacker Gun\n3. 2 units of Spirit Level Aluminum 24 Inch\nThanks,\nRajarajan (rajarajanodooimplementers@gmail.com)' },
+      { label: 'ðŸ’¬ WhatsApp Shorthand', text: 'Hi, need stock check and discount for:\n- 3 qty box-tool-19\n- 8 qty staple gun\nUrgently need delivery to our site tomorrow. Let me know the total with tax.' },
+      { label: 'âš ï¸� Deficit Trigger (High Qty)', text: 'Order inquiry:\n- 15 units of Plastic Tool Box 19 Inch (BOX-TOOL-19)\nNeed invoice asap.' }
     ],
     
     // Modal 1: Review Match HITL
@@ -479,6 +501,10 @@ function dashboardApp() {
     chatLogs: [],
     chatItems: [],
     loadingChat: false,
+    chatQuoteStatus: '',
+    editableDraftText: '',
+    aiInstruction: '',
+    refineLoading: false,
 
     // Modal 6: Unmatched / Manual direct reply modal
     showUnmatchedModal: false,
@@ -678,6 +704,15 @@ function dashboardApp() {
 
     async safeFetch(url, options = {}) {
       try {
+        if (!options.headers) {
+          options.headers = {};
+        }
+        if (this.currentUserEmail) {
+          options.headers['x-user-email'] = this.currentUserEmail;
+        }
+        if (this.selectedOperatorEmail) {
+          options.headers['x-selected-operator'] = this.selectedOperatorEmail;
+        }
         const res = await fetch(url, options);
         this.connectionStatus = 'connected';
         return res;
@@ -705,11 +740,12 @@ function dashboardApp() {
       this.loadTenants();
       this.loadSettings();
       this.loadActiveVertical();
+      this.loadUsers();
       
       // Initialize DOM translation observer
       this.$nextTick(() => {
         if (this.language === 'ta') {
-          document.title = "Trofeo Hardware — நிர்வாகக் கட்டுப்பாட்டு குழு";
+          document.title = "Trofeo Hardware â€” à®¨à®¿à®°à¯�à®µà®¾à®•à®•à¯� à®•à®Ÿà¯�à®Ÿà¯�à®ªà¯�à®ªà®¾à®Ÿà¯�à®Ÿà¯� à®•à¯�à®´à¯�";
         }
         this.translateDOM();
         const observer = new MutationObserver(() => {
@@ -821,6 +857,10 @@ function dashboardApp() {
     },
     
     async handleTenantChange() {
+      // Find the tenant name for the toast
+      const tenantObj = this.tenants.find(t => t.id === this.selectedTenant);
+      const tenantLabel = tenantObj ? tenantObj.name : this.selectedTenant;
+
       try {
         await this.safeFetch('/api/verticals/active', {
           method: 'POST',
@@ -833,7 +873,8 @@ function dashboardApp() {
       } catch (e) {
         console.warn('Error setting active vertical:', e);
       }
-      
+
+      // Reload ALL data sections so every tab reflects the new company vertical
       this.fetchOverviewData();
       this.fetchServiceStatus();
       this.refreshBadges();
@@ -850,9 +891,21 @@ function dashboardApp() {
       this.fetchNegotiationData();
       this.loadPricingData();
       this.loadCustomerSegments();
+      this.loadUsers();   // ← refresh User Access tab for new vertical
+      this.loadSharedInboxes();
+
+      this.showToast(`Switched to ${tenantLabel} — all data reloaded`, 'success');
     },
     
     switchTab(tabId, filterVal = '') {
+      // Security Guard: Non-admin users cannot access restricted tabs
+      const restrictedTabs = ['pricing', 'training', 'verticals', 'access'];
+      if (this.currentUser.role !== 'super_admin' && restrictedTabs.includes(tabId)) {
+        this.activeTab = 'overview';
+        this.invoiceFilter = '';
+        this.showToast('Access Denied: Super Admin role required', 'error');
+        return;
+      }
       this.activeTab = tabId;
       this.invoiceFilter = filterVal;
       this.handleGlobalSearch();
@@ -898,7 +951,7 @@ function dashboardApp() {
     },
     
     formatDate(ts) {
-      if (!logDateConverter(ts)) return ts || '—';
+      if (!logDateConverter(ts)) return ts || 'â€”';
       return logDateConverter(ts);
     },
     
@@ -1552,7 +1605,7 @@ function dashboardApp() {
 
     async openChatHistory(invoiceId, custName) {
       // A "CUSTOMER_REPLIED:QTN-xxxx" card id maps to the underlying
-      // quotation thread — strip the prefix so the timeline (and View PDF) resolve.
+      // quotation thread â€” strip the prefix so the timeline (and View PDF) resolve.
       if (invoiceId && invoiceId.startsWith('CUSTOMER_REPLIED:')) {
         invoiceId = invoiceId.split(':').slice(1).join(':');
       }
@@ -1562,6 +1615,9 @@ function dashboardApp() {
       this.loadingChat = true;
       this.chatLogs = [];
       this.chatItems = [];
+      this.chatQuoteStatus = '';
+      this.editableDraftText = '';
+      this.aiInstruction = '';
       
       try {
         // Bug 10 fix: Use /api/quote/details/ as primary source (more reliable, direct per-QTN endpoint)
@@ -1570,6 +1626,8 @@ function dashboardApp() {
           const detailsData = await detailsRes.json();
           this.chatLogs = detailsData.logs || [];
           this.chatItems = detailsData.items || [];
+          this.chatQuoteStatus = detailsData.quotation ? detailsData.quotation.status : '';
+          this.editableDraftText = detailsData.draft_body || '';
         }
         // If direct endpoint returned nothing, try bulk report data as fallback
         if (this.chatLogs.length === 0) {
@@ -1671,7 +1729,7 @@ function dashboardApp() {
         });
         const data = await res.json();
         if (data.status === 'SUCCESS') {
-          const icon = action === 'approve' ? '✅' : '✗';
+          const icon = action === 'approve' ? 'âœ…' : 'âœ—';
           this.showToast(`${icon} ${data.message}`, 'success');
         }
         this.showResolveNeg = false;
@@ -1990,22 +2048,59 @@ function dashboardApp() {
       }
     },
 
-    async approveManualQuote(invoiceId) {
+    async approveManualQuote(invoiceId, customBody = '') {
       try {
         const res = await this.safeFetch(`/api/quote/approve_and_send?tenant_id=${this.selectedTenant}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ invoice_id: invoiceId })
+          body: JSON.stringify({ invoice_id: invoiceId, custom_body: customBody })
         });
         const data = await res.json();
         if (data.status === 'success') {
           this.showToast(`Quotation ${invoiceId} approved and sent successfully!`, 'success');
+          this.showChatModal = false;
           this.fetchOverviewData();
         } else {
           this.showToast('Failed to approve quotation: ' + data.detail, 'error');
         }
       } catch (e) {
         this.showToast('Error approving quotation: ' + e.message, 'error');
+      }
+    },
+
+    async refineDraftWithAI() {
+      if (!this.aiInstruction || !this.aiInstruction.trim()) {
+        this.showToast('Please type an instruction first.', 'warning');
+        return;
+      }
+      this.refineLoading = true;
+      try {
+        const res = await this.safeFetch('/api/quotes/refine', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-email': this.currentUserEmail
+          },
+          body: JSON.stringify({
+            invoice_id: this.chatInvoiceId,
+            instruction: this.aiInstruction,
+            current_draft: this.editableDraftText,
+            tenant_id: this.selectedTenant
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.editableDraftText = data.refined_draft;
+          this.aiInstruction = '';
+          this.showToast('AI Refinement applied successfully!', 'success');
+        } else {
+          const err = await res.json();
+          this.showToast('Refinement failed: ' + (err.detail || res.statusText), 'error');
+        }
+      } catch (e) {
+        this.showToast('Error refining draft: ' + e.message, 'error');
+      } finally {
+        this.refineLoading = false;
       }
     },
 
@@ -2190,7 +2285,7 @@ function dashboardApp() {
       }
     },
 
-    // ── Activity Log Methods ────────────────────────────────────────────
+    // â”€â”€ Activity Log Methods â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async loadActivityLog() {
       try {
         const res = await this.safeFetch(`/api/activity/log?tenant_id=${this.selectedTenant}&limit=200`);
@@ -2198,7 +2293,7 @@ function dashboardApp() {
         this.activityLogs = data.logs || [];
         this.activityUptime = data.uptime_seconds || 0;
         this.activityServerStart = data.server_start_time || '';
-        // Current time from server (IST) — also ticked by the 1s interval
+        // Current time from server (IST) â€” also ticked by the 1s interval
         if (data.current_time && !this.activityCurrentTime) {
           this.activityCurrentTime = data.current_time;
         }
@@ -2295,14 +2390,14 @@ function dashboardApp() {
     },
 
     formatActivityDate(ts) {
-      if (!ts) return '—';
+      if (!ts) return 'â€”';
       try {
         return ts.split(' ')[0] || ts;
       } catch (e) { return ts; }
     },
 
     formatActivityTime(ts) {
-      if (!ts) return '—';
+      if (!ts) return 'â€”';
       try {
         const parts = ts.replace(' IST','').split(' ');
         return parts[1] ? parts[1].substr(0,8) : ts;
@@ -2373,7 +2468,7 @@ function dashboardApp() {
       );
     },
 
-    // ── Export Report Helpers ────────────────────────────────────────────────
+    // â”€â”€ Export Report Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     executeExport(format, title, filename, headers, rows) {
       if (format === 'pdf') {
         this.exportToPdf(title, headers, rows);
@@ -2456,28 +2551,28 @@ function dashboardApp() {
       const rows = [];
       
       this.getFilteredList(this.newMails).forEach(m => {
-        rows.push(['New Mail', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', m.description || '—', m.timestamp || '—']);
+        rows.push(['New Mail', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', m.description || 'â€”', m.timestamp || 'â€”']);
       });
       this.getFilteredList(this.respondedMails).forEach(m => {
-        rows.push(['Responded', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', m.status || '—', m.timestamp || '—']);
+        rows.push(['Responded', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', m.status || 'â€”', m.timestamp || 'â€”']);
       });
       this.getFilteredList(this.repliedMails).forEach(m => {
-        rows.push(['Reply', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Customer Replied', m.timestamp || '—']);
+        rows.push(['Reply', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', 'Customer Replied', m.timestamp || 'â€”']);
       });
       this.getFilteredList(this.negotiations).forEach(m => {
-        rows.push(['Customer Request', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Requested: ${Math.round(m.discount_pct*100)}%`, m.created_at || '—']);
+        rows.push(['Customer Request', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', `Requested: ${Math.round(m.discount_pct*100)}%`, m.created_at || 'â€”']);
       });
       this.getFilteredList(this.rejectedMails).forEach(m => {
-        rows.push(['Rejected', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', 'Quotation Rejected', m.created_at || '—']);
+        rows.push(['Rejected', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', 'Quotation Rejected', m.created_at || 'â€”']);
       });
       this.getFilteredList(this.pendingDeficits).forEach(m => {
-        rows.push(['Pending (Deficit)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Shortage: ${m.deficit_qty} units of ${m.sku_name}`, m.created_at || '—']);
+        rows.push(['Pending (Deficit)', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', `Shortage: ${m.deficit_qty} units of ${m.sku_name}`, m.created_at || 'â€”']);
       });
       this.getFilteredList(this.pendingReviews).forEach(m => {
-        rows.push(['Pending (Draft Review)', m.invoice_id || '—', m.customer_name || '—', m.customer_email || '—', `Draft Amount: ₹${m.grand_total}`, m.created_at || '—']);
+        rows.push(['Pending (Draft Review)', m.invoice_id || 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', `Draft Amount: ₹${m.grand_total}`, m.created_at || 'â€”']);
       });
       this.getFilteredList(this.pendingUnmatched).forEach(m => {
-        rows.push(['Pending (Unmatched)', '—', m.customer_name || '—', m.customer_email || '—', m.original_body || '—', m.created_at || '—']);
+        rows.push(['Pending (Unmatched)', 'â€”', m.customer_name || 'â€”', m.customer_email || 'â€”', m.original_body || 'â€”', m.created_at || 'â€”']);
       });
 
       const title = 'Stage-Wise Pipeline Report';
@@ -2530,11 +2625,11 @@ function dashboardApp() {
       const list = type === 'today' ? this.todayMails : this.yesterdayMails;
       const headers = ['Customer Name', 'Customer Email', 'Subject/Details', 'Timestamp', 'Status'];
       const rows = this.getFilteredList(list).map(m => [
-        m.customer_name || '—',
-        m.customer_email || '—',
-        m.description || '—',
-        m.timestamp || '—',
-        m.status || '—'
+        m.customer_name || 'â€”',
+        m.customer_email || 'â€”',
+        m.description || 'â€”',
+        m.timestamp || 'â€”',
+        m.status || 'â€”'
       ]);
       
       const title = type === 'today' ? "Today's Enquiries Report" : "Yesterday's Enquiries Report";
@@ -2545,9 +2640,9 @@ function dashboardApp() {
     exportInventoryReport(format) {
       const headers = ['SKU ID', 'Product Description', 'Category', 'Stock Level', 'Unit Price (INR)'];
       const rows = this.filteredCatalog.map(sku => [
-        sku.sku_id || '—',
-        sku.sku_name || '—',
-        sku.category || '—',
+        sku.sku_id || 'â€”',
+        sku.sku_name || 'â€”',
+        sku.category || 'â€”',
         sku.stock !== null && sku.stock !== undefined ? sku.stock : '0',
         sku.price !== null && sku.price !== undefined ? sku.price : '0.00'
       ]);
@@ -2561,12 +2656,12 @@ function dashboardApp() {
       const activeFilterLabel = this.activityFilter ? this.formatEventLabel(this.activityFilter) : 'All Events';
       const headers = ['Timestamp', 'Event Type', 'Customer Name', 'Customer Email', 'Invoice/Ref ID', 'Description'];
       const rows = this.filteredActivityLogs.map(e => [
-        e.timestamp || '—',
-        this.formatEventLabel(e.event_type) || e.event_type || '—',
-        e.customer_name || '—',
-        e.customer_email || '—',
-        e.invoice_id || '—',
-        e.description || '—'
+        e.timestamp || 'â€”',
+        this.formatEventLabel(e.event_type) || e.event_type || 'â€”',
+        e.customer_name || 'â€”',
+        e.customer_email || 'â€”',
+        e.invoice_id || 'â€”',
+        e.description || 'â€”'
       ]);
       
       const title = `System Activity Logs Report - ${activeFilterLabel}`;
@@ -2872,6 +2967,185 @@ function dashboardApp() {
         }
       } catch (e) {
         this.showToast('Failed to delete override: ' + e.message, 'error');
+      }
+    },
+
+    async loadUsers() {
+      try {
+        const res = await this.safeFetch('/api/users?tenant_id=' + this.selectedTenant);
+        if (res.ok) {
+          const data = await res.json();
+          this.usersList = data.users || [];
+          const matched = this.usersList.find(u => u.email.toLowerCase() === this.currentUserEmail.toLowerCase());
+          if (matched) {
+            this.currentUser = matched;
+          } else {
+            this.currentUser = { email: 'superadmin@trofeo.com', role: 'super_admin', full_name: 'Super Admin' };
+          }
+        } else {
+          if (this.currentUserEmail === 'superadmin@trofeo.com') {
+            this.currentUser = { email: 'superadmin@trofeo.com', role: 'super_admin', full_name: 'Super Admin' };
+          } else if (this.currentUserEmail === 'karthi@trofeo.com') {
+            this.currentUser = { email: 'karthi@trofeo.com', role: 'employee', full_name: 'Karthikeyan' };
+          } else {
+            this.currentUser = { email: this.currentUserEmail, role: 'employee', full_name: this.currentUserEmail.split('@')[0] };
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load users list:', e);
+      }
+      // Also refresh shared inboxes whenever users are loaded
+      this.loadSharedInboxes();
+    },
+
+    async loadSharedInboxes() {
+      try {
+        const res = await this.safeFetch('/api/users/shared-inboxes?tenant_id=' + this.selectedTenant);
+        if (res.ok) {
+          const data = await res.json();
+          this.sharedInboxes = data.shared_inboxes || [];
+        }
+      } catch (e) {
+        console.error('Failed to load shared inboxes:', e);
+      }
+    },
+
+    async saveSharedInboxAssignment(inboxEmail, inboxLabel, userEmail) {
+      if (!inboxEmail.trim() || !userEmail.trim()) {
+        this.showToast('Please enter both inbox email and user email.', 'error');
+        return;
+      }
+      try {
+        const res = await this.safeFetch('/api/users/shared-inboxes/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inbox_email: inboxEmail.trim(), inbox_label: inboxLabel.trim(), user_email: userEmail.trim(), tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast(`${userEmail} assigned to shared inbox ${inboxEmail}`, 'success');
+          this.loadSharedInboxes();
+        } else {
+          const err = await res.json();
+          this.showToast('Failed: ' + (err.detail || 'Unknown error'), 'error');
+        }
+      } catch (e) {
+        this.showToast('Error: ' + e.message, 'error');
+      }
+    },
+
+    async removeSharedInboxAssignment(inboxEmail, userEmail) {
+      try {
+        const res = await this.safeFetch('/api/users/shared-inboxes/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inbox_email: inboxEmail, user_email: userEmail || '', tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          const msg = userEmail ? `${userEmail} removed from ${inboxEmail}` : `Shared inbox ${inboxEmail} deleted`;
+          this.showToast(msg, 'success');
+          this.loadSharedInboxes();
+        } else {
+          const err = await res.json();
+          this.showToast('Failed: ' + (err.detail || 'Unknown error'), 'error');
+        }
+      } catch (e) {
+        this.showToast('Error: ' + e.message, 'error');
+      }
+    },
+
+    loginUser(email) {
+      this.currentUserEmail = email;
+      localStorage.setItem('currentUserEmail', email);
+      this.isLoggedIn = true;
+      localStorage.setItem('isLoggedIn', 'true');
+      this.selectedOperatorEmail = 'all';
+      
+      this.loadUsers().then(() => {
+        this.fetchOverviewData();
+        this.loadDeficits();
+        this.loadNegotiations();
+        this.loadActivityLog();
+        this.showToast('Logged in as ' + this.currentUser.full_name);
+        this.$nextTick(() => {
+          if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+          }
+        });
+      });
+    },
+
+    logoutUser() {
+      this.isLoggedIn = false;
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('currentUserEmail');
+      this.currentUserEmail = '';
+      this.currentUser = { email: '', role: '', full_name: '' };
+      this.showToast('Logged out');
+    },
+
+    switchUser(email) {
+      this.currentUserEmail = email;
+      localStorage.setItem('currentUserEmail', email);
+      this.selectedOperatorEmail = 'all';
+      
+      this.loadUsers().then(() => {
+        this.fetchOverviewData();
+        this.loadDeficits();
+        this.loadNegotiations();
+        this.loadActivityLog();
+        this.showToast('Switched session to ' + this.currentUser.full_name);
+        this.$nextTick(() => {
+          if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+          }
+        });
+      });
+    },
+
+    switchSelectedOperator(email) {
+      this.selectedOperatorEmail = email;
+      this.fetchOverviewData();
+      this.loadDeficits();
+      this.loadNegotiations();
+      this.loadActivityLog();
+      this.showToast(email === 'all' ? 'Showing all operator records' : 'Filtered to ' + email);
+    },
+
+    async saveUser(email, fullName, role) {
+      try {
+        const res = await this.safeFetch('/api/users/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, full_name: fullName, role, active: 1, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast('User access saved successfully!');
+          this.loadUsers();
+        } else {
+          const err = await res.json();
+          this.showToast('Failed to save user: ' + (err.detail || 'unknown error'), 'error');
+        }
+      } catch (e) {
+        this.showToast('Failed to save user: ' + e.message, 'error');
+      }
+    },
+
+    async deleteUser(email) {
+      try {
+        const res = await this.safeFetch('/api/users/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          this.showToast('User access removed!');
+          this.loadUsers();
+        } else {
+          const err = await res.json();
+          this.showToast('Failed to remove user: ' + (err.detail || 'unknown error'), 'error');
+        }
+      } catch (e) {
+        this.showToast('Failed to remove user: ' + e.message, 'error');
       }
     }
   };
