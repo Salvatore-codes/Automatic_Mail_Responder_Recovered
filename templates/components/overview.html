@@ -12,6 +12,37 @@
                   <span class="ov-dot"></span>
                   <span><strong x-text="overviewData.metrics ? overviewData.metrics.total_received : 0"></strong> enquiries handled all-time</span>
                 </p>
+                
+                <!-- Rotating quotes display -->
+                <div class="ov-quote-container" x-data="{
+                  quotes: [
+                    '\"Quality is not an act, it is a habit.\" — Aristotle',
+                    '\"Efficiency is doing things right; effectiveness is doing the right things.\" — Peter Drucker',
+                    '\"The best customer service is if the customer doesn\'t need to call you. It just works.\" — Jeff Bezos',
+                    '\"Your most unhappy customers are your greatest source of learning.\" — Bill Gates',
+                    '\"Automation is good, so long as you know exactly where to put the machine.\" — Eliyahu Goldratt',
+                    '\"The key is to exceed customer expectations at every single turn.\" — Richard Branson',
+                    '\"Simplify, automate, and delegate to achieve ultimate efficiency.\"',
+                    '\"Excellence is the gradual result of always striving to do better.\" — Pat Riley'
+                  ],
+                  currentIndex: 0,
+                  currentQuote: '',
+                  visible: true,
+                  init() {
+                    this.currentQuote = this.quotes[this.currentIndex];
+                    setInterval(() => {
+                      this.visible = false;
+                      setTimeout(() => {
+                        this.currentIndex = (this.currentIndex + 1) % this.quotes.length;
+                        this.currentQuote = this.quotes[this.currentIndex];
+                        this.visible = true;
+                      }, 500);
+                    }, 5000);
+                  }
+                }" x-init="init()">
+                  <span class="ov-quote-icon">“</span>
+                  <span class="ov-quote-text" :class="{ 'fade-out': !visible, 'fade-in': visible }" x-text="currentQuote"></span>
+                </div>
               </div>
               <div class="ov-hero-side">
                 <div class="ov-pulse"><span class="ov-pulse-dot"></span> Live</div>
