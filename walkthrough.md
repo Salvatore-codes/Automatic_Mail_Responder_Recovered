@@ -1,87 +1,63 @@
-# Walkthrough — Advanced Admin Control Panel Implementation
+# Walkthrough: Pluggable Inventory Connectors Implementation
 
-We have successfully implemented and verified the **Advanced Admin Control Panel (Command Center)** for the Trofeo Hardware Automated SKU Matcher & Quotation Engine. This Command Center gives the admin full Human-in-the-Loop (HITL) manual override gates for managing out-of-stock deficits and price negotiations.
-
----
-
-## 🛠️ Summary of Changes Made
-
-### 1. Database Schema Expansion (`src/database_sqlite.py`)
-* **Deficits Table:** Added the `deficits` table definition in `init_db_conn` to persist out-of-stock items:
-  - Columns: `id`, `invoice_id`, `sku_id`, `sku_name`, `requested_qty`, `available_qty`, `deficit_qty`, `customer_name`, `customer_email`, `customer_phone`, `status`, and `created_at`.
-* **Helper Functions:** Implemented helper functions to log, retrieve, and resolve deficits (`log_deficit`, `get_all_deficits`, `resolve_deficit`) and retrieve escalated negotiations.
-
-### 2. Automatic Deficit Logging (`src/email_listener.py` and `src/server.py`)
-* **Unified Pipeline:** Modified `adjust_quantities_by_stock()` to accept optional quotation context parameters (`invoice_id`, `customer_name`, `customer_email`, `customer_phone`, `tenant_id`).
-* **Auto-persist Shortages:** When out-of-stock shortages are detected during new or modified quotations (via email processing or manual API creation), they are automatically logged into the `deficits` database table as `PENDING`.
-
-### 3. Backend API Endpoints (`src/server.py`)
-* **GET /api/deficits:** Lists all deficits (pending and resolved).
-* **POST /api/deficits/resolve:** Updates the on-hand catalog SKU stock (writing to the CSV disk files), marks the deficit as `RESOLVED`, re-runs the stock checker, regenerates the quotation PDF, and emails the updated quotation to the customer.
-* **GET /api/negotiations/escalated:** Lists quotes in `NEGOTIATION_ESCALATED` or `NEGOTIATION_NEGOTIATING` status.
-* **POST /api/negotiations/resolve:** Handles manual price overrides. Approves, rejects, or counters the customer's request, updates SQLite, regenerates the PDF, and emails the customer.
-* **GET /api/inventory/low-stock:** Queries the active catalog for items with stock $\le 5$ to display warnings.
-* **POST /api/inventory/update:** Direct endpoint to update the on-hand stock of any catalog SKU on disk.
-* **GET /api/inventory/catalog:** Retrieves the entire catalog list with categories, prices, and stock levels.
-
-### 4. Advanced Frontend UI Command Center (`static/index.html`)
-* Restructured the workspace into a cohesive multi-tab view:
-  1. **Live Simulator:** Paste orders and simulate scenarios.
-  2. **Deficits Manager:** View pending deficits and fulfill/update stock using inline action modals.
-  3. **Negotiations Desk:** View price negotiations with direct Accept/Reject/Counter actions.
-  4. **Quote Repository:** Explore past quotes, read interactive chat timelines (styled like messenger bubbles) between the customer and bot.
-  5. **Full Inventory:** Lists all items in the catalog. Includes a real-time SKU search filter and direct `Update Stock` action buttons for every item to proactively manage inventory levels.
-* Added **Low Stock Warnings** card and KPI metric badges at the top.
+We have successfully implemented and verified the pluggable inventory/catalog connector architecture. This allows any company vertical in the dashboard to load, match, and update inventory data from local CSVs, Excel spreadsheets, or relational SQL databases.
 
 ---
 
-## 🧪 Verification and Test Results
+## 🛠️ Changes Implemented
 
-### 1. Programmatic Unit Tests (`test_advanced_admin.py`)
-We created a dedicated script [test_advanced_admin.py](file:///D:/sku-matcher-prototype/test_advanced_admin.py) to programmatically verify deficit logging, status resolution, negotiation escalations, and price/tax/grand total calculations on discount overrides.
-* **Command:** `C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe test_advanced_admin.py`
-* **Result:** **PASSED ✅**
-```
-Initializing test database connection...
+### 1. Database Schema Migrations
+* **File:** [database_sqlite.py](file:///D:/sku-matcher-prototype/src/database_sqlite.py#L250-L280)
+* Added the following new columns to the `vertical_profiles` table:
+  * `catalog_type` (TEXT, default `'csv'`)
+  * `catalog_connection_string` (TEXT)
+  * `catalog_extra_config` (TEXT)
+* Added robust SQL migrations inside `init_db_conn` and `save_vertical_profile` to automatically apply the schema changes to existing databases.
+* Updated `get_active_vertical` and `get_all_verticals` queries to load these new columns.
 
-1. Testing Deficit Logging...
-Logged Deficits count: 1
-Deficit Item: Alice Deficit | SKU: SKU-DEF01 | Status: PENDING
+### 2. Base Connectors and Implementations
+* **File:** [database.py](file:///D:/sku-matcher-prototype/src/database.py#L147-L230)
+* Created `BaseInventoryConnector` abstract interface with abstract methods: `fetch_all_skus()`, `get_sku_by_id(sku_id)`, and `update_sku(sku_id, stock, price)`.
+* Created concrete connector classes:
+  * **`CSVConnector`**: Wraps the standard file-based CSV reading and writing logic.
+  * **`ExcelConnector`**: Uses `pandas`/`openpyxl` to read and edit `.xlsx` sheets.
+  * **`SQLDatabaseConnector`**: Uses standard database libraries to read/write from local SQLite or external SQL databases.
+* Refactored `Catalog` class to take a connector instance and delegate SKU retrieval/updates to it while keeping core semantic TF-IDF, fuzzy, and vector embedding matching in-memory.
 
-2. Testing Deficit Resolution...
-Resolved Deficit Status: RESOLVED
+### 3. Dynamic Catalog Resolution
+* **File:** [tenants.py](file:///D:/sku-matcher-prototype/src/tenants.py#L90-L125)
+* Updated `get_tenant_catalog` to parse `catalog_type`, `catalog_connection_string`, and `catalog_extra_config` dynamically.
+* Instantiates `CSVConnector`, `ExcelConnector`, or `SQLDatabaseConnector` on-the-fly and loads it into the `Catalog` instance.
+* Added a 30-second cache TTL for database sources to retrieve fresh stock levels automatically without server restarts.
 
-3. Testing Negotiation Escalation & Retrieval...
-Escalated negotiations count: 1
-
-4. Testing Negotiation Override & Recalculation...
-Updated Quotation: Status=NEGOTIATION_APPROVED | Discount=0.15 | Subtotal=1000.0 | Grand Total=1003.0
-
-5. Testing Direct Inventory Update...
-[Catalog Loader] Loading/Reloading catalog for tenant 'default' (mtime changed to 1782470628.875185)
-[Vector Index] Loading cached embeddings from disk...
-[Vector Index] Loaded 63 SKU embeddings from cache.
-Original stock for SKU ELBOW-BRASS-050: 150
-[Catalog] Successfully updated SKU ELBOW-BRASS-050 stock to 160 on disk.
-[Catalog Loader] Loading/Reloading catalog for tenant 'default' (mtime changed to 1782472802.9221635)
-[Vector Index] No Gemini client available. Vector matching disabled.
-Updated stock for SKU ELBOW-BRASS-050: 160 (Expected: 160)
-[Catalog] Successfully updated SKU ELBOW-BRASS-050 stock to 150 on disk.
-
-ALL ADVANCED ADMIN TESTS PASSED SUCCESSFULLY!
-```
-
-### 2. Core Regression Integration Tests (`run_automated_tests.py`)
-* **Command:** `C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe run_automated_tests.py`
-* **Result:** **23/23 PASSED ✅**
-* Confirmed that adjusting stock quantity, email replies, and discount approvals are fully backwards-compatible and work without regressions.
+### 4. Onboarding Schema Support
+* **File:** [server.py](file:///D:/sku-matcher-prototype/src/server.py#L1816-L1833)
+* Updated `VerticalApproveRequest` Pydantic schemas and `api_approve_vertical` handlers to support storing `catalog_type`, `catalog_connection_string`, and `catalog_extra_config`.
+* Refined cache eviction logic to clean matching `_CATALOG_CACHE` prefixes upon vertical activation.
 
 ---
 
-## 🚀 Git Synchronization
-All changes have been successfully committed and synced:
-```bash
-git add src/database.py src/database_sqlite.py src/email_listener.py src/server.py static/index.html test_advanced_admin.py
-git commit -m "feat: implement advanced admin control panel with stock deficit manager, negotiations desk, and interactive timelines"
-git push origin main
+## 🧪 Verification Results
+
+We verified the implementation using an automated test suite [test_inventory_connectors.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_inventory_connectors.py):
+1. **CSV Connector test:** Successfully loaded mock CSV data, matched SKUs, and updated values.
+2. **Excel Connector test:** Verified reading/writing data from dynamic `.xlsx` sheets using `pandas`.
+3. **SQL database Connector test:** Confirmed SQLite table querying and executing stock/price updates.
+
 ```
+--- Testing CSVConnector ---
+[Catalog] Successfully updated SKU BOLT-001 properties (stock=150, price=16.75) in source connector.
+CSVConnector Test PASSED
+--- Testing ExcelConnector ---
+[Catalog] Successfully updated SKU VALVE-001 properties (stock=30, price=475.0) in source connector.
+ExcelConnector Test PASSED
+--- Testing SQLDatabaseConnector ---
+[Catalog] Successfully updated SKU CABLE-101 properties (stock=95, price=365.0) in source connector.
+SQLDatabaseConnector Test PASSED
+ALL TESTS PASSED SUCCESSFULLY!
+```
+
+---
+
+## 📤 Git Remote Sync
+All changes have been successfully committed and pushed to branch `feature/pipeline-stages` in the repository `Automatic_Mail_Responder_Recovered`.
