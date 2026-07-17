@@ -82,6 +82,9 @@ def get_tenant_config(tenant_id):
             config["business_name"] = active_vertical.get("name", config.get("business_name"))
             config["catalog_csv"] = active_vertical.get("catalog_path", config.get("catalog_csv"))
             config["crm_json"] = active_vertical.get("crm_path", config.get("crm_json"))
+            config["catalog_type"] = active_vertical.get("catalog_type", "csv")
+            config["catalog_connection_string"] = active_vertical.get("catalog_connection_string", active_vertical.get("catalog_path"))
+            config["catalog_extra_config"] = active_vertical.get("catalog_extra_config", "")
     except Exception as e:
         print(f"[Warning] Failed to merge active vertical config: {e}")
         
@@ -90,39 +93,62 @@ def get_tenant_config(tenant_id):
 def get_tenant_catalog(tenant_id):
     """
     Gets or initializes the cached Catalog instance for a tenant.
-    Detects if the catalog file on disk has changed and reloads it dynamically.
+    Resolves the appropriate connector (CSV, Excel, or SQL) dynamically.
     """
     t_id = sanitize_tenant_id(tenant_id)
     config = get_tenant_config(t_id)
-    csv_path = config.get("catalog_csv")
+    
+    ctype = config.get("catalog_type", "csv")
+    conn_str = config.get("catalog_connection_string") or config.get("catalog_csv")
+    extra_str = config.get("catalog_extra_config", "")
+    
+    import json
+    import time
+    extra = {}
+    if extra_str:
+        try:
+            extra = json.loads(extra_str)
+        except Exception:
+            pass
+            
     project_root = os.path.dirname(os.path.dirname(__file__))
-    
-    # Resolve absolute path
-    if not os.path.isabs(csv_path):
-        csv_path = os.path.join(project_root, csv_path)
+    if ctype in ("csv", "excel"):
+        if conn_str and not os.path.isabs(conn_str):
+            conn_str = os.path.join(project_root, conn_str)
+        if not conn_str or not os.path.exists(conn_str):
+            conn_str = os.path.join(project_root, "data", "sku_catalog.csv")
+            ctype = "csv"
+            
+    if ctype in ("csv", "excel") and os.path.exists(conn_str):
+        mtime = os.path.getmtime(conn_str)
+    else:
+        # DB sources cache TTL: 30 seconds
+        mtime = time.time() // 30
         
-    # Fallback to default catalog if tenant-specific catalog doesn't exist
-    if not os.path.exists(csv_path):
-        csv_path = os.path.join(project_root, "data", "sku_catalog.csv")
-        
-    # Get current file modification time
-    mtime = os.path.getmtime(csv_path) if os.path.exists(csv_path) else 0.0
+    cache_key = f"{t_id}:{ctype}:{conn_str}"
     
-    if t_id not in _CATALOG_CACHE or _CATALOG_CACHE[t_id]["mtime"] != mtime:
-        print(f"[Catalog Loader] Loading/Reloading catalog for tenant '{t_id}' (mtime changed to {mtime})")
-        catalog = Catalog(csv_path, tenant_id=t_id)
-        # Attempt to load disk-cached vector index if it matches the current CSV hash
+    if cache_key not in _CATALOG_CACHE or _CATALOG_CACHE[cache_key]["mtime"] != mtime:
+        print(f"[Catalog Loader] Instantiating connector '{ctype}' for tenant '{t_id}' (source: {conn_str})")
+        from src.database import CSVConnector, ExcelConnector, SQLDatabaseConnector
+        if ctype == "excel":
+            connector = ExcelConnector(conn_str, sheet_name=extra.get("sheet_name", "Sheet1"))
+        elif ctype == "sql":
+            connector = SQLDatabaseConnector(conn_str, table_name=extra.get("table_name", "sku_catalog"))
+        else:
+            connector = CSVConnector(conn_str)
+            
+        catalog = Catalog(connector, tenant_id=t_id)
         try:
             catalog.build_vector_index(client=None)
         except Exception as e:
-            print(f"[Catalog Loader] Warning: Failed to load cached vector index: {e}")
+            print(f"[Catalog Loader] Warning: Failed to build vector index: {e}")
             
-        _CATALOG_CACHE[t_id] = {
+        _CATALOG_CACHE[cache_key] = {
             "catalog": catalog,
             "mtime": mtime
         }
         
-    return _CATALOG_CACHE[t_id]["catalog"]
+    return _CATALOG_CACHE[cache_key]["catalog"]
 
 def list_tenants_public():
     """

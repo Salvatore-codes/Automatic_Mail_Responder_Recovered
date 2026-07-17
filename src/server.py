@@ -1830,6 +1830,9 @@ class VerticalApproveRequest(BaseModel):
     logo_path: str = ""                # Pre-uploaded logo path (from manual file upload)
     extracted_logo_url: str = ""       # Logo URL detected from the company website
     business_type: str = "Trading"      # 'Trading' or 'Services'
+    catalog_type: str = "csv"
+    catalog_connection_string: str | None = None
+    catalog_extra_config: str | None = None
 
 class VerticalActiveRequest(BaseModel):
     id: str
@@ -1987,7 +1990,10 @@ async def api_approve_vertical(req: VerticalApproveRequest):
             req.id, req.name, req.industry, guidelines_str, req.tone,
             catalog_path, crm_path, req.source_details, is_active=1,
             tenant_id=req.tenant_id, logo_path=logo_path_to_save,
-            business_type=req.business_type
+            business_type=req.business_type,
+            catalog_type=req.catalog_type,
+            catalog_connection_string=req.catalog_connection_string,
+            catalog_extra_config=req.catalog_extra_config
         )
         
         # Save keywords
@@ -1998,9 +2004,10 @@ async def api_approve_vertical(req: VerticalApproveRequest):
             
         # Evict tenant catalog cache to hot-reload the new catalog file
         t_id = sanitize_tenant_id(req.tenant_id)
-        if t_id in _CATALOG_CACHE:
-            del _CATALOG_CACHE[t_id]
-            print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+        print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
             
         return {"status": "SUCCESS", "message": f"Vertical profile '{req.name}' successfully approved and activated.", "logo_path": logo_path_to_save}
     except Exception as e:
@@ -2018,9 +2025,10 @@ async def api_set_active_vertical(req: VerticalActiveRequest):
             
         # Evict tenant catalog cache for hot-reload
         t_id = sanitize_tenant_id(req.tenant_id)
-        if t_id in _CATALOG_CACHE:
-            del _CATALOG_CACHE[t_id]
-            print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+        print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
             
         return {"status": "SUCCESS", "message": f"Active vertical set to '{req.id}'."}
     except Exception as e:

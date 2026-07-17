@@ -249,7 +249,10 @@ def init_db_conn(conn):
         source_details TEXT,
         is_active INTEGER DEFAULT 0,
         logo_path TEXT,
-        business_type TEXT DEFAULT 'Trading'
+        business_type TEXT DEFAULT 'Trading',
+        catalog_type TEXT DEFAULT 'csv',
+        catalog_connection_string TEXT,
+        catalog_extra_config TEXT
     )
     """)
 
@@ -260,6 +263,18 @@ def init_db_conn(conn):
         pass
     try:
         cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN business_type TEXT DEFAULT 'Trading'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN catalog_type TEXT DEFAULT 'csv'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN catalog_connection_string TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN catalog_extra_config TEXT")
     except sqlite3.OperationalError:
         pass
 
@@ -1178,7 +1193,7 @@ def delete_customer_custom_price(price_id, tenant_id=None):
     return True
 
 
-def save_vertical_profile(profile_id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active=0, tenant_id=None, logo_path=None, business_type='Trading'):
+def save_vertical_profile(profile_id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active=0, tenant_id=None, logo_path=None, business_type='Trading', catalog_type='csv', catalog_connection_string=None, catalog_extra_config=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     
@@ -1194,12 +1209,24 @@ def save_vertical_profile(profile_id, name, industry, guidelines, tone, catalog_
         cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN business_type TEXT DEFAULT 'Trading'")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN catalog_type TEXT DEFAULT 'csv'")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN catalog_connection_string TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE vertical_profiles ADD COLUMN catalog_extra_config TEXT")
+    except Exception:
+        pass
     conn.commit()
         
     cursor.execute("""
-    INSERT OR REPLACE INTO vertical_profiles (id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (profile_id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path or "", business_type or "Trading"))
+    INSERT OR REPLACE INTO vertical_profiles (id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type, catalog_type, catalog_connection_string, catalog_extra_config)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (profile_id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path or "", business_type or "Trading", catalog_type or "csv", catalog_connection_string or "", catalog_extra_config or ""))
     
     conn.commit()
     conn.close()
@@ -1210,7 +1237,7 @@ def get_active_vertical(tenant_id=None):
     cursor = conn.cursor()
     try:
         cursor.execute("""
-        SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type
+        SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type, catalog_type, catalog_connection_string, catalog_extra_config
         FROM vertical_profiles 
         WHERE is_active = 1 LIMIT 1
         """)
@@ -1233,14 +1260,17 @@ def get_active_vertical(tenant_id=None):
         "source_details": "Default seeded hardware profile",
         "is_active": 1,
         "logo_path": "",
-        "business_type": "Trading"
+        "business_type": "Trading",
+        "catalog_type": "csv",
+        "catalog_connection_string": "data/sku_catalog.csv",
+        "catalog_extra_config": ""
     }
 
 def get_all_verticals(tenant_id=None):
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type FROM vertical_profiles")
+        cursor.execute("SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type, catalog_type, catalog_connection_string, catalog_extra_config FROM vertical_profiles")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
     except Exception as e:
