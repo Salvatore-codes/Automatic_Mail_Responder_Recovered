@@ -1290,6 +1290,68 @@ async def import_inventory(file: UploadFile = File(...), tenant_id: str = "defau
 
         df = df[df["sku_id"] != ""]
 
+        # AI Relevance Verification Check
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key and api_key.strip() and not api_key.startswith("your_"):
+            try:
+                from google import genai
+                from src.database_sqlite import get_active_vertical
+                
+                ai_client = genai.Client(api_key=api_key)
+                active_vertical = get_active_vertical(t_id)
+                
+                if active_vertical:
+                    v_name = active_vertical.get("name", "")
+                    v_industry = active_vertical.get("industry", "")
+                    v_guidelines = active_vertical.get("guidelines", "")
+                    
+                    sample_items = []
+                    for _, row in df.head(15).iterrows():
+                        sample_items.append(f"- Name: {row.get('sku_name', '')} (Category: {row.get('category', 'General')})")
+                    sample_text = "\n".join(sample_items)
+                    
+                    prompt = f"""
+                    You are an expert business intelligence auditor.
+                    Verify if the imported catalog inventory items listed below are relevant to the business vertical of the company.
+                    
+                    Business Vertical Details:
+                    - Company Name: {v_name}
+                    - Industry: {v_industry}
+                    - Guidelines: {v_guidelines}
+                    
+                    Imported Items Sample:
+                    {sample_text}
+                    
+                    Answer in JSON format with two keys:
+                    1. "relevant": boolean (true if the items fit the vertical, false if they are completely unrelated or represent a different industry).
+                    2. "reason": string (a short explanation of why the items are relevant or not).
+                    
+                    Only return the raw JSON object, without any markdown formatting.
+                    """
+                    
+                    response = ai_client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt
+                    )
+                    
+                    resp_text = response.text.strip()
+                    if resp_text.startswith("```"):
+                        resp_text = resp_text.split("```")[1]
+                        if resp_text.startswith("json"):
+                            resp_text = resp_text[4:]
+                    resp_text = resp_text.strip()
+                    
+                    res_json = json.loads(resp_text)
+                    if not res_json.get("relevant", True):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Rejection: The imported records are not relevant to this business vertical ({v_name} - {v_industry}). Reason: {res_json.get('reason')}"
+                        )
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"[Warning] Gemini relevance check failed/skipped: {e}")
+
         project_root = os.path.dirname(os.path.dirname(__file__))
 
         if ctype == "csv":
