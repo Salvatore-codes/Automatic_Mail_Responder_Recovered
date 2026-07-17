@@ -1259,20 +1259,47 @@ async def import_inventory(file: UploadFile = File(...), tenant_id: str = "defau
         else:
             raise HTTPException(status_code=400, detail="Only CSV and Excel (.xlsx/.xls) files are supported.")
 
-        required_cols = ["sku_id", "sku_name", "price", "stock"]
-        df_cols_lower = [str(c).lower().strip() for c in df.columns]
-        
-        for req in required_cols:
-            if req not in df_cols_lower:
-                raise HTTPException(status_code=400, detail=f"Uploaded file is missing required column: '{req}'")
+        # Define aliases for smart mapping
+        aliases = {
+            "sku_id": ["sku_id", "sku id", "sku", "id", "service code", "service_code", "servicecode", "code", "item code", "item_code", "product id", "product_id"],
+            "sku_name": ["sku_name", "sku name", "name", "service name", "service_name", "servicename", "item name", "item_name", "product name", "product_name", "title"],
+            "price": ["price", "rate", "fee", "service fee", "service_fee", "cost", "base rate", "base_rate", "amount", "billing rate", "billing_rate"],
+            "stock": ["stock", "qty", "quantity", "availability", "availability basis", "availability_basis", "units", "count", "inventory"],
+            "description": ["description", "desc", "details", "summary", "notes"],
+            "category": ["category", "type", "group", "class", "department"]
+        }
 
         col_mapping = {}
-        for req in required_cols + ["description", "category"]:
-            for original_col in df.columns:
-                if str(original_col).lower().strip() == req:
-                    col_mapping[original_col] = req
-        
+        for original_col in df.columns:
+            col_cleaned = str(original_col).lower().strip()
+            matched_key = None
+            for key, alias_list in aliases.items():
+                if col_cleaned == key or col_cleaned in alias_list:
+                    matched_key = key
+                    break
+            
+            if not matched_key:
+                for key, alias_list in aliases.items():
+                    for alias in alias_list:
+                        if alias in col_cleaned:
+                            matched_key = key
+                            break
+                    if matched_key:
+                        break
+            
+            if matched_key:
+                col_mapping[original_col] = matched_key
+
         df = df.rename(columns=col_mapping)
+
+        required_cols = ["sku_id", "sku_name", "price", "stock"]
+        for req in required_cols:
+            if req not in df.columns:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Uploaded file is missing required column corresponding to '{req}' (e.g. '{req}', '{aliases[req][1]}' or similar)."
+                )
+
         keep_cols = [c for c in df.columns if c in required_cols + ["description", "category"]]
         df = df[keep_cols]
 
