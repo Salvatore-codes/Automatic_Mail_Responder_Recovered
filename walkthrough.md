@@ -45,6 +45,12 @@ We have successfully implemented and verified the pluggable inventory/catalog co
   * Rendered a green **Import** button with an upload icon next to the Export dropdown.
   * Triggers a hidden file picker, uploads the file as `FormData`, and reloads the catalog table with visual success/error notifications.
 
+### 6. Pipeline Layout Optimization (Viewport Fit)
+* **File:** [style.css](file:///D:/sku-matcher-prototype/static/style.css#L870-L890)
+  * Changed the general `.kanban-grid` styling from `overflow-x: auto;` to `overflow-x: hidden;` on desktop widths to eliminate horizontal scrolling.
+  * Refactored `.kanban-col` (in both general styles and warm theme overrides) from a fixed `flex: 0 0 280px` to a flexible `flex: 1; min-width: 0;` so that all 5 columns divide the screen equally and fit perfectly within the viewport on desktops.
+  * Added a responsive media query for screen widths below `1200px` to restore horizontal scrolling and fixed column widths (`280px`) on tablet/mobile screens for optimal readability.
+
 ---
 
 ## 🧪 Verification Results
