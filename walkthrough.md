@@ -69,6 +69,11 @@ We have successfully implemented and verified the pluggable inventory/catalog co
   * `stock`: Accepts `Availability Basis`, `Qty`, `Quantity`, `Units`, etc.
 * The matching runs exact and substring lookups first before running validations, ensuring users can import records from files styled under different naming conventions without seeing `missing required column: 'sku_id'` errors.
 
+### 10. Glassy Loading Overlay
+* **File:** [inventory.html](file:///D:/sku-matcher-prototype/templates/components/inventory.html#L84-L96)
+  * Implemented an absolute, glassy backdrop overlay (`x-show="loadingInventory"`) with an active purple spinner and text indicator: `"Importing & Verifying Catalog Records..."` directly layered over the catalog data table.
+  * This provides immediate visual feedback to the user while large CSV or Excel files are being processed, validated, and verified by the Gemini relevance model.
+
 ---
 
 ## 🧪 Verification Results
