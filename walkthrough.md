@@ -51,6 +51,12 @@ We have successfully implemented and verified the pluggable inventory/catalog co
   * Refactored `.kanban-col` (in both general styles and warm theme overrides) from a fixed `flex: 0 0 280px` to a flexible `flex: 1; min-width: 0;` so that all 5 columns divide the screen equally and fit perfectly within the viewport on desktops.
   * Added a responsive media query for screen widths below `1200px` to restore horizontal scrolling and fixed column widths (`280px`) on tablet/mobile screens for optimal readability.
 
+### 7. Pipeline Height Alignment
+* **File:** [style.css](file:///D:/sku-matcher-prototype/static/style.css#L870-L890)
+  * Set a uniform viewport-relative height for the `.kanban-grid` flex container (`height: calc(100vh - 310px); min-height: 500px;`) so that all lanes share a consistent base height constraint.
+  * Configured `.kanban-col` to have `height: 100%;` so that columns match height perfectly regardless of the number of cards in them.
+  * Removed the hardcoded `max-height` restriction from `.kanban-cards` to allow it to dynamically fill the remaining height of the columns.
+
 ---
 
 ## 🧪 Verification Results
