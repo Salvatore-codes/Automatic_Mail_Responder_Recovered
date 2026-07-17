@@ -61,6 +61,14 @@ We have successfully implemented and verified the pluggable inventory/catalog co
 * **AI Relevance Verification Check:** Integrated a zero-shot auditor check in [server.py](file:///D:/sku-matcher-prototype/src/server.py#L1291-L1350) using `gemini-2.5-flash`. The check retrieves the active vertical profile's industry details and guidelines, samples the first 15 records from the uploaded catalog, and verifies business relevance. If unrelated (e.g. uploading fruits/bolts into a consulting services vertical), the import is rejected with a `400 Bad Request` explaining why.
 * **Button Alignment:** Updated the header layout in [inventory.html](file:///D:/sku-matcher-prototype/templates/components/inventory.html#L45-L77) to use `flex gap-3 items-center`, added exact borders (`border: 1px solid var(--border)`), and set matching heights (`28px`) on the Import and Export containers.
 
+### 9. Robust Column Alias Mapping for Import
+* **Smart Header Mapping:** Updated the import parser in [server.py](file:///D:/sku-matcher-prototype/src/server.py#L1262-L1300) to support a wide list of common aliases for the required columns. For example:
+  * `sku_id`: Accepts `Service Code`, `Service_Code`, `Code`, `SKU`, `ID`, etc.
+  * `sku_name`: Accepts `Service Name`, `Service_Name`, `Name`, `Title`, etc.
+  * `price`: Accepts `Service Fee (Base)`, `Rate`, `Fee`, `Cost`, `Amount`, etc.
+  * `stock`: Accepts `Availability Basis`, `Qty`, `Quantity`, `Units`, etc.
+* The matching runs exact and substring lookups first before running validations, ensuring users can import records from files styled under different naming conventions without seeing `missing required column: 'sku_id'` errors.
+
 ---
 
 ## 🧪 Verification Results
@@ -69,6 +77,7 @@ We verified the implementation using:
 1. Automated connectors test suite [test_inventory_connectors.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_inventory_connectors.py) (CSV, Excel, SQL DB verification).
 2. Automated endpoint test suite [test_import_endpoint.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_import_endpoint.py) (FastAPI mock file upload and pandas CSV parsing verification).
 3. Automated relevance test suite [test_import_relevance.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_import_relevance.py) (Gemini relevance auditing checks).
+4. Automated header alias test suite [test_import_aliases.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_import_aliases.py) (Custom headers like `Service Code` and `Availability Basis` verification).
 
 ```
 --- Testing CSVConnector ---
@@ -90,6 +99,9 @@ Relevant import test passed! (Import allowed)
 Irrelevant import test passed! (Successfully rejected by AI)
 AI Rejection Reason: Rejection: The imported records are not relevant to this business vertical (DHANYA FACILITY MANAGEMENT SERVICES - Regulatory Compliance & Tax Advisory). Reason: The imported catalog inventory items (M8 Zinc Plated Hex Bolt, Fresh Red Apples) are physical goods related to hardware and groceries, which are completely unrelated to DHANYA FACILITY MANAGEMENT SERVICES' core business vertical of Regulatory Compliance & Tax Advisory.
 RELEVANCE VALIDATION TEST PASSED SUCCESSFULLY!
+
+--- Testing Smart Column Aliasing on Catalog Import ---
+Smart Column Aliases Test PASSED successfully! {'status': 'SUCCESS', 'count': 1, 'message': 'Successfully imported 1 records.'}
 ```
 
 ---
