@@ -456,19 +456,19 @@
                   <span class="kanban-col-label">
                     <i data-lucide="reply" class="w-3.5 h-3.5" style="color:var(--accent-2)"></i> Reply
                   </span>
-                  <span class="kanban-col-count purple" x-text="getFilteredList(repliedMails).length"></span>
+                  <span class="kanban-col-count purple" x-text="getFilteredList(repliedMails).length + getFilteredList(negotiations).length"></span>
                 </div>
                 <div class="kanban-cards">
-                  <!-- Customer replies from stream shown in Reply column -->
+                  <!-- Conversational Customer Replies -->
                   <template x-for="item in getFilteredList(repliedMails)" :key="item.message_id">
-                    <div class="k-card negotiation" @click="openChatHistory(item.invoice_id, item.customer_name)" style="cursor:pointer;">
+                    <div class="k-card negotiation" @click="openChatHistory(item.invoice_id, item.customer_name)" style="cursor:pointer; border-left: 3.5px solid var(--accent-2);">
                       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                        <span class="k-card-name" style="color:var(--accent-2);display:flex;align-items:center;gap:4px;">
-                          <i data-lucide="reply" class="w-3 h-3"></i> Customer Reply
+                        <span class="k-card-name" style="color:var(--accent-2);display:flex;align-items:center;gap:4px;font-weight:700;">
+                          <i data-lucide="message-square" class="w-3 h-3"></i> Conversational
                         </span>
                         <span style="font-size:9.5px;color:var(--text-3);font-family:var(--font-mono);" x-text="formatTime(item.timestamp)"></span>
                       </div>
-                      <span class="k-card-name" style="margin-top:3px;" x-text="item.customer_name || 'Customer'"></span>
+                      <span class="k-card-name" style="margin-top:5px;font-weight:600;" x-text="item.customer_name || 'Customer'"></span>
                       <span class="k-card-email" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="item.customer_email"></span>
                       <div class="k-card-footer" style="margin-top:6px;">
                         <span class="badge purple">Replied</span>
@@ -476,47 +476,31 @@
                       </div>
                     </div>
                   </template>
-                  <template x-if="getFilteredList(repliedMails).length === 0">
-                    <div class="k-empty">
-                      <i data-lucide="message-square" class="k-empty-icon w-6 h-6"></i>
-                      <span class="k-empty-label">No replies</span>
-                    </div>
-                  </template>
-                </div>
-              </div>
 
-              <!-- Column 4: Customer Request -->
-              <div class="kanban-col">
-                <div class="kanban-col-head">
-                  <span class="kanban-col-label">
-                    <i data-lucide="percent" class="w-3.5 h-3.5" style="color:var(--yellow)"></i> Customer Request
-                  </span>
-                  <span class="kanban-col-count yellow" x-text="getFilteredList(negotiations).length"></span>
-                </div>
-                <div class="kanban-cards">
-                  <!-- Discount/negotiation requests from escalated list -->
+                  <!-- Price Negotiation / Discount Requests -->
                   <template x-for="item in getFilteredList(negotiations)" :key="item.invoice_id">
-                    <div class="k-card negotiation" @click="openResolveNeg(item.invoice_id, item.customer_name, item.subtotal, item.discount_pct)" style="cursor:pointer;">
+                    <div class="k-card negotiation" @click="openResolveNeg(item.invoice_id, item.customer_name, item.subtotal, item.discount_pct)" style="cursor:pointer; border-left: 3.5px solid var(--yellow);">
                       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                        <span class="k-card-name" style="color:var(--yellow);display:flex;align-items:center;gap:4px;">
+                        <span class="k-card-name" style="color:var(--yellow);display:flex;align-items:center;gap:4px;font-weight:700;">
                           <i data-lucide="percent" class="w-3 h-3"></i> Discount Request
                         </span>
                         <span class="badge yellow" x-text="item.status === 'NEGOTIATION_ESCALATED' ? 'Escalated' : 'Active'"></span>
                       </div>
-                      <span class="k-card-name" style="margin-top:3px;" x-text="item.customer_name || 'Customer'"></span>
-                      <div class="k-card-desc" style="margin-top:2px;">
-                        Requested: <strong style="color:var(--yellow);" x-text="Math.round(item.discount_pct * 100) + '%'"></strong>
+                      <span class="k-card-name" style="margin-top:5px;font-weight:600;" x-text="item.customer_name || 'Customer'"></span>
+                      <div class="k-card-desc" style="margin-top:4px;font-size:11px;color:var(--text-2);">
+                        Requested: <strong style="color:var(--yellow);" x-text="Math.round(item.discount_pct * 100) + '%'"></strong> discount
                       </div>
-                      <div class="k-card-footer">
+                      <div class="k-card-footer" style="margin-top:6px;">
                         <span class="k-id" x-text="'INV-' + item.invoice_id"></span>
                         <button class="btn-micro">Decide</button>
                       </div>
                     </div>
                   </template>
-                  <template x-if="getFilteredList(negotiations).length === 0">
+
+                  <template x-if="getFilteredList(repliedMails).length === 0 && getFilteredList(negotiations).length === 0">
                     <div class="k-empty">
-                      <i data-lucide="percent" class="k-empty-icon w-6 h-6"></i>
-                      <span class="k-empty-label">No discount requests</span>
+                      <i data-lucide="message-square" class="k-empty-icon w-6 h-6"></i>
+                      <span class="k-empty-label">No replies or requests</span>
                     </div>
                   </template>
                 </div>
