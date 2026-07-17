@@ -506,41 +506,7 @@
                 </div>
               </div>
 
-              <!-- Column 4: Rejected -->
-              <div class="kanban-col">
-                <div class="kanban-col-head">
-                  <span class="kanban-col-label">
-                    <i data-lucide="x-circle" class="w-3.5 h-3.5" style="color:var(--red)"></i> Rejected
-                  </span>
-                  <span class="kanban-col-count red" x-text="getFilteredList(rejectedMails).length"></span>
-                </div>
-                <div class="kanban-cards">
-                  <template x-for="item in getFilteredList(rejectedMails)" :key="item.invoice_id">
-                    <div class="k-card deficit" @click="openQuoteComparison(item.invoice_id, item.customer_name)">
-                      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                        <span class="k-card-name" style="color:var(--red);display:flex;align-items:center;gap:4px;">
-                          <i data-lucide="alert-triangle" class="w-3 h-3"></i> Rejected Quote
-                        </span>
-                        <span class="badge red">Rejected</span>
-                      </div>
-                      <span class="k-card-name" style="margin-top:3px;" x-text="item.customer_name"></span>
-                      <div class="k-card-desc" style="margin-top:2px;">Discount request rejected on this quote.</div>
-                      <div class="k-card-footer">
-                        <span class="k-id" x-text="'INV-' + item.invoice_id"></span>
-                        <button class="btn-micro">View Quote</button>
-                      </div>
-                    </div>
-                  </template>
-                  <template x-if="getFilteredList(rejectedMails).length === 0">
-                    <div class="k-empty">
-                      <i data-lucide="x-circle" class="k-empty-icon w-6 h-6"></i>
-                      <span class="k-empty-label">No rejections</span>
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              <!-- Column 5: Pending Approval -->
+              <!-- Column 4: Pending Approval -->
               <div class="kanban-col">
                 <div class="kanban-col-head">
                   <span class="kanban-col-label">
@@ -612,6 +578,40 @@
                     <div class="k-empty">
                       <i data-lucide="check-circle-2" class="k-empty-icon w-6 h-6"></i>
                       <span class="k-empty-label">All clear</span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Column 5: Rejected -->
+              <div class="kanban-col">
+                <div class="kanban-col-head">
+                  <span class="kanban-col-label">
+                    <i data-lucide="x-circle" class="w-3.5 h-3.5" style="color:var(--red)"></i> Rejected
+                  </span>
+                  <span class="kanban-col-count red" x-text="getFilteredList(rejectedMails).length"></span>
+                </div>
+                <div class="kanban-cards">
+                  <template x-for="item in getFilteredList(rejectedMails)" :key="item.invoice_id">
+                    <div class="k-card deficit" @click="openQuoteComparison(item.invoice_id, item.customer_name)">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                        <span class="k-card-name" style="color:var(--red);display:flex;align-items:center;gap:4px;">
+                          <i data-lucide="alert-triangle" class="w-3 h-3"></i> Rejected Quote
+                        </span>
+                        <span class="badge red">Rejected</span>
+                      </div>
+                      <span class="k-card-name" style="margin-top:3px;" x-text="item.customer_name"></span>
+                      <div class="k-card-desc" style="margin-top:2px;">Discount request rejected on this quote.</div>
+                      <div class="k-card-footer">
+                        <span class="k-id" x-text="'INV-' + item.invoice_id"></span>
+                        <button class="btn-micro">View Quote</button>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="getFilteredList(rejectedMails).length === 0">
+                    <div class="k-empty">
+                      <i data-lucide="x-circle" class="k-empty-icon w-6 h-6"></i>
+                      <span class="k-empty-label">No rejections</span>
                     </div>
                   </template>
                 </div>

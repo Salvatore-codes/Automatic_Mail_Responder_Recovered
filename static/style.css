@@ -465,12 +465,13 @@ html[data-theme="cyber"]    aside.sidebar::before {
    TOPBAR / HEADER
 ══════════════════════════════════════ */
 .topbar {
-  height: 56px;
+  min-height: 56px;
+  height: auto;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 8px 24px;
   border-bottom: 1px solid var(--border);
   background: rgba(255,255,255,0.7);
   backdrop-filter: blur(20px) saturate(160%);
@@ -478,6 +479,15 @@ html[data-theme="cyber"]    aside.sidebar::before {
   position: sticky;
   top: 0;
   z-index: 40;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 html[data-theme="midnight"] .topbar,
 html[data-theme="navy"]     .topbar,
@@ -862,7 +872,7 @@ main.view-area {
   gap: 12px;
   overflow-x: auto;
   width: 100%;
-  align-items: start;
+  align-items: stretch;
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
@@ -1015,6 +1025,7 @@ main.view-area {
   text-align: center;
   opacity: 0.55;
   margin: 4px;
+  flex: 1;
 }
 .k-empty-icon { color: var(--text-3); }
 .k-empty-label { font-size: 11px; font-weight: 600; color: var(--text-2); }
