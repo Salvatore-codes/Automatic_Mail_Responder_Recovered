@@ -1,0 +1,5 @@
+sku_id,sku_name,description,price,category,stock
+DMS-INV-01,Invisalign Clear Aligner Treatment (Comprehensive),"Full course treatment to straighten teeth using custom-made, virtually invisible aligners, including initial consultation and follow-up visits.",150000.0,Orthodontics,100
+DMS-RCT-01,Advanced Painless Root Canal Treatment,"Modern, painless procedure to treat infected teeth, relieve discomfort, and preserve natural tooth structure.",12000.0,Endodontics,100
+DMS-IMP-01,Single Dental Implant with Crown,Permanent and natural-looking replacement for a missing tooth using globally trusted implant systems.,35000.0,Prosthodontics,100
+DMS-SMC-01,Initial Smile Makeover Consultation,"Comprehensive assessment and personalized discussion of cosmetic enhancements like whitening, veneers, and smile designing.",500.0,Cosmetic Dentistry,100

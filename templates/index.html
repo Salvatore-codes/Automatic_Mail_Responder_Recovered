@@ -10,12 +10,12 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Fraunces — editorial serif display (Ivory & Ink) -->
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/static/style.css?v=1.0.5">
+    <link rel="stylesheet" href="/static/style.css?v=1.2.0">
     
     <!-- Tailwind Play CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -42,6 +42,249 @@
     
     <!-- Alpine Application Root -->
     <div x-data="dashboardApp()" x-init="initApp()" class="app-shell" style="color:var(--text-1);">
+      
+      <!-- Premium Login Screen Overlay -->
+      <div x-show="!isLoggedIn"
+           class="login-overlay"
+           id="loginOverlay"
+           x-transition>
+
+
+
+        <div class="login-card w-full p-6 sm:p-10"
+             :style="loginTab === 'signup' ? 'max-width:820px; transition: max-width 0.3s ease;' : 'max-width:440px; transition: max-width 0.3s ease;'"
+             style="background:var(--bg-card); border:1px solid var(--border); border-radius:24px; box-shadow:0 20px 50px rgba(0,0,0,0.3); backdrop-filter:blur(30px); position:relative; z-index:1; display:flex; flex-direction:column; gap:24px; flex-shrink:0;">
+
+          <div style="text-align:center;">
+            <img src="/static/logo.png" style="height:36px; object-fit:contain; margin:0 auto 16px;" />
+            <h2 class="text-xl font-extrabold tracking-tight text-[var(--text-1)]" x-text="t('Automatic Mail Responder')">Automatic Mail Responder</h2>
+            <p class="text-xs text-[var(--text-3)] mt-1.5" x-text="loginTab === 'signin' ? t('Sign in to your operator session') : t('Register your business and connect your support mailbox')"></p>
+          </div>
+
+          <!-- Sign In / Sign Up Tabs Toggle -->
+          <div style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:10px; background:var(--bg-canvas); border:1px solid var(--border);">
+            <button @click="loginTab = 'signin'" class="flex-1 text-center py-2 text-xs font-bold rounded-lg border-none cursor-pointer transition-all"
+                    :class="loginTab === 'signin' ? 'bg-[var(--accent)] text-[var(--bg-card)]' : 'bg-transparent text-[var(--text-2)]'"
+                    x-text="t('Sign In')">
+            </button>
+            <button @click="loginTab = 'signup'" class="flex-1 text-center py-2 text-xs font-bold rounded-lg border-none cursor-pointer transition-all"
+                    :class="loginTab === 'signup' ? 'bg-[var(--accent)] text-[var(--bg-card)]' : 'bg-transparent text-[var(--text-2)]'"
+                    x-text="t('Sign Up')">
+            </button>
+          </div>          <!-- ── TAB 1: SIGN IN ── -->
+          <div x-show="loginTab === 'signin'" x-data="{ selectedEmail: currentUserEmail || 'superadmin@trofeo.com', inputPassword: '' }">
+            <div style="background:rgba(255,255,255,0.015); border:1px solid var(--border); border-radius:20px; padding:24px; display:flex; flex-direction:column; gap:16px;">
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:10px; font-weight:700; color:var(--text-3); text-transform:uppercase;" x-text="t('Operator Email')">Operator Email</label>
+                <input type="email" x-model="selectedEmail" placeholder="operator@trofeo.com" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-1)] p-3 outline-none focus:border-[var(--accent)]" />
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:8px; margin-top:-4px;">
+                <div style="font-size:10px; color:var(--text-3); display:flex; flex-wrap:wrap; gap:8px;">
+                  <span x-text="t('Preset Profiles:')">Preset Profiles:</span>
+                  <button type="button" @click="selectedEmail = 'superadmin@trofeo.com'; inputPassword = '••••••••'" class="text-[var(--accent)] hover:underline border-none bg-transparent p-0 cursor-pointer font-bold" x-text="t('Super Admin')">Super Admin</button>
+                  <button type="button" @click="selectedEmail = 'karthi@trofeo.com'; inputPassword = '••••••••'" class="text-[var(--accent)] hover:underline border-none bg-transparent p-0 cursor-pointer font-bold">Karthikeyan</button>
+                  <button type="button" @click="selectedEmail = 'operator@trofeo.com'; inputPassword = '••••••••'" class="text-[var(--accent)] hover:underline border-none bg-transparent p-0 cursor-pointer font-bold" x-text="t('Standard Operator')">Standard Operator</button>
+                </div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:10px; font-weight:700; color:var(--text-3); text-transform:uppercase;" x-text="t('Access Token / Password')">Access Token / Password</label>
+                <input type="password" x-model="inputPassword" placeholder="••••••••" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-1)] p-3 outline-none focus:border-[var(--accent)]" />
+              </div>
+
+              <button @click="loginUser(selectedEmail)" class="btn btn-primary text-sm font-bold p-3" style="margin-top:8px; justify-content:center; width:100%;">
+                <i data-lucide="log-in" class="w-4 h-4 mr-2"></i>
+                <span x-text="t('Initialize Session')">Initialize Session</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ── TAB 2: SIGN UP ── -->
+          <div x-show="loginTab === 'signup'" style="display:flex; flex-direction:column; gap:16px;"
+               x-data="{
+                 otpSent: false,
+                 otpVerified: false,
+                 otpCode: '',
+                 otpSending: false,
+                 otpVerifying: false,
+                 otpError: '',
+                 otpSuccess: '',
+                 otpCooldown: 0,
+                 async sendOtp() {
+                   if (!signupForm.email) { otpError = 'Please enter your email address first.'; return; }
+                   otpSending = true; otpError = ''; otpSuccess = '';
+                   try {
+                     const r = await fetch('/api/auth/send-otp', {
+                       method:'POST',
+                       headers:{'Content-Type':'application/json'},
+                       body: JSON.stringify({ email: signupForm.email })
+                     });
+                     const d = await r.json();
+                     if (r.ok) {
+                       otpSent = true; otpSuccess = 'OTP sent to ' + signupForm.email;
+                       otpCooldown = 30;
+                       const t = setInterval(() => { if(otpCooldown > 0) otpCooldown--; else clearInterval(t); }, 1000);
+                     } else { otpError = d.detail || 'Failed to send OTP.'; }
+                   } catch(e) { otpError = 'Network error. Try again.'; }
+                   finally { otpSending = false; }
+                 },
+                 async verifyOtp() {
+                   if (!otpCode) { otpError = 'Enter the OTP sent to your email.'; return; }
+                   otpVerifying = true; otpError = '';
+                   try {
+                     const r = await fetch('/api/auth/verify-otp', {
+                       method:'POST',
+                       headers:{'Content-Type':'application/json'},
+                       body: JSON.stringify({ email: signupForm.email, otp: otpCode })
+                     });
+                     const d = await r.json();
+                     if (r.ok && d.verified) {
+                       otpVerified = true; otpSuccess = '✓ Email verified successfully!'; otpError = '';
+                     } else { otpError = d.detail || 'Invalid OTP. Please try again.'; }
+                   } catch(e) { otpError = 'Network error. Try again.'; }
+                   finally { otpVerifying = false; }
+                 }
+               }">
+
+            <!-- Single Column Card -->
+            <div style="background:rgba(255,255,255,0.015); border:1px solid var(--border); border-radius:20px; padding:24px; display:flex; flex-direction:column; gap:14px;">
+              <h3 style="font-size:11px; font-weight:800; color:var(--accent); text-transform:uppercase; letter-spacing:0.05em; margin:0 0 2px 0;">Company Profile</h3>
+
+              <!-- Row 1: Full Name + Vertical Dropdown -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;" x-text="t('Full Name')">Full Name</label>
+                  <input type="text" x-model="signupForm.full_name" placeholder="John Doe"
+                    class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)]" style="height:38px;" />
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;" x-text="t('Vertical / Industry')">Vertical / Industry</label>
+                  <select x-model="signupForm.industry"
+                    class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)] cursor-pointer" style="height:38px;">
+                    <option value="" x-text="t('-- Select Industry --')">-- Select Industry --</option>
+                    <option value="Hardware & Tools">Hardware &amp; Tools</option>
+                    <option value="Dental & Medical">Dental &amp; Medical</option>
+                    <option value="Construction & Civil">Construction &amp; Civil</option>
+                    <option value="Automotive">Automotive</option>
+                    <option value="Electronics & Electricals">Electronics &amp; Electricals</option>
+                    <option value="Retail & FMCG">Retail &amp; FMCG</option>
+                    <option value="Pharmaceutical">Pharmaceutical</option>
+                    <option value="Agriculture & Agro">Agriculture &amp; Agro</option>
+                    <option value="Textiles & Garments">Textiles &amp; Garments</option>
+                    <option value="Food & Beverages">Food &amp; Beverages</option>
+                    <option value="IT & Software">IT &amp; Software</option>
+                    <option value="Logistics & Shipping">Logistics &amp; Shipping</option>
+                    <option value="Education">Education</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Business Name (Mandatory) -->
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;">
+                  <span x-text="t('Business Name')">Business Name</span>
+                  <span style="color:var(--red); margin-left:2px;">*</span>
+                </label>
+                <input type="text" x-model="signupForm.business_name" :placeholder="t('e.g. Apex Dental Solutions')"
+                  class="bg-[var(--bg-input)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none"
+                  :style="!signupForm.business_name && signupError ? 'border:1.5px solid var(--red);' : 'border:1px solid var(--border);'"
+                  style="height:38px;" />
+                <p x-show="!signupForm.business_name && signupError" style="font-size:9px; color:var(--red); margin:0;" x-text="t('Business name is required')">Business name is required</p>
+              </div>
+
+              <!-- Email + OTP Section -->
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;">
+                  <span x-text="t('Email Address')">Email Address</span>
+                  <span style="color:var(--red); margin-left:2px;">*</span>
+                </label>
+
+                <!-- Email input + Send OTP button -->
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <input type="email" x-model="signupForm.email" :placeholder="t('your@email.com')"
+                    :disabled="otpVerified"
+                    class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)]"
+                    :style="otpVerified ? 'flex:1; height:38px; opacity:0.6; cursor:not-allowed;' : 'flex:1; height:38px;'" />
+                  <button type="button" @click="sendOtp()"
+                    :disabled="otpSending || otpVerified || otpCooldown > 0"
+                    style="height:38px; padding:0 14px; border-radius:10px; font-size:10px; font-weight:700; white-space:nowrap; border:1px solid var(--accent); cursor:pointer; transition:all 0.2s;"
+                    :style="otpVerified ? 'background:rgba(5,150,105,0.08); border-color:var(--green); color:var(--green); cursor:default;' : 'background:transparent; color:var(--accent);'"
+                    x-text="otpVerified ? '✓ Verified' : (otpSending ? 'Sending...' : (otpCooldown > 0 ? 'Resend in ' + otpCooldown + 's' : (otpSent ? 'Resend OTP' : 'Send OTP')))">
+                    Send OTP
+                  </button>
+                </div>
+
+                <!-- OTP input row (shown after OTP sent) -->
+                <div x-show="otpSent && !otpVerified" x-transition style="display:flex; gap:8px; align-items:center;">
+                  <input type="text" x-model="otpCode" placeholder="Enter 6-digit OTP" maxlength="6"
+                    @keyup.enter="verifyOtp()"
+                    class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)]"
+                    style="flex:1; height:38px; letter-spacing:0.15em; font-weight:700; font-size:13px;" />
+                  <button type="button" @click="verifyOtp()"
+                    :disabled="otpVerifying || !otpCode"
+                    style="height:38px; padding:0 14px; border-radius:10px; font-size:10px; font-weight:700; background:var(--accent); color:#fff; border:none; cursor:pointer; white-space:nowrap;"
+                    x-text="otpVerifying ? 'Verifying...' : 'Verify OTP'">Verify OTP</button>
+                </div>
+
+                <!-- OTP status messages -->
+                <div x-show="otpSuccess" x-transition style="font-size:10px; font-weight:600; color:var(--green);" x-text="otpSuccess"></div>
+                <div x-show="otpError" x-transition style="font-size:10px; font-weight:600; color:var(--red);" x-text="otpError"></div>
+              </div>
+
+              <!-- Website URL (Optional) -->
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;" x-text="t('Website URL (Optional)')">Website URL (Optional)</label>
+                <input type="text" x-model="signupForm.url" placeholder="https://example.com"
+                  class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)]" style="height:38px;" />
+              </div>
+
+              <!-- Company Profile Description (Optional) -->
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;" x-text="t('Company Profile Description (Optional)')">Company Profile Description (Optional)</label>
+                <textarea x-model="signupForm.description_text" rows="2"
+                  :placeholder="t('Brief details about what items you sell or services you offer to train the AI model...')"
+                  class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none resize-none focus:border-[var(--accent)] font-sans"></textarea>
+              </div>
+            </div>
+
+            <!-- Error Banner -->
+            <div x-show="signupError" x-transition style="padding:10px 12px; border-radius:12px; background:rgba(220,38,38,0.06); border:1px solid rgba(220,38,38,0.2); color:var(--red); font-size:11px; font-weight:600;" x-text="signupError"></div>
+
+            <!-- Register Button — disabled until email verified -->
+            <div>
+              <button @click="
+                signupForm.email_user = signupForm.email;
+                signupForm.email_pass = signupForm.email;
+                registerNewUser();
+              " class="btn btn-primary text-sm font-bold p-3" style="justify-content:center; width:100%;"
+              :disabled="signupLoading || !otpVerified"
+              :title="!otpVerified ? 'Please verify your email address first' : ''"
+              :style="!otpVerified ? 'opacity:0.5; cursor:not-allowed;' : ''">
+                <template x-if="signupLoading">
+                  <div style="width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; margin-right:8px;"></div>
+                </template>
+                <i x-show="!signupLoading" data-lucide="sparkles" class="w-4 h-4 mr-2"></i>
+                <span x-text="signupLoading ? t('Instantiating Auto-Responder Systems...') : t('Register & Initialize Responder')"></span>
+              </button>
+              <p x-show="!otpVerified" style="text-align:center; font-size:9.5px; color:var(--text-3); margin-top:6px;">
+                ⚠️ Verify your email with OTP before registering
+              </p>
+            </div>
+          </div>
+
+
+          <!-- Language Toggle -->
+          <div style="display:flex; justify-content:center; gap:8px; border-top:1px solid var(--border); padding-top:16px;">
+            <button @click="setLanguage('en')" class="text-xs font-bold border-none bg-transparent cursor-pointer" :style="language === 'en' ? 'color:var(--accent);' : 'color:var(--text-3);'">English</button>
+            <span style="color:var(--border);">|</span>
+            <button @click="setLanguage('ta')" class="text-xs font-bold border-none bg-transparent cursor-pointer" :style="language === 'ta' ? 'color:var(--accent);' : 'color:var(--text-3);'">தமிழ்</button>
+          </div>
+
+
+        </div><!-- /.login-card -->
+      </div><!-- /.login-overlay -->
       
       <!-- Ambient Glow -->
       <div class="glow-orb orb-1" aria-hidden="true"></div>
@@ -84,7 +327,7 @@
           </div>
 
           <!-- Right: Controls -->
-          <div style="display:flex;align-items:center;gap:10px;">
+          <div class="topbar-controls">
             
             <!-- Tenant -->
             <div class="header-chip">
@@ -94,22 +337,6 @@
                   <option :value="tenant.id" x-text="tenant.name"></option>
                 </template>
               </select>
-            </div>
-
-            <!-- Business Type Badge -->
-            <div class="header-chip" 
-                 :style="activeVertical.business_type === 'Services' 
-                   ? 'background:rgba(59,130,246,0.08); border-color:rgba(59,130,246,0.25); color:#3b82f6;' 
-                   : 'background:rgba(16,185,129,0.08); border-color:rgba(16,185,129,0.25); color:#10b981;'">
-              <span class="flex items-center gap-1.5 font-bold uppercase tracking-wider" style="font-size:10px;">
-                <template x-if="activeVertical.business_type === 'Services'">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                </template>
-                <template x-if="activeVertical.business_type !== 'Services'">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><polygon points="12 22.08 12 12 3 6.92 3 17.01 12 22.08"/><polygon points="12 22.08 21 17.01 21 6.92 12 12 12 22.08"/><polygon points="12 12 21 6.92 12 1.84 3 6.92 12 12"/></svg>
-                </template>
-                <span x-text="activeVertical.business_type === 'Services' ? t('Services') : t('Trading / Stocks')"></span>
-              </span>
             </div>
 
             <!-- Status -->
@@ -140,28 +367,6 @@
               </button>
             </div>
 
-            <!-- Engine Switcher Pill Group -->
-            <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;" title="Select Ingestion Engine">
-              <button 
-                @click="settings.ingestion_engine = 'A'; saveSettings();"
-                class="switcher-btn"
-                :class="settings.ingestion_engine === 'A' ? 'active-engine-a' : ''"
-                title="Engine A: Free local rule-based / fuzzy search"
-              >
-                <i data-lucide="zap-off" style="width:11px; height:11px;"></i>
-                <span x-text="t('Engine A (Local)')"></span>
-              </button>
-              <button 
-                @click="settings.ingestion_engine = 'B'; saveSettings();"
-                class="switcher-btn"
-                :class="settings.ingestion_engine === 'B' ? 'active-engine-b' : ''"
-                title="Engine B: AI Hybrid parsing via Gemini API (Free tier)"
-              >
-                <i data-lucide="sparkles" style="width:11px; height:11px;" :style="settings.ingestion_engine === 'B' ? 'color:#000;' : ''"></i>
-                <span x-text="t('Engine B (AI)')"></span>
-              </button>
-            </div>
-
             <!-- Connect Outlook -->
             <a :href="'/api/outlook/login?tenant_id=' + selectedTenant" 
                target="_blank" 
@@ -183,9 +388,33 @@
               </select>
             </div>
 
+            <!-- Active User Switcher -->
+            <div class="header-chip" style="background:var(--bg-card);border:1px solid var(--border);">
+              <i data-lucide="user-check" style="width:13px;height:13px;color:var(--accent-2);margin-right:2px;"></i>
+              <select :value="currentUserEmail" @change="switchUser($event.target.value)" style="background:none;border:none;outline:none;font-size:11.5px;font-weight:700;color:var(--text-1);cursor:pointer;font-family:var(--font-mono);min-width:140px;">
+                <option value="superadmin@trofeo.com">Super Admin</option>
+                <option value="karthi@trofeo.com">Karthikeyan</option>
+                <option value="operator@trofeo.com">Operator</option>
+              </select>
+            </div>
+
+            <!-- Perspective Selector (Visible only to Super Admin) -->
+            <template x-if="currentUser.role === 'super_admin'">
+              <div class="header-chip" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);">
+                <i data-lucide="eye" style="width:13px;height:13px;color:var(--green);margin-right:2px;"></i>
+                <span style="font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-right:4px;" x-text="t('Viewing') + ':'"></span>
+                <select :value="selectedOperatorEmail" @change="switchSelectedOperator($event.target.value)" style="background:none;border:none;outline:none;font-size:11px;font-weight:700;color:var(--text-2);cursor:pointer;font-family:var(--font-mono);min-width:120px;">
+                  <option value="all">All (Unified)</option>
+                  <option value="superadmin@trofeo.com">Super Admin</option>
+                  <option value="karthi@trofeo.com">Karthikeyan</option>
+                  <option value="operator@trofeo.com">Operator</option>
+                </select>
+              </div>
+            </template>
+
             <!-- Avatar -->
-            <div class="avatar-btn">
-              OP
+            <div class="avatar-btn" @click="dossierUser = currentUser; showDossier = true; triggerLucide();" style="cursor:pointer;" title="View Operator Dossier">
+              <span x-text="currentUser.full_name ? currentUser.full_name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'OP'">OP</span>
               <span class="avatar-online"></span>
             </div>
 
@@ -206,6 +435,7 @@
           {% include 'components/verticals.html' %}
           {% include 'components/customers.html' %}
           {% include 'components/activity_log.html' %}
+          {% include 'components/access.html' %}
 
 
         </main>
@@ -219,3 +449,5 @@
 
       <!-- Include Alpine App State Code -->
       {% include 'components/app_js.html' %}
+
+

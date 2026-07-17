@@ -1,0 +1,266 @@
+          <!-- TAB: ACCESS CONTROL -->
+          <div class="tab-content" :class="{ 'active': activeTab === 'access' }" x-show="currentUser.role === 'super_admin'"
+               x-data="{
+                 formEmail: '', formName: '', formRole: 'employee',
+                 siInboxEmail: '', siInboxLabel: '', siUserEmail: '',
+                 expandedInbox: null,
+                 showAddUser: false,
+                 showAddInbox: false
+               }">
+
+            <!-- ── Compact Page Header ── -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+              <div>
+                <div class="ov-eyebrow" style="margin-bottom:4px;">Security & Operations</div>
+                <h1 class="ov-title" style="font-size:22px; margin:0;">User Access Control</h1>
+                <p style="font-size:11.5px; color:var(--text-3); margin:4px 0 0;">
+                  <span x-text="usersList.length"></span> users · <span x-text="sharedInboxes.length"></span> shared inbox<span x-text="sharedInboxes.length !== 1 ? 'es' : ''"></span>
+                </p>
+              </div>
+              <div class="ov-pulse" style="flex-shrink:0;"><span class="ov-pulse-dot" style="background-color:var(--accent-2);"></span> Active Policy</div>
+            </div>
+
+            <!-- ══════════════════════════════
+                 SECTION 1: Authorized Users
+            ══════════════════════════════ -->
+            <div class="section-card" style="margin-bottom:18px;">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <i data-lucide="users" class="w-4 h-4" style="color:var(--accent)"></i>
+                  Authorized Personnel
+                </h3>
+                <button @click="showAddUser = !showAddUser"
+                        class="btn btn-ghost btn-sm"
+                        style="display:flex; align-items:center; gap:5px;"
+                        :style="showAddUser ? 'color:var(--accent); border-color:var(--accent);' : ''">
+                  <i data-lucide="user-plus" style="width:13px;height:13px;"></i>
+                  <span x-text="showAddUser ? 'Cancel' : 'Add User'"></span>
+                </button>
+              </div>
+
+              <!-- Users Table -->
+              <div class="overflow-x-auto">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Full Name</th>
+                      <th>Email Address</th>
+                      <th>Access Level</th>
+                      <th>Status</th>
+                      <th style="text-align:right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="usr in usersList" :key="usr.email">
+                      <tr @click="dossierUser = usr; showDossier = true;" style="cursor:pointer;" class="hover:bg-[rgba(255,255,255,0.015)] transition-all">
+                        <td>
+                          <strong x-text="usr.full_name"></strong>
+                          <template x-if="usr.email === currentUserEmail">
+                            <span class="badge blue" style="font-size:9px;padding:1px 5px;margin-left:6px;">You</span>
+                          </template>
+                        </td>
+                        <td class="font-mono text-xs" x-text="usr.email"></td>
+                        <td>
+                          <span class="badge" :class="usr.role === 'super_admin' ? 'red' : 'gray'"
+                                x-text="usr.role === 'super_admin' ? 'Super Admin' : 'Sales Operator'"></span>
+                        </td>
+                        <td>
+                          <span class="badge" :class="usr.active === 1 ? 'green' : 'gray'"
+                                x-text="usr.active === 1 ? 'Active' : 'Inactive'"></span>
+                        </td>
+                        <td style="text-align:right;">
+                          <button @click.stop="deleteUser(usr.email)"
+                                  :disabled="usr.email === currentUserEmail"
+                                  class="btn btn-ghost btn-sm"
+                                  style="padding:4px 8px; color:var(--red);"
+                                  title="Remove access">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                          </button>
+                        </td>
+                      </tr>
+                    </template>
+
+                    <!-- ── Inline Add User Row ── -->
+                    <template x-if="showAddUser">
+                      <tr style="background:rgba(154,118,69,0.04); border-top:2px dashed var(--border-2);">
+                        <td style="padding:10px 12px;">
+                          <input type="text" x-model="formName"
+                                 placeholder="Full name"
+                                 @keydown.enter="if(formEmail.trim()&&formName.trim()){saveUser(formEmail.trim(),formName.trim(),formRole);formEmail='';formName='';formRole='employee';showAddUser=false;}else{showToast('Enter name and email','error');}"
+                                 style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text-1);outline:none;font-family:var(--font);"
+                                 autofocus />
+                        </td>
+                        <td style="padding:10px 8px;">
+                          <input type="email" x-model="formEmail"
+                                 placeholder="email@company.com"
+                                 @keydown.enter="if(formEmail.trim()&&formName.trim()){saveUser(formEmail.trim(),formName.trim(),formRole);formEmail='';formName='';formRole='employee';showAddUser=false;}else{showToast('Enter name and email','error');}"
+                                 style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text-1);outline:none;font-family:var(--font);" />
+                        </td>
+                        <td style="padding:10px 8px;">
+                          <select x-model="formRole"
+                                  style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text-1);outline:none;cursor:pointer;">
+                            <option value="employee">Sales Operator</option>
+                            <option value="super_admin">Super Admin</option>
+                          </select>
+                        </td>
+                        <td></td>
+                        <td style="text-align:right; padding:10px 12px;">
+                          <button @click="if(formEmail.trim()&&formName.trim()){saveUser(formEmail.trim(),formName.trim(),formRole);formEmail='';formName='';formRole='employee';showAddUser=false;}else{showToast('Enter name and email','error');}"
+                                  class="btn btn-primary btn-sm"
+                                  style="white-space:nowrap;">
+                            <i data-lucide="check" style="width:12px;height:12px;"></i>
+                            Grant Access
+                          </button>
+                        </td>
+                      </tr>
+                    </template>
+
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Helper tip when row is open -->
+              <template x-if="showAddUser">
+                <p style="font-size:10.5px;color:var(--text-3);padding:6px 16px 10px;margin:0;">
+                  💡 Fill in the row above and press <strong>Enter</strong> or click <strong>Grant Access</strong>.
+                </p>
+              </template>
+            </div>
+
+            <!-- ══════════════════════════════
+                 SECTION 2: Shared Team Inboxes
+            ══════════════════════════════ -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <i data-lucide="mail" class="w-4 h-4" style="color:var(--green)"></i>
+                  Shared Team Inboxes
+                  <span style="font-size:10px;font-weight:600;padding:2px 8px;background:rgba(16,185,129,0.1);color:var(--green);border-radius:20px;" x-text="sharedInboxes.length + ' configured'"></span>
+                </h3>
+                <button @click="showAddInbox = !showAddInbox"
+                        class="btn btn-ghost btn-sm"
+                        style="display:flex; align-items:center; gap:5px;"
+                        :style="showAddInbox ? 'color:var(--green); border-color:var(--green);' : ''">
+                  <i data-lucide="plus-circle" style="width:13px;height:13px;"></i>
+                  <span x-text="showAddInbox ? 'Cancel' : 'New Inbox'"></span>
+                </button>
+              </div>
+
+              <!-- Inline Create Inbox Form -->
+              <template x-if="showAddInbox">
+                <div style="margin:0 16px 12px; padding:14px; background:rgba(16,185,129,0.04); border:1px dashed rgba(16,185,129,0.3); border-radius:12px;">
+                  <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:10px; align-items:end;">
+                    <div>
+                      <label style="font-size:9.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:4px;">Inbox Email</label>
+                      <input type="email" x-model="siInboxEmail" placeholder="sales@company.com"
+                             style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--text-1);outline:none;font-family:var(--font);" />
+                    </div>
+                    <div>
+                      <label style="font-size:9.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:4px;">Display Name</label>
+                      <input type="text" x-model="siInboxLabel" placeholder="e.g. Sales Team"
+                             style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--text-1);outline:none;font-family:var(--font);" />
+                    </div>
+                    <div>
+                      <label style="font-size:9.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:4px;">Assign First User</label>
+                      <select x-model="siUserEmail"
+                              style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--text-1);outline:none;cursor:pointer;">
+                        <option value="">— select user —</option>
+                        <template x-for="u in usersList" :key="u.email">
+                          <option :value="u.email" x-text="u.full_name"></option>
+                        </template>
+                      </select>
+                    </div>
+                    <button @click="if(siInboxEmail.trim()&&siUserEmail.trim()){saveSharedInboxAssignment(siInboxEmail.trim(),siInboxLabel.trim()||siInboxEmail.trim(),siUserEmail.trim());siInboxEmail='';siInboxLabel='';siUserEmail='';showAddInbox=false;}else{showToast('Fill inbox email and select a user.','error');}"
+                            style="background:var(--green);color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:var(--font);display:inline-flex;align-items:center;gap:5px;">
+                      <i data-lucide="plus" style="width:13px;height:13px;"></i>
+                      Create
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Empty state -->
+              <template x-if="sharedInboxes.length === 0 && !showAddInbox">
+                <div style="padding:32px 20px; text-align:center;">
+                  <i data-lucide="inbox" style="width:28px;height:28px;color:var(--text-3);margin:0 auto 10px;display:block;"></i>
+                  <p style="font-size:12px;color:var(--text-3);margin:0;">No shared inboxes yet.</p>
+                  <p style="font-size:11px;color:var(--text-4);margin:4px 0 0;">Click <strong>New Inbox</strong> above to create one.</p>
+                </div>
+              </template>
+
+              <!-- Inbox cards -->
+              <div style="padding:0 16px 14px; display:flex; flex-direction:column; gap:10px;">
+                <template x-for="inbox in sharedInboxes" :key="inbox.inbox_email">
+                  <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg-card2);">
+
+                    <!-- Header row — always shows members -->
+                    <div @click="expandedInbox = expandedInbox === inbox.inbox_email ? null : inbox.inbox_email"
+                         style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; cursor:pointer; user-select:none;"
+                         :style="expandedInbox === inbox.inbox_email ? 'background:rgba(16,185,129,0.05);' : ''">
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:32px;height:32px;border-radius:8px;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                          <i data-lucide="mail" style="width:15px;height:15px;color:var(--green);"></i>
+                        </div>
+                        <div>
+                          <div style="font-size:12px;font-weight:700;color:var(--text-1);" x-text="inbox.inbox_label"></div>
+                          <div style="font-size:10px;color:var(--text-3);font-family:var(--font-mono);" x-text="inbox.inbox_email"></div>
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <!-- Member pills -->
+                        <template x-for="u in inbox.users" :key="u.user_email">
+                          <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:3px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:20px;color:var(--text-1);">
+                            <span style="width:16px;height:16px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:white;"
+                                  x-text="u.full_name ? u.full_name[0].toUpperCase() : '?'"></span>
+                            <span x-text="u.full_name"></span>
+                          </span>
+                        </template>
+                        <span style="font-size:10px;font-weight:700;padding:3px 8px;background:rgba(16,185,129,0.12);color:var(--green);border-radius:20px;white-space:nowrap;"
+                              x-text="inbox.users.length + ' member' + (inbox.users.length !== 1 ? 's' : '')"></span>
+                        <button @click.stop="if(confirm('Delete shared inbox ' + inbox.inbox_email + '?')) removeSharedInboxAssignment(inbox.inbox_email, '')"
+                                style="background:none;border:none;cursor:pointer;color:var(--red);padding:4px;border-radius:6px;" title="Delete inbox">
+                          <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+                        </button>
+                        <i :data-lucide="expandedInbox === inbox.inbox_email ? 'chevron-up' : 'chevron-down'"
+                           style="width:13px;height:13px;color:var(--text-3);"></i>
+                      </div>
+                    </div>
+
+                    <!-- Expanded: manage members -->
+                    <template x-if="expandedInbox === inbox.inbox_email">
+                      <div style="border-top:1px solid var(--border); padding:10px 14px; display:flex; flex-direction:column; gap:6px;">
+                        <template x-for="u in inbox.users" :key="u.user_email">
+                          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg-input);border-radius:8px;">
+                            <div>
+                              <div style="font-size:11px;font-weight:600;color:var(--text-1);" x-text="u.full_name"></div>
+                              <div style="font-size:10px;color:var(--text-3);font-family:var(--font-mono);" x-text="u.user_email"></div>
+                            </div>
+                            <button @click="removeSharedInboxAssignment(inbox.inbox_email, u.user_email)"
+                                    style="background:none;border:none;cursor:pointer;color:var(--red);padding:4px;border-radius:6px;" title="Remove">
+                              <i data-lucide="user-minus" style="width:13px;height:13px;"></i>
+                            </button>
+                          </div>
+                        </template>
+                        <!-- Quick-add -->
+                        <div style="display:flex;gap:6px;margin-top:4px;" x-data="{ quickUser: '' }">
+                          <select x-model="quickUser"
+                                  style="flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11.5px;color:var(--text-1);outline:none;">
+                            <option value="">+ Assign another user…</option>
+                            <template x-for="u in usersList" :key="u.email">
+                              <option :value="u.email" x-text="u.full_name + ' — ' + u.email"></option>
+                            </template>
+                          </select>
+                          <button @click="if(quickUser){saveSharedInboxAssignment(inbox.inbox_email,inbox.inbox_label,quickUser);quickUser='';}"
+                                  style="background:var(--green);color:white;border:none;border-radius:8px;padding:6px 14px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--font);">
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+
+                  </div>
+                </template>
+              </div>
+
+
+          </div>

@@ -57,6 +57,37 @@ app.add_middleware(
 )
 
 # Ensure static and quotes directory exist
+def get_user_context(request: Request, tenant_id: str = "default"):
+    # Read headers
+    user_email = request.headers.get("x-user-email")
+    selected_op = request.headers.get("x-selected-operator")
+    
+    if not user_email:
+        # Fallback default user context for backward compatibility
+        return {"email": None, "role": "super_admin", "selected_email": None}
+        
+    from src.database_sqlite import get_connection
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT role FROM users WHERE email = ? AND active = 1", (user_email.lower().strip(),))
+        row = cursor.fetchone()
+        role = row["role"] if row else "employee" # fallback default to regular employee
+    except Exception:
+        role = "employee"
+    finally:
+        conn.close()
+    
+    # Restrict users based on seniority/role:
+    if role == "super_admin":
+        # Super admin can switch perspectives or see all records
+        selected_email = selected_op if selected_op and selected_op != "all" else None
+    else:
+        # Employees are strictly restricted to their own email address, no matter what they selected
+        selected_email = user_email
+        
+    return {"email": user_email, "role": role, "selected_email": selected_email}
+
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -90,6 +121,12 @@ class PDFRequest(BaseModel):
     invoice_id: str
     source: str = "custom"
     original_text: str = ""
+    tenant_id: str = "default"
+
+class RefineQuoteRequest(BaseModel):
+    invoice_id: str
+    instruction: str
+    current_draft: str
     tenant_id: str = "default"
 
 class NegotiateRequest(BaseModel):
@@ -588,12 +625,13 @@ async def send_report_pdf(tenant_id: str = "default"):
         raise HTTPException(status_code=500, detail=f"Failed to send to: {', '.join(failed)}")
 
 @app.get("/api/unmatched")
-async def get_unmatched_enquiries(tenant_id: str = "default"):
+async def get_unmatched_enquiries(request: Request, tenant_id: str = "default"):
     """Returns all unmatched / uncategorized customer enquiries from the database."""
     try:
+        ctx = get_user_context(request, tenant_id)
         from src.database_sqlite import get_all_unmatched_items, get_unmatched_items_count
-        items = get_all_unmatched_items(limit=100, tenant_id=tenant_id)
-        count = get_unmatched_items_count(tenant_id=tenant_id)
+        items = get_all_unmatched_items(limit=100, tenant_id=tenant_id, operator_email=ctx["selected_email"], operator_role=ctx["role"])
+        count = get_unmatched_items_count(tenant_id=tenant_id, operator_email=ctx["selected_email"], operator_role=ctx["role"])
         return {
             "count": count,
             "items": items
@@ -723,11 +761,12 @@ async def reset_negotiation_keywords_api(req: ResetKeywordsRequest):
 
 
 @app.get("/api/deficits")
-async def get_deficits(tenant_id: str = "default"):
+async def get_deficits(request: Request, tenant_id: str = "default"):
     """Returns all stock deficit items from the database."""
     try:
+        ctx = get_user_context(request, tenant_id)
         from src.database_sqlite import get_all_deficits
-        items = get_all_deficits(tenant_id=tenant_id)
+        items = get_all_deficits(tenant_id=tenant_id, operator_email=ctx["selected_email"], operator_role=ctx["role"])
         return {"count": len(items), "deficits": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -882,11 +921,12 @@ async def resolve_deficit_endpoint(req: DeficitResolveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/negotiations/escalated")
-async def get_escalated_negotiations(tenant_id: str = "default"):
+async def get_escalated_negotiations(request: Request, tenant_id: str = "default"):
     """Returns all quotations in NEGOTIATION_ESCALATED or NEGOTIATION_NEGOTIATING status."""
     try:
+        ctx = get_user_context(request, tenant_id)
         from src.database_sqlite import get_escalated_negotiations
-        items = get_escalated_negotiations(tenant_id=tenant_id)
+        items = get_escalated_negotiations(tenant_id=tenant_id, operator_email=ctx["selected_email"], operator_role=ctx["role"])
         return {"count": len(items), "negotiations": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1181,6 +1221,215 @@ async def get_full_catalog(tenant_id: str = "default"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/inventory/import")
+async def import_inventory(file: UploadFile = File(...), tenant_id: str = "default"):
+    """
+    Parses an uploaded CSV or Excel file and replaces the vertical's inventory catalog.
+    Supports CSV and Excel files.
+    """
+    try:
+        from src.tenants import get_tenant_config, sanitize_tenant_id, _CATALOG_CACHE
+        import pandas as pd
+        import io
+        import sqlite3
+
+        t_id = sanitize_tenant_id(tenant_id)
+        config = get_tenant_config(t_id)
+
+        ctype = config.get("catalog_type", "csv")
+        conn_str = config.get("catalog_connection_string") or config.get("catalog_csv")
+        extra_str = config.get("catalog_extra_config", "")
+
+        import json
+        extra = {}
+        if extra_str:
+            try:
+                extra = json.loads(extra_str)
+            except Exception:
+                pass
+
+        file_bytes = await file.read()
+        filename = file.filename.lower()
+
+        if filename.endswith(".csv"):
+            csv_text = file_bytes.decode("utf-8", errors="ignore")
+            df = pd.read_csv(io.StringIO(csv_text))
+        elif filename.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(file_bytes))
+        else:
+            raise HTTPException(status_code=400, detail="Only CSV and Excel (.xlsx/.xls) files are supported.")
+
+        # Define aliases for smart mapping
+        aliases = {
+            "sku_id": ["sku_id", "sku id", "sku", "id", "service code", "service_code", "servicecode", "code", "item code", "item_code", "product id", "product_id"],
+            "sku_name": ["sku_name", "sku name", "name", "service name", "service_name", "servicename", "item name", "item_name", "product name", "product_name", "title"],
+            "price": ["price", "rate", "fee", "service fee", "service_fee", "cost", "base rate", "base_rate", "amount", "billing rate", "billing_rate"],
+            "stock": ["stock", "qty", "quantity", "availability", "availability basis", "availability_basis", "units", "count", "inventory"],
+            "description": ["description", "desc", "details", "summary", "notes"],
+            "category": ["category", "type", "group", "class", "department"]
+        }
+
+        col_mapping = {}
+        for original_col in df.columns:
+            col_cleaned = str(original_col).lower().strip()
+            matched_key = None
+            for key, alias_list in aliases.items():
+                if col_cleaned == key or col_cleaned in alias_list:
+                    matched_key = key
+                    break
+            
+            if not matched_key:
+                for key, alias_list in aliases.items():
+                    for alias in alias_list:
+                        if alias in col_cleaned:
+                            matched_key = key
+                            break
+                    if matched_key:
+                        break
+            
+            if matched_key:
+                col_mapping[original_col] = matched_key
+
+        df = df.rename(columns=col_mapping)
+
+        required_cols = ["sku_id", "sku_name", "price", "stock"]
+        for req in required_cols:
+            if req not in df.columns:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Uploaded file is missing required column corresponding to '{req}' (e.g. '{req}', '{aliases[req][1]}' or similar)."
+                )
+
+        keep_cols = [c for c in df.columns if c in required_cols + ["description", "category"]]
+        df = df[keep_cols]
+
+        df = df.fillna({
+            "description": "",
+            "category": "General",
+            "price": 0.0,
+            "stock": 100
+        })
+
+        df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0.0)
+        df["stock"] = pd.to_numeric(df["stock"], errors="coerce").fillna(100).astype(int)
+        df["sku_id"] = df["sku_id"].astype(str).str.strip()
+        df["sku_name"] = df["sku_name"].astype(str).str.strip()
+
+        df = df[df["sku_id"] != ""]
+
+        # AI Relevance Verification Check
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key and api_key.strip() and not api_key.startswith("your_"):
+            try:
+                from google import genai
+                from src.database_sqlite import get_active_vertical
+                
+                ai_client = genai.Client(api_key=api_key)
+                active_vertical = get_active_vertical(t_id)
+                
+                if active_vertical:
+                    v_name = active_vertical.get("name", "")
+                    v_industry = active_vertical.get("industry", "")
+                    v_guidelines = active_vertical.get("guidelines", "")
+                    
+                    sample_items = []
+                    for _, row in df.head(15).iterrows():
+                        sample_items.append(f"- Name: {row.get('sku_name', '')} (Category: {row.get('category', 'General')})")
+                    sample_text = "\n".join(sample_items)
+                    
+                    prompt = f"""
+                    You are an expert business intelligence auditor.
+                    Verify if the imported catalog inventory items listed below are relevant to the business vertical of the company.
+                    
+                    Business Vertical Details:
+                    - Company Name: {v_name}
+                    - Industry: {v_industry}
+                    - Guidelines: {v_guidelines}
+                    
+                    Imported Items Sample:
+                    {sample_text}
+                    
+                    Answer in JSON format with two keys:
+                    1. "relevant": boolean (true if the items fit the vertical, false if they are completely unrelated or represent a different industry).
+                    2. "reason": string (a short explanation of why the items are relevant or not).
+                    
+                    Only return the raw JSON object, without any markdown formatting.
+                    """
+                    
+                    response = ai_client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt
+                    )
+                    
+                    resp_text = response.text.strip()
+                    if resp_text.startswith("```"):
+                        resp_text = resp_text.split("```")[1]
+                        if resp_text.startswith("json"):
+                            resp_text = resp_text[4:]
+                    resp_text = resp_text.strip()
+                    
+                    res_json = json.loads(resp_text)
+                    if not res_json.get("relevant", True):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Rejection: The imported records are not relevant to this business vertical ({v_name} - {v_industry}). Reason: {res_json.get('reason')}"
+                        )
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"[Warning] Gemini relevance check failed/skipped: {e}")
+
+        project_root = os.path.dirname(os.path.dirname(__file__))
+
+        if ctype == "csv":
+            if not os.path.isabs(conn_str):
+                conn_str = os.path.join(project_root, conn_str)
+            os.makedirs(os.path.dirname(conn_str), exist_ok=True)
+            df.to_csv(conn_str, index=False, encoding="utf-8")
+        elif ctype == "excel":
+            if not os.path.isabs(conn_str):
+                conn_str = os.path.join(project_root, conn_str)
+            os.makedirs(os.path.dirname(conn_str), exist_ok=True)
+            sheet = extra.get("sheet_name", "Sheet1")
+            df.to_excel(conn_str, sheet_name=sheet, index=False)
+        elif ctype == "sql":
+            table = extra.get("table_name", "sku_catalog")
+            if "postgresql" in conn_str or "mysql" in conn_str:
+                from sqlalchemy import create_engine, text
+                engine = create_engine(conn_str)
+                with engine.begin() as conn:
+                    conn.execute(text(f"DELETE FROM {table}"))
+                    df.to_sql(table, con=engine, if_exists="append", index=False)
+            else:
+                path = conn_str
+                if path.startswith("sqlite:///"):
+                    path = path.replace("sqlite:///", "")
+                conn = sqlite3.connect(path)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f"DELETE FROM {table}")
+                    conn.commit()
+                    df.to_sql(table, con=conn, if_exists="append", index=False)
+                finally:
+                    conn.close()
+
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+
+        from src.database_sqlite import log_activity
+        log_activity(
+            event_type="CATALOG_IMPORTED",
+            description=f"Imported {len(df)} catalog records from {file.filename}.",
+            tenant_id=t_id
+        )
+
+        return {"status": "SUCCESS", "count": len(df), "message": f"Successfully imported {len(df)} records."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
 @app.get("/api/inventory/logs")
 async def get_inventory_update_logs(tenant_id: str = "default"):
     """Returns the audit log of all stock quantity changes."""
@@ -1192,11 +1441,12 @@ async def get_inventory_update_logs(tenant_id: str = "default"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/activity/log")
-async def get_activity_log_endpoint(tenant_id: str = "default", limit: int = 200):
+async def get_activity_log_endpoint(request: Request, tenant_id: str = "default", limit: int = 200):
     """Returns the structured activity log with server uptime and IST timestamps."""
     try:
+        ctx = get_user_context(request, tenant_id)
         from src.database_sqlite import get_activity_log
-        logs = get_activity_log(limit=limit, tenant_id=tenant_id)
+        logs = get_activity_log(limit=limit, tenant_id=tenant_id, operator_email=ctx["selected_email"], operator_role=ctx["role"])
 
         ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
         now_ist = datetime.datetime.now(ist)
@@ -1319,12 +1569,59 @@ async def get_quote_details(invoice_id: str, tenant_id: str = "default"):
 
             logs = synth_logs
 
+        # Extract draft body if quotation is PENDING_REVIEW
+        draft_body = ""
+        if quote.get("status") == "PENDING_REVIEW":
+            cursor.execute(
+                "SELECT message FROM chat_logs WHERE invoice_id = ? AND sender = 'DRAFT_BOT' ORDER BY timestamp DESC LIMIT 1",
+                (invoice_id,)
+            )
+            draft_row = cursor.fetchone()
+            if draft_row:
+                msg = draft_row["message"]
+                if msg.startswith("Subject:"):
+                    parts = msg.split("\n\n", 1)
+                    draft_body = parts[1] if len(parts) > 1 else msg
+                else:
+                    draft_body = msg
+            else:
+                # Synthesize on the fly if missing from logs
+                try:
+                    from src.email_listener import build_email_reply_body
+                    from src.tenants import get_tenant_config
+                    tenant_config = get_tenant_config(tenant_id)
+                    matched_lines = []
+                    for it in items:
+                        matched_lines.append({
+                            "matched_sku_id": it["sku_id"],
+                            "matched_sku_name": it["sku_name"],
+                            "quantity": it["quantity"],
+                            "unit_price": it["unit_price"],
+                            "line_total": it["line_total"],
+                            "stock_avail": it["quantity"],
+                            "deficit": 0
+                        })
+                    reply_body_tuple, _ = build_email_reply_body(
+                        matched_lines=matched_lines,
+                        discount_pct=quote.get("discount_pct") or 0.0,
+                        customer_name=quote["customer_name"],
+                        invoice_id=invoice_id,
+                        tenant_config=tenant_config,
+                        customer_email=quote["customer_email"],
+                        customer_phone=quote.get("customer_phone"),
+                        origin="human"
+                    )
+                    draft_body = reply_body_tuple[0]
+                except Exception:
+                    pass
+
         conn.close()
 
         return {
             "quotation": quote,
             "items": items,
-            "logs": logs
+            "logs": logs,
+            "draft_body": draft_body
         }
     except HTTPException:
         raise
@@ -1332,21 +1629,38 @@ async def get_quote_details(invoice_id: str, tenant_id: str = "default"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/overview/analytics")
-async def get_overview_analytics(tenant_id: str = "default"):
+async def get_overview_analytics(request: Request, tenant_id: str = "default"):
     try:
+        ctx = get_user_context(request, tenant_id)
+        selected_email = ctx["selected_email"]
+        
         from src.database_sqlite import get_connection
         conn = get_connection(tenant_id)
         cursor = conn.cursor()
         
         # 1. Total processed (excluding SELF_SENT and IRRELEVANT)
-        cursor.execute("SELECT COUNT(*) FROM processed_messages WHERE invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')")
+        if selected_email:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT pm.message_id) 
+                FROM processed_messages pm
+                LEFT JOIN quotations q ON q.invoice_id = pm.invoice_id 
+                  OR q.invoice_id = REPLACE(pm.invoice_id, 'CUSTOMER_REPLIED:', '')
+                LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || CAST(u.id AS TEXT)
+                WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT') 
+                  AND (q.assigned_operator = ? OR u.assigned_operator = ?)
+            """, (selected_email, selected_email))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM processed_messages WHERE invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')")
         total_received = cursor.fetchone()[0]
         
         # 2. Irrelevant / Auto-filtered (Not counted in relevant sales metrics)
         auto_filtered = 0
         
         # 3. Quotations counts by status
-        cursor.execute("SELECT status, COUNT(*) as c FROM quotations GROUP BY status")
+        if selected_email:
+            cursor.execute("SELECT status, COUNT(*) as c FROM quotations WHERE assigned_operator = ? GROUP BY status", (selected_email,))
+        else:
+            cursor.execute("SELECT status, COUNT(*) as c FROM quotations GROUP BY status")
         quote_counts = {row['status']: row['c'] for row in cursor.fetchall()}
         
         # Auto-responded quotes (QUOTE_GENERATED, QUOTE_UPDATED, NEGOTIATION_APPROVED, NEGOTIATION_REJECTED)
@@ -1361,23 +1675,38 @@ async def get_overview_analytics(tenant_id: str = "default"):
         
         # 4. Pending items
         # A. Escalated negotiations
-        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, discount_pct, subtotal, created_at FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING') ORDER BY created_at DESC")
+        if selected_email:
+            cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, discount_pct, subtotal, created_at FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING') AND assigned_operator = ? ORDER BY created_at DESC", (selected_email,))
+        else:
+            cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, discount_pct, subtotal, created_at FROM quotations WHERE status IN ('NEGOTIATION_ESCALATED', 'NEGOTIATION_NEGOTIATING') ORDER BY created_at DESC")
         escalated_negs = [dict(row) for row in cursor.fetchall()]
         
         # B. Pending deficits
-        cursor.execute("SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, created_at FROM deficits WHERE status = 'PENDING' ORDER BY created_at DESC")
+        if selected_email:
+            cursor.execute("SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, created_at FROM deficits WHERE status = 'PENDING' AND assigned_operator = ? ORDER BY created_at DESC", (selected_email,))
+        else:
+            cursor.execute("SELECT id, invoice_id, sku_id, sku_name, requested_qty, available_qty, deficit_qty, customer_name, customer_email, created_at FROM deficits WHERE status = 'PENDING' ORDER BY created_at DESC")
         pending_deficits = [dict(row) for row in cursor.fetchall()]
         
         # C. Unmatched items
-        cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items ORDER BY created_at DESC")
+        if selected_email:
+            cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items WHERE assigned_operator = ? ORDER BY created_at DESC", (selected_email,))
+        else:
+            cursor.execute("SELECT id, customer_email, customer_name, original_body, source, created_at FROM unmatched_items ORDER BY created_at DESC")
         unmatched_items = [dict(row) for row in cursor.fetchall()]
-
+ 
         # D. Pending reviews (for Manual Reply mode)
-        cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, created_at FROM quotations WHERE status = 'PENDING_REVIEW' ORDER BY created_at DESC")
+        if selected_email:
+            cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, created_at FROM quotations WHERE status = 'PENDING_REVIEW' AND assigned_operator = ? ORDER BY created_at DESC", (selected_email,))
+        else:
+            cursor.execute("SELECT invoice_id, customer_name, customer_email, status, grand_total, created_at FROM quotations WHERE status = 'PENDING_REVIEW' ORDER BY created_at DESC")
         pending_reviews = [dict(row) for row in cursor.fetchall()]
-
+ 
         # E. Resolved deficits count (for KPI card)
-        cursor.execute("SELECT COUNT(*) FROM deficits WHERE status = 'RESOLVED'")
+        if selected_email:
+            cursor.execute("SELECT COUNT(*) FROM deficits WHERE status = 'RESOLVED' AND assigned_operator = ?", (selected_email,))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM deficits WHERE status = 'RESOLVED'")
         resolved_deficits_count = cursor.fetchone()[0]
         
         pending_approval_count = len(escalated_negs) + len(pending_deficits) + len(unmatched_items) + len(pending_reviews)
@@ -1392,20 +1721,33 @@ async def get_overview_analytics(tenant_id: str = "default"):
         human_intervention = round((pending_approval_count / max(total_received, 1)) * 100, 1)
         
         # 5. Fetch recent email/response log stream (excluding SELF_SENT and IRRELEVANT)
-        # Bug 4 fix: Use pm.customer_name and pm.customer_email as primary source (stored during ingestion).
-        # The LEFT JOIN to quotations is only for status. This ensures UNMATCHED and NEW items show correct customer info.
-        cursor.execute("""
-            SELECT pm.message_id, pm.invoice_id, pm.processed_at, pm.received_at,
-                   pm.customer_name as pm_name, pm.customer_email as pm_email,
-                   q.customer_email as q_email, q.customer_name as q_name, q.status as q_status,
-                   u.customer_email as u_email, u.customer_name as u_name
-            FROM processed_messages pm
-            LEFT JOIN quotations q ON q.invoice_id = pm.invoice_id
-                OR q.invoice_id = REPLACE(pm.invoice_id, 'CUSTOMER_REPLIED:', '')
-            LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || CAST(u.id AS TEXT)
-            WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')
-            ORDER BY pm.processed_at DESC LIMIT 100
-        """)
+        if selected_email:
+            cursor.execute("""
+                SELECT pm.message_id, pm.invoice_id, pm.processed_at, pm.received_at,
+                       pm.customer_name as pm_name, pm.customer_email as pm_email,
+                       q.customer_email as q_email, q.customer_name as q_name, q.status as q_status,
+                       u.customer_email as u_email, u.customer_name as u_name
+                FROM processed_messages pm
+                LEFT JOIN quotations q ON q.invoice_id = pm.invoice_id
+                    OR q.invoice_id = REPLACE(pm.invoice_id, 'CUSTOMER_REPLIED:', '')
+                LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || CAST(u.id AS TEXT)
+                WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')
+                  AND (q.assigned_operator = ? OR u.assigned_operator = ?)
+                ORDER BY pm.processed_at DESC LIMIT 100
+            """, (selected_email, selected_email))
+        else:
+            cursor.execute("""
+                SELECT pm.message_id, pm.invoice_id, pm.processed_at, pm.received_at,
+                       pm.customer_name as pm_name, pm.customer_email as pm_email,
+                       q.customer_email as q_email, q.customer_name as q_name, q.status as q_status,
+                       u.customer_email as u_email, u.customer_name as u_name
+                FROM processed_messages pm
+                LEFT JOIN quotations q ON q.invoice_id = pm.invoice_id
+                    OR q.invoice_id = REPLACE(pm.invoice_id, 'CUSTOMER_REPLIED:', '')
+                LEFT JOIN unmatched_items u ON pm.invoice_id = 'UNMATCHED_' || CAST(u.id AS TEXT)
+                WHERE pm.invoice_id NOT IN ('SELF_SENT', 'IRRELEVANT')
+                ORDER BY pm.processed_at DESC LIMIT 100
+            """)
         raw_stream = cursor.fetchall()
 
         
@@ -1697,6 +2039,9 @@ class VerticalApproveRequest(BaseModel):
     logo_path: str = ""                # Pre-uploaded logo path (from manual file upload)
     extracted_logo_url: str = ""       # Logo URL detected from the company website
     business_type: str = "Trading"      # 'Trading' or 'Services'
+    catalog_type: str = "csv"
+    catalog_connection_string: str | None = None
+    catalog_extra_config: str | None = None
 
 class VerticalActiveRequest(BaseModel):
     id: str
@@ -1854,7 +2199,10 @@ async def api_approve_vertical(req: VerticalApproveRequest):
             req.id, req.name, req.industry, guidelines_str, req.tone,
             catalog_path, crm_path, req.source_details, is_active=1,
             tenant_id=req.tenant_id, logo_path=logo_path_to_save,
-            business_type=req.business_type
+            business_type=req.business_type,
+            catalog_type=req.catalog_type,
+            catalog_connection_string=req.catalog_connection_string,
+            catalog_extra_config=req.catalog_extra_config
         )
         
         # Save keywords
@@ -1865,9 +2213,10 @@ async def api_approve_vertical(req: VerticalApproveRequest):
             
         # Evict tenant catalog cache to hot-reload the new catalog file
         t_id = sanitize_tenant_id(req.tenant_id)
-        if t_id in _CATALOG_CACHE:
-            del _CATALOG_CACHE[t_id]
-            print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+        print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
             
         return {"status": "SUCCESS", "message": f"Vertical profile '{req.name}' successfully approved and activated.", "logo_path": logo_path_to_save}
     except Exception as e:
@@ -1885,14 +2234,252 @@ async def api_set_active_vertical(req: VerticalActiveRequest):
             
         # Evict tenant catalog cache for hot-reload
         t_id = sanitize_tenant_id(req.tenant_id)
-        if t_id in _CATALOG_CACHE:
-            del _CATALOG_CACHE[t_id]
-            print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+        print(f"[Onboard Agent] Evicted tenant '{t_id}' catalog cache for hot-reload.")
             
         return {"status": "SUCCESS", "message": f"Active vertical set to '{req.id}'."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# ─── In-memory OTP store (email -> {otp, expires_at}) ────────────────────────
+import secrets
+import time as _time
+_OTP_STORE: dict = {}
+
+class OTPRequest(BaseModel):
+    email: str
+
+class OTPVerifyRequest(BaseModel):
+    email: str
+    otp: str
+
+@app.post("/api/auth/send-otp")
+async def api_send_otp(req: OTPRequest):
+    """Generate a 6-digit OTP and print it to the server console (dev mode)."""
+    email = req.email.lower().strip()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    otp = str(secrets.randbelow(900000) + 100000)  # 6-digit
+    _OTP_STORE[email] = {"otp": otp, "expires_at": _time.time() + 600}  # 10 min expiry
+    # ── In production, send via SMTP. For now, print to console. ──
+    print(f"\n{'='*50}")
+    print(f"  OTP for {email}: {otp}  (valid 10 min)")
+    print(f"{'='*50}\n")
+    return {"status": "sent", "message": f"OTP sent to {email}"}
+
+@app.post("/api/auth/verify-otp")
+async def api_verify_otp(req: OTPVerifyRequest):
+    """Verify the OTP entered by the user."""
+    email = req.email.lower().strip()
+    record = _OTP_STORE.get(email)
+    if not record:
+        raise HTTPException(status_code=400, detail="No OTP found for this email. Please request a new one.")
+    if _time.time() > record["expires_at"]:
+        del _OTP_STORE[email]
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+    if req.otp.strip() != record["otp"]:
+        raise HTTPException(status_code=400, detail="Incorrect OTP. Please try again.")
+    del _OTP_STORE[email]  # one-time use
+    return {"verified": True, "message": "Email verified successfully."}
+
+
+class TestConnectionRequest(BaseModel):
+    email_user: str
+    email_pass: str
+    imap_server: str
+    imap_port: int = 993
+    smtp_server: str
+    smtp_port: int = 465
+
+class SignupRequest(BaseModel):
+    email: str
+    full_name: str
+    password: str = ""       # Optional — kept for backward compat
+    role: str = "super_admin"
+    business_name: str
+    business_type: str = "Trading"
+    industry: str
+    url: str | None = None
+    description_text: str | None = None
+    # Mailbox fields optional — user may configure later
+    email_user: str = ""
+    email_pass: str = ""
+    imap_server: str = "imap.gmail.com"
+    imap_port: int = 993
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 465
+
+@app.post("/api/auth/test_connection")
+async def api_test_connection(req: TestConnectionRequest):
+    import imaplib
+    import smtplib
+    
+    imap_ok = False
+    imap_err = ""
+    try:
+        mail = imaplib.IMAP4_SSL(req.imap_server, req.imap_port, timeout=8)
+        mail.login(req.email_user, req.email_pass)
+        mail.logout()
+        imap_ok = True
+    except Exception as e:
+        imap_err = str(e)
+        
+    smtp_ok = False
+    smtp_err = ""
+    try:
+        if req.smtp_port == 465:
+            smtp = smtplib.SMTP_SSL(req.smtp_server, req.smtp_port, timeout=8)
+        else:
+            smtp = smtplib.SMTP(req.smtp_server, req.smtp_port, timeout=8)
+            smtp.starttls()
+        smtp.login(req.email_user, req.email_pass)
+        smtp.quit()
+        smtp_ok = True
+    except Exception as e:
+        smtp_err = str(e)
+        
+    if imap_ok and smtp_ok:
+        return {"status": "SUCCESS", "message": "IMAP & SMTP verification successful!"}
+    else:
+        errs = []
+        if not imap_ok:
+            errs.append(f"IMAP: {imap_err}")
+        if not smtp_ok:
+            errs.append(f"SMTP: {smtp_err}")
+        return {"status": "FAILED", "message": " | ".join(errs)}
+
+@app.post("/api/auth/signup")
+async def api_auth_signup(req: SignupRequest):
+    try:
+        from src.database_sqlite import get_connection, add_user, save_vertical_profile, set_setting, save_training_keywords, save_negotiation_keywords
+        from src.onboard_agent import onboard_business
+        from src.tenants import _CATALOG_CACHE, sanitize_tenant_id
+        import csv
+        import json
+        
+        email_clean = req.email.lower().strip()
+        
+        # 1. Check if user already exists
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM users WHERE email = ?", (email_clean,))
+        existing_user = cursor.fetchone()
+        conn.close()
+        
+        if existing_user:
+            raise HTTPException(status_code=400, detail="User email already registered.")
+            
+        # 2. Create tenant ID from business name
+        import re as _re
+        tenant_id = _re.sub(r'[^a-z0-9]', '_', req.business_name.lower().strip())
+        if not tenant_id:
+            tenant_id = "onboarded_tenant"
+            
+        # 3. Call onboard_business to generate default catalogs/CRM/keywords
+        desc = req.description_text or f"We are {req.business_name}, operating in the {req.industry} industry. We specialize in {req.business_type.lower()}."
+        res = onboard_business(description_text=desc, url=req.url, tenant_id=tenant_id)
+        if "error" in res:
+            raise HTTPException(status_code=400, detail=res["error"])
+            
+        company_name = res.get("company_name", req.business_name)
+        industry = res.get("industry", req.industry)
+        tone = res.get("tone", "Professional & Formal")
+        guidelines_str = res.get("guidelines", "")
+        if isinstance(guidelines_str, list):
+            guidelines_str = "\n".join(f"- {g}" for g in guidelines_str)
+            
+        # 4. Write generated catalog and CRM
+        catalog_filename = f"catalog_{tenant_id}.csv"
+        catalog_abs_path = os.path.join(project_root, "data", catalog_filename)
+        os.makedirs(os.path.dirname(catalog_abs_path), exist_ok=True)
+        with open(catalog_abs_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["sku_id", "sku_name", "description", "price", "category", "stock"])
+            for item in res.get("suggested_catalog", []):
+                writer.writerow([
+                    item.get("sku_id", ""),
+                    item.get("sku_name", item.get("name", "")),
+                    item.get("description", ""),
+                    item.get("price", item.get("unit_price", 0.0)),
+                    item.get("category", "General"),
+                    item.get("stock", 100)
+                ])
+        catalog_path = f"data/{catalog_filename}"
+        
+        crm_filename = f"crm_{tenant_id}.json"
+        crm_abs_path = os.path.join(project_root, "data", crm_filename)
+        with open(crm_abs_path, "w", encoding="utf-8") as f:
+            json.dump(res.get("suggested_crm", []), f, indent=2)
+        crm_path = f"data/{crm_filename}"
+        
+        # 5. Save vertical profile
+        logo_path = res.get("uploaded_logo_path", "")
+        if not logo_path and res.get("extracted_logo_url"):
+            from src.onboard_agent import download_logo
+            logo_ext = os.path.splitext(res["extracted_logo_url"].split('?')[0])[1] or '.png'
+            logo_filename = f"logo_{tenant_id}{logo_ext}"
+            logo_save_path = os.path.join(project_root, "static", "logos", logo_filename)
+            if download_logo(res["extracted_logo_url"], logo_save_path):
+                logo_path = f"static/logos/{logo_filename}"
+                
+        save_vertical_profile(
+            profile_id=tenant_id,
+            name=company_name,
+            industry=industry,
+            guidelines=guidelines_str,
+            tone=tone,
+            catalog_path=catalog_path,
+            crm_path=crm_path,
+            source_details=desc,
+            is_active=1,
+            tenant_id=tenant_id,
+            logo_path=logo_path,
+            business_type=req.business_type
+        )
+        
+        # 6. Save keywords
+        if res.get("suggested_relevance_keywords"):
+            save_training_keywords(res["suggested_relevance_keywords"], tenant_id)
+        if res.get("suggested_negotiation_keywords"):
+            save_negotiation_keywords(res["suggested_negotiation_keywords"], tenant_id)
+            
+        # 7. Save email credentials
+        set_setting("email_user", req.email_user, tenant_id)
+        set_setting("email_pass", req.email_pass, tenant_id)
+        set_setting("imap_server", req.imap_server, tenant_id)
+        set_setting("imap_port", str(req.imap_port), tenant_id)
+        set_setting("smtp_server", req.smtp_server, tenant_id)
+        set_setting("smtp_port", str(req.smtp_port), tenant_id)
+        
+        # Also store login password for Operator Session validation (mock setting)
+        set_setting("login_password", req.password, tenant_id)
+        
+        # 8. Register the user globally
+        add_user(req.email, req.full_name, req.role, 1, tenant_id)
+        
+        # Evict cache
+        t_id = sanitize_tenant_id(tenant_id)
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+            
+        return {
+            "status": "SUCCESS",
+            "tenant_id": tenant_id,
+            "user": {
+                "email": email_clean,
+                "full_name": req.full_name,
+                "role": "super_admin"
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/customers/segments")
@@ -2156,6 +2743,7 @@ async def get_customer_history(email: str, tenant_id: str = "default"):
 
 class ApproveSendRequest(BaseModel):
     invoice_id: str
+    custom_body: str = ""
 
 
 @app.post("/api/quote/approve_and_send")
@@ -2234,17 +2822,21 @@ async def approve_and_send_quote(req: ApproveSendRequest, tenant_id: str = "defa
         )
         
         # Build Reply Body
-        reply_body_tuple, grand_total = build_email_reply_body(
-            matched_lines=matched_lines,
-            discount_pct=discount_pct,
-            customer_name=quote["customer_name"],
-            invoice_id=req.invoice_id,
-            tenant_config=tenant_config,
-            customer_email=quote["customer_email"],
-            customer_phone=quote.get("customer_phone"),
-            origin="human"  # Origin flag is human since they clicked Approve & Send
-        )
-        plain_body, html_body = reply_body_tuple
+        if req.custom_body and req.custom_body.strip():
+            plain_body = req.custom_body.strip()
+            html_body = f"<html><body><p>{plain_body.replace(chr(10), '<br>')}</p></body></html>"
+        else:
+            reply_body_tuple, grand_total = build_email_reply_body(
+                matched_lines=matched_lines,
+                discount_pct=discount_pct,
+                customer_name=quote["customer_name"],
+                invoice_id=req.invoice_id,
+                tenant_config=tenant_config,
+                customer_email=quote["customer_email"],
+                customer_phone=quote.get("customer_phone"),
+                origin="human"  # Origin flag is human since they clicked Approve & Send
+            )
+            plain_body, html_body = reply_body_tuple
         
         # 6. Retrieve reply-to Message-ID
         internet_msg_id = get_latest_message_id(req.invoice_id, tenant_id=tenant_id)
@@ -2266,7 +2858,7 @@ async def approve_and_send_quote(req: ApproveSendRequest, tenant_id: str = "defa
         
         # Log chatbot message
         from src.database_sqlite import log_chat_msg
-        log_chat_msg(req.invoice_id, "BOT", f"Quotation approved and sent to customer. Status changed to QUOTE_GENERATED.", tenant_id=tenant_id)
+        log_chat_msg(req.invoice_id, "BOT", f"Subject: RE: Quotation for items [Quotation #{req.invoice_id}]\n\n{plain_body}", tenant_id=tenant_id)
         
         return {"status": "success", "invoice_id": req.invoice_id}
     except HTTPException:
@@ -2514,6 +3106,172 @@ def outlook_callback(code: str = None, error: str = None, error_description: str
         </html>
         """
 
+
+class UserSaveRequest(BaseModel):
+    email: str
+    full_name: str
+    role: str
+    active: int = 1
+    tenant_id: str = "default"
+
+class UserDeleteRequest(BaseModel):
+    email: str
+    tenant_id: str = "default"
+
+@app.get("/api/users")
+async def api_get_users(request: Request, tenant_id: str = "default"):
+    ctx = get_user_context(request, tenant_id)
+    # Seniors/Super admins only can access settings and users lists
+    if ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+    try:
+        from src.database_sqlite import get_all_users
+        users = get_all_users(tenant_id)
+        return {"users": users}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/users/save")
+async def api_save_user(request: Request, req: UserSaveRequest):
+    ctx = get_user_context(request, req.tenant_id)
+    if ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+    try:
+        from src.database_sqlite import add_user
+        success = add_user(req.email, req.full_name, req.role, req.active, req.tenant_id)
+        if success:
+            return {"status": "SUCCESS"}
+        raise HTTPException(status_code=500, detail="Failed to save user.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/users/delete")
+async def api_delete_user(request: Request, req: UserDeleteRequest):
+    ctx = get_user_context(request, req.tenant_id)
+    if ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+    # Prevent self-deletion of super admin
+    if req.email.lower().strip() == ctx["email"].lower().strip():
+        raise HTTPException(status_code=400, detail="You cannot delete yourself.")
+    try:
+        from src.database_sqlite import delete_user
+        success = delete_user(req.email, req.tenant_id)
+        if success:
+            return {"status": "SUCCESS"}
+        raise HTTPException(status_code=500, detail="Failed to delete user.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SharedInboxAssignRequest(BaseModel):
+    inbox_email: str
+    inbox_label: str = ""
+    user_email: str
+    tenant_id: str = "default"
+
+class SharedInboxRemoveRequest(BaseModel):
+    inbox_email: str
+    user_email: str = ""          # empty = delete entire inbox
+    tenant_id: str = "default"
+
+@app.get("/api/users/shared-inboxes")
+async def api_get_shared_inboxes(request: Request, tenant_id: str = "default"):
+    ctx = get_user_context(request, tenant_id)
+    if ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+    try:
+        from src.database_sqlite import get_shared_inboxes
+        return {"shared_inboxes": get_shared_inboxes(tenant_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/users/shared-inboxes/save")
+async def api_save_shared_inbox(request: Request, req: SharedInboxAssignRequest):
+    ctx = get_user_context(request, req.tenant_id)
+    if ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+    try:
+        from src.database_sqlite import add_shared_inbox_assignment
+        ok = add_shared_inbox_assignment(req.inbox_email, req.inbox_label or req.inbox_email, req.user_email, req.tenant_id)
+        if ok:
+            return {"status": "SUCCESS"}
+        raise HTTPException(status_code=500, detail="Failed to save assignment.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/users/shared-inboxes/remove")
+async def api_remove_shared_inbox(request: Request, req: SharedInboxRemoveRequest):
+    ctx = get_user_context(request, req.tenant_id)
+    if ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+    try:
+        from src.database_sqlite import remove_shared_inbox_assignment, delete_shared_inbox
+        if req.user_email.strip():
+            ok = remove_shared_inbox_assignment(req.inbox_email, req.user_email, req.tenant_id)
+        else:
+            ok = delete_shared_inbox(req.inbox_email, req.tenant_id)
+        if ok:
+            return {"status": "SUCCESS"}
+        raise HTTPException(status_code=500, detail="Failed to remove assignment.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/quotes/refine")
+async def refine_quote_draft(req: RefineQuoteRequest):
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key or api_key.startswith("your_") or api_key.strip() == "":
+            raise HTTPException(status_code=400, detail="Gemini API key is not configured in .env file.")
+            
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        
+        system_prompt = (
+            "You are an AI assistant helping a sales operator refine a drafted email reply for a customer quotation request.\n"
+            "Your task is to rewrite the draft cover letter based on the operator's instructions.\n"
+            "CRITICAL: Keep the quote line items, quantities, prices, subtotal, and any formatted tables EXACTLY intact. Do not modify or drop them unless specifically requested to do so.\n"
+            "Apply the instruction naturally to the body of the cover letter (e.g. make the tone formal/polite, add custom greetings, or mention specific notes).\n"
+            "Return only the refined email cover letter text. Do not wrap in markdown block fences like ``` or include extra conversational commentary."
+        )
+        
+        prompt = (
+            f"{system_prompt}\n\n"
+            f"Original Draft Cover Letter:\n"
+            f"--------------------------------------------------\n"
+            f"{req.current_draft}\n"
+            f"--------------------------------------------------\n\n"
+            f"Operator Instructions:\n"
+            f"\"{req.instruction}\"\n\n"
+            f"Refined Draft Cover Letter:"
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        
+        refined_text = response.text.strip()
+        
+        # Clean up any potential markdown code blocks returned by the model
+        if refined_text.startswith("```html"):
+            refined_text = refined_text.split("```html", 1)[1]
+            if refined_text.endswith("```"):
+                refined_text = refined_text.rsplit("```", 1)[0]
+        elif refined_text.startswith("```"):
+            refined_text = refined_text.split("```", 1)[1]
+            if refined_text.endswith("```"):
+                refined_text = refined_text.rsplit("```", 1)[0]
+                
+        return {"refined_draft": refined_text.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 async def get_index(request: Request):

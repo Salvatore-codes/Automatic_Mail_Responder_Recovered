@@ -6,6 +6,8 @@ import json
 import hashlib
 import time
 import random
+import sqlite3
+from abc import ABC, abstractmethod
 from rapidfuzz import process, fuzz
 
 try:
@@ -144,15 +146,225 @@ class SimpleTFIDF:
         return numerator / denominator
 
 
-class Catalog:
-    def __init__(self, csv_path, tenant_id=None):
+class BaseInventoryConnector(ABC):
+    @abstractmethod
+    def fetch_all_skus(self):
+        pass
+        
+    @abstractmethod
+    def get_sku_by_id(self, sku_id):
+        pass
+        
+    @abstractmethod
+    def update_sku(self, sku_id, stock=None, price=None):
+        pass
+
+
+class CSVConnector(BaseInventoryConnector):
+    def __init__(self, csv_path):
         self.csv_path = csv_path
+
+    def fetch_all_skus(self):
+        skus = []
+        if not os.path.exists(self.csv_path):
+            raise FileNotFoundError(f"CSV file not found at {self.csv_path}")
+        with open(self.csv_path, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row:
+                    skus.append(dict(row))
+        return skus
+
+    def get_sku_by_id(self, sku_id):
+        skus = self.fetch_all_skus()
+        sku_id_upper = sku_id.strip().upper()
+        for sku in skus:
+            if sku.get('sku_id', '').strip().upper() == sku_id_upper:
+                return sku
+        return None
+
+    def update_sku(self, sku_id, stock=None, price=None):
+        try:
+            headers = []
+            with open(self.csv_path, mode='r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+                
+            rows = []
+            with open(self.csv_path, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get('sku_id') == sku_id:
+                        if stock is not None:
+                            row['stock'] = str(stock)
+                        if price is not None:
+                            row['price'] = f"{float(price):.2f}"
+                    rows.append(row)
+                    
+            with open(self.csv_path, mode='w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=headers)
+                writer.writeheader()
+                writer.writerows(rows)
+            return True
+        except Exception as e:
+            print(f"[CSVConnector] Error updating SKU: {e}")
+            return False
+
+
+class ExcelConnector(BaseInventoryConnector):
+    def __init__(self, file_path, sheet_name="Sheet1"):
+        self.file_path = file_path
+        self.sheet_name = sheet_name
+
+    def fetch_all_skus(self):
+        import pandas as pd
+        if not os.path.exists(self.file_path):
+            raise FileNotFoundError(f"Excel file not found at {self.file_path}")
+        df = pd.read_excel(self.file_path, sheet_name=self.sheet_name)
+        df = df.fillna("")
+        skus = []
+        for _, row in df.iterrows():
+            d = dict(row)
+            d_clean = {str(k): str(v) for k, v in d.items()}
+            skus.append(d_clean)
+        return skus
+
+    def get_sku_by_id(self, sku_id):
+        skus = self.fetch_all_skus()
+        sku_id_upper = sku_id.strip().upper()
+        for sku in skus:
+            if sku.get('sku_id', '').strip().upper() == sku_id_upper:
+                return sku
+        return None
+
+    def update_sku(self, sku_id, stock=None, price=None):
+        import pandas as pd
+        try:
+            df = pd.read_excel(self.file_path, sheet_name=self.sheet_name)
+            mask = df['sku_id'].astype(str).str.strip().str.upper() == sku_id.strip().upper()
+            if not mask.any():
+                return False
+            idx = df[mask].index[0]
+            if stock is not None:
+                df.at[idx, 'stock'] = int(stock)
+            if price is not None:
+                df.at[idx, 'price'] = float(price)
+            df.to_excel(self.file_path, sheet_name=self.sheet_name, index=False)
+            return True
+        except Exception as e:
+            print(f"[ExcelConnector] Error updating SKU: {e}")
+            return False
+
+
+class SQLDatabaseConnector(BaseInventoryConnector):
+    def __init__(self, connection_uri, table_name="sku_catalog"):
+        self.connection_uri = connection_uri
+        self.table_name = table_name
+
+    def _get_connection(self):
+        if "postgresql" in self.connection_uri or "mysql" in self.connection_uri:
+            try:
+                from sqlalchemy import create_engine
+                return create_engine(self.connection_uri).connect()
+            except ImportError:
+                raise ImportError("SQLAlchemy is required for non-sqlite databases.")
+        else:
+            path = self.connection_uri
+            if path.startswith("sqlite:///"):
+                path = path.replace("sqlite:///", "")
+            return sqlite3.connect(path)
+
+    def fetch_all_skus(self):
+        conn = self._get_connection()
+        try:
+            if hasattr(conn, 'execute') and not hasattr(conn, 'cursor'):
+                from sqlalchemy import text
+                result = conn.execute(text(f"SELECT * FROM {self.table_name}"))
+                skus = [dict(row) for row in result.mappings()]
+                return [{str(k): str(v) for k, v in item.items()} for item in skus]
+            else:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(f"SELECT * FROM {self.table_name}")
+                rows = cursor.fetchall()
+                skus = []
+                for row in rows:
+                    skus.append({str(k): str(row[k]) for k in row.keys()})
+                return skus
+        finally:
+            conn.close()
+
+    def get_sku_by_id(self, sku_id):
+        skus = self.fetch_all_skus()
+        sku_id_upper = sku_id.strip().upper()
+        for sku in skus:
+            if sku.get('sku_id', '').strip().upper() == sku_id_upper:
+                return sku
+        return None
+
+    def update_sku(self, sku_id, stock=None, price=None):
+        conn = self._get_connection()
+        try:
+            if hasattr(conn, 'execute') and not hasattr(conn, 'cursor'):
+                from sqlalchemy import text
+                updates = []
+                params = {"sku_id": sku_id}
+                if stock is not None:
+                    updates.append("stock = :stock")
+                    params["stock"] = int(stock)
+                if price is not None:
+                    updates.append("price = :price")
+                    params["price"] = float(price)
+                if not updates:
+                    return True
+                query = text(f"UPDATE {self.table_name} SET {', '.join(updates)} WHERE sku_id = :sku_id")
+                conn.execute(query, params)
+                conn.commit()
+                return True
+            else:
+                cursor = conn.cursor()
+                updates = []
+                params = []
+                if stock is not None:
+                    updates.append("stock = ?")
+                    params.append(int(stock))
+                if price is not None:
+                    updates.append("price = ?")
+                    params.append(float(price))
+                if not updates:
+                    return True
+                params.append(sku_id)
+                cursor.execute(f"UPDATE {self.table_name} SET {', '.join(updates)} WHERE sku_id = ?", params)
+                conn.commit()
+                return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+class Catalog:
+    def __init__(self, connector_or_path, tenant_id=None):
+        if isinstance(connector_or_path, str):
+            self.connector = CSVConnector(connector_or_path)
+            self.csv_path = connector_or_path
+        else:
+            self.connector = connector_or_path
+            if hasattr(self.connector, 'csv_path'):
+                self.csv_path = self.connector.csv_path
+            elif hasattr(self.connector, 'file_path'):
+                self.csv_path = self.connector.file_path
+            else:
+                self.csv_path = "database_source"
+                
         self.tenant_id = tenant_id
         self.skus = []
         self.load_catalog()
         
         # Load synonyms (Feedback Learning Loop)
-        self.synonyms_path = os.path.join(os.path.dirname(csv_path), "synonyms.json")
+        if self.csv_path and os.path.sep in self.csv_path:
+            self.synonyms_path = os.path.join(os.path.dirname(self.csv_path), "synonyms.json")
+        else:
+            self.synonyms_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "synonyms.json")
+            
         self.synonyms = {}
         self.load_synonyms()
         
@@ -168,28 +380,30 @@ class Catalog:
         self.embedding_ids = []
         
     def load_catalog(self):
-        if not os.path.exists(self.csv_path):
-            raise FileNotFoundError(f"Catalog file not found at {self.csv_path}")
-        with open(self.csv_path, mode='r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row_num, row in enumerate(reader, start=1):
-                # Skip empty or completely malformed rows
+        try:
+            raw_skus = self.connector.fetch_all_skus()
+            for row_num, row in enumerate(raw_skus, start=1):
                 if not row or not row.get('sku_id'):
                     continue
                 try:
-                    price_str = re.sub(r'[^\d.]', '', row.get('price', '0'))
+                    price_str = re.sub(r'[^\d.]', '', str(row.get('price', '0')))
                     row['price'] = float(price_str) if price_str else 0.0
                     
-                    stock_str = re.sub(r'[^\d]', '', row.get('stock', '100'))
+                    stock_str = re.sub(r'[^\d]', '', str(row.get('stock', '100')))
                     row['stock'] = int(stock_str) if stock_str else 100
                     
-                    # Ensure category has a default
                     if not row.get('category'):
                         row['category'] = 'General'
+                        
+                    if 'description' not in row:
+                        row['description'] = ''
                         
                     self.skus.append(row)
                 except Exception as e:
                     print(f"[Warning] Skipping malformed catalog row #{row_num}: {e}")
+        except Exception as e:
+            print(f"[Catalog] Critical: Failed to fetch skus from connector: {e}")
+            raise 
                 
     def load_synonyms(self):
         if os.path.exists(self.synonyms_path):
@@ -683,12 +897,12 @@ class Catalog:
 
     def update_sku_properties(self, sku_id, new_stock=None, new_price=None):
         """
-        Updates the stock and/or price of a specific SKU in both memory and the catalog CSV file on disk.
+        Updates the stock and/or price of a specific SKU in both memory and the external connector source.
         """
         # 1. Update in memory
         found = False
         for sku in self.skus:
-            if sku['sku_id'] == sku_id:
+            if sku['sku_id'].strip().upper() == sku_id.strip().upper():
                 if new_stock is not None:
                     sku['stock'] = int(new_stock)
                 if new_price is not None:
@@ -700,36 +914,17 @@ class Catalog:
             print(f"[Catalog] Warning: SKU {sku_id} not found in catalog for property update.")
             return False
             
-        # 2. Write back to CSV file
+        # 2. Write back to connector source
         try:
-            # Read the current file to get headers
-            headers = []
-            with open(self.csv_path, mode='r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                headers = next(reader)
-                
-            # Read rows as dicts to preserve structure
-            rows = []
-            with open(self.csv_path, mode='r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    if row.get('sku_id') == sku_id:
-                        if new_stock is not None:
-                            row['stock'] = str(new_stock)
-                        if new_price is not None:
-                            row['price'] = f"{float(new_price):.2f}"
-                    rows.append(row)
-                    
-            # Write back to CSV
-            with open(self.csv_path, mode='w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=headers)
-                writer.writeheader()
-                writer.writerows(rows)
-                
-            print(f"[Catalog] Successfully updated SKU {sku_id} properties (stock={new_stock}, price={new_price}) on disk.")
-            return True
+            success = self.connector.update_sku(sku_id, stock=new_stock, price=new_price)
+            if success:
+                print(f"[Catalog] Successfully updated SKU {sku_id} properties (stock={new_stock}, price={new_price}) in source connector.")
+                return True
+            else:
+                print(f"[Catalog] Warning: Connector failed to update SKU {sku_id}.")
+                return False
         except Exception as e:
-            print(f"[Catalog] Error writing updated properties to CSV: {e}")
+            print(f"[Catalog] Error writing updated properties to connector: {e}")
             return False
 
     def update_sku_stock(self, sku_id, new_stock):

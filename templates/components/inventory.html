@@ -45,7 +45,7 @@
                     <span x-text="activeVertical.business_type === 'Services' ? 'Full Services & Pricing Catalog' : 'Full Product Inventory Catalog'"></span>
                   </h3>
                 </div>
-                <div class="flex gap-3">
+                <div class="flex gap-3 items-center">
                   <select x-model="inventoryCategory" @change="filterCatalog" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)] cursor-pointer">
                     <option value="all">All Categories</option>
                     <template x-for="c in [...new Set(catalog.map(s => s.category).filter(Boolean))].sort()" :key="c">
@@ -59,10 +59,18 @@
                     <option value="out" x-text="activeVertical.business_type === 'Services' ? 'Fully Booked' : 'Out of Stock'"></option>
                   </select>
                   <input type="text" x-model="inventorySearch" @input="filterCatalog" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Search SKU ID or Name..." />
-                  <button @click="loadCatalog" class="btn-micro px-2.5 py-1"><i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh</button>
+                  <button @click="loadCatalog" class="btn-micro px-2.5 py-1" style="height: 28px;"><i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh</button>
+                  
+                  <!-- Import Button -->
+                  <button @click="$refs.catalogImportInput.click()" class="btn btn-ghost btn-sm" style="display:inline-flex; align-items:center; gap:5px; height: 28px; padding: 4px 10px; font-size:11px; border-radius: var(--r-sm); color: var(--green); border: 1px solid var(--border);">
+                    <i data-lucide="upload" style="width:12px; height:12px;"></i>
+                    <span>Import</span>
+                  </button>
+                  <input type="file" x-ref="catalogImportInput" accept=".csv,.xlsx,.xls" style="display:none;" @change="handleCatalogImport" />
+
                   <!-- Export Menu -->
-                  <div class="export-container" x-data="{ open: false }" @click.away="open = false">
-                    <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:flex; align-items:center; gap:5px; height:100%; padding: 4px 10px; font-size:11px; border-radius: var(--r-sm);">
+                  <div class="export-container" x-data="{ open: false }" @click.away="open = false" style="height: 28px;">
+                    <button @click="open = !open" class="btn btn-ghost btn-sm" style="display:inline-flex; align-items:center; gap:5px; height: 100%; padding: 4px 10px; font-size:11px; border-radius: var(--r-sm); border: 1px solid var(--border);">
                       <i data-lucide="download" style="width:12px; height:12px;"></i>
                       <span>Export</span>
                     </button>
@@ -76,7 +84,15 @@
               </div>
 
               <!-- Table -->
-              <div class="overflow-x-auto max-w-full">
+              <div class="overflow-x-auto max-w-full" style="position: relative; min-height: 250px;">
+                <!-- Loading Overlay -->
+                <div x-show="loadingInventory" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(20, 20, 20, 0.7); backdrop-filter: blur(3px); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; border-radius: var(--r-xl); transition: all 0.3s ease;">
+                  <div style="display: flex; align-items: center; gap: 12px; background: var(--bg-card2); border: 1px solid var(--border); padding: 18px 24px; border-radius: var(--r-xl); box-shadow: var(--sh-3);">
+                    <div style="width: 20px; height: 20px; border: 2.5px solid rgba(139, 92, 246, 0.15); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-1);">Importing &amp; Verifying Catalog Records...</span>
+                  </div>
+                </div>
+
                 <table class="data-table">
                   <thead>
                     <tr>

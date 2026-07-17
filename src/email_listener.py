@@ -466,6 +466,66 @@ class EmailResponseTuple(tuple):
         obj.invoice_id = invoice_id
         return obj
 
+def check_and_draft_clarification(body_clean, unmatched_queries, catalog, client):
+    """
+    Checks if the unmatched queries have ambiguities in the catalog, and drafts a clarification email.
+    """
+    if not client or not unmatched_queries:
+        return None
+        
+    catalog_summary = []
+    for sku in catalog.skus[:100]:
+        catalog_summary.append(f"- SKU: {sku['sku_id']}, Name: {sku['sku_name']}, Category: {sku.get('category', 'General')}")
+    catalog_str = "\n".join(catalog_summary)
+    
+    prompt = f"""You are an AI sales assistant. A customer requested these items which we couldn't match confidently in our catalog:
+Unmatched requested items: {unmatched_queries}
+
+Customer's full email body:
+---
+{body_clean}
+---
+
+Here is our catalog of available products:
+---
+{catalog_str}
+---
+
+Determine if any unmatched item is ambiguous (e.g. they asked for 'conduits' but we sell 'CONDUIT-16MM' and 'CONDUIT-20MM').
+If yes, write a very polite, brief clarification message asking the customer which specification they need. Present the options clearly as choices.
+Do NOT include generic placeholders like [Your Name] or [Company Name]. Sign off as "Sales Support".
+
+Respond with a JSON object:
+{{
+  "has_ambiguity": true/false,
+  "clarification_question": "the email message text to send to the customer"
+}}
+"""
+    try:
+        from google.genai import types
+        import json
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "has_ambiguity": types.Schema(type=types.Type.BOOLEAN),
+                        "clarification_question": types.Schema(type=types.Type.STRING)
+                    },
+                    required=["has_ambiguity", "clarification_question"]
+                )
+            )
+        )
+        res_json = json.loads(response.text.strip())
+        if res_json.get("has_ambiguity") and res_json.get("clarification_question"):
+            return res_json["clarification_question"]
+    except Exception as e:
+        print(f"[Smart Clarification] Failed to generate clarification: {e}")
+    return None
+
 def process_incoming_email(sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=None, prior_thread_context=None, skip_initial_customer_log=False):
     """
     Main ingestion business logic. Parses the email body, matches SKUs, 
@@ -663,6 +723,8 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
                 customer_message=latest_customer_message,
                 requested_discount=requested_discount,
                 chat_history=chat_history,
+                items=meta.get("matched_lines", []) if meta else [],
+                catalog=catalog,
                 is_live=is_live,
                 client=client
             )
@@ -1056,6 +1118,77 @@ def process_incoming_email(sender, subject, body, catalog, crm_path, mode, proje
         tenant_id=tenant_id
     )
     
+    # ── Smart Clarification Pipeline ──────────────────────────────────────────
+    unmatched_queries = [
+        line['parsed_query'] for line in matched_lines 
+        if line.get('matched_sku_id') == 'UNKNOWN' or line.get('confidence', 0.0) < 80.0
+    ]
+    clarification_text = None
+    if unmatched_queries and client:
+        clarification_text = check_and_draft_clarification(body_clean, unmatched_queries, catalog, client)
+        
+    if clarification_text:
+        # Create quote reference so the conversation thread maps correctly when they reply
+        invoice_id = existing_invoice_id or generate_next_invoice_id(tenant_id)
+        
+        # Log to database
+        try:
+            from src.database_sqlite import log_quotation, log_chat_msg
+            log_quotation(
+                invoice_id=invoice_id,
+                customer_name=customer_name,
+                customer_email=email_addr,
+                customer_phone=customer_phone,
+                subtotal=0.0,
+                discount_pct=discount_pct,
+                tax_amt=0.0,
+                grand_total=0.0,
+                status="CLARIFICATION_SENT",
+                tenant_id=tenant_id
+            )
+            if not skip_initial_customer_log:
+                log_chat_msg(invoice_id, "CUSTOMER", body_clean, tenant_id=tenant_id)
+            log_chat_msg(invoice_id, "BOT", clarification_text, tenant_id=tenant_id)
+        except Exception as e:
+            print(f"[Warning] SQLite logging failed during clarification: {e}")
+            
+        # Write back meta updates for intermediate clarification turns
+        meta_filename = f"Quote_{invoice_id}_meta.json"
+        from src.tenants import sanitize_tenant_id
+        t_id = sanitize_tenant_id(tenant_id)
+        if mode == "mock":
+            if t_id and t_id != "default":
+                meta_dir = os.path.join(project_root, "mock_outbox", t_id)
+            else:
+                meta_dir = os.path.join(project_root, "mock_outbox")
+        else:
+            if t_id and t_id != "default":
+                meta_dir = os.path.join(project_root, "static", "quotes", t_id)
+            else:
+                meta_dir = os.path.join(project_root, "static", "quotes")
+        os.makedirs(meta_dir, exist_ok=True)
+        meta_path = os.path.join(meta_dir, meta_filename)
+        
+        meta = {
+            "invoice_id": invoice_id,
+            "customer_name": customer_name,
+            "customer_email": email_addr,
+            "customer_phone": customer_phone,
+            "discount_pct": discount_pct,
+            "matched_lines": matched_lines,
+            "chat_history": [{"sender": "customer", "text": body_clean}, {"sender": "ai", "text": clarification_text}]
+        }
+        try:
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta, f, indent=2)
+        except Exception as e:
+            print(f"[Warning] Meta file write failed: {e}")
+            
+        reply_subject = clean_reply_subject(subject, invoice_id=invoice_id)
+        reply_body_tuple = (clarification_text, f"<html><body><p>{clarification_text.replace(chr(10), '<br>')}</p></body></html>")
+        return EmailResponseTuple(reply_subject, reply_body_tuple, None, "CLARIFICATION_SENT", invoice_id)
+    # ──────────────────────────────────────────────────────────────────────────
+
     has_valid_matches = matched_lines and any(
         line['matched_sku_id'] != "UNKNOWN" and line['confidence'] >= 80.0 
         for line in matched_lines
@@ -1444,6 +1577,12 @@ def extract_text_from_attachments(msg):
 
         display_filename = filename or f"attachment{ext}"
         print(f"[Attachment] Detected attachment: '{display_filename}' ({content_type}). Processing text.")
+        
+        # 5MB Threshold Check
+        if len(payload) > 5 * 1024 * 1024:
+            print(f"[Attachment Warning] Skipping attachment '{display_filename}' because it exceeds the 5MB size limit (Size: {len(payload)/(1024*1024):.2f}MB).")
+            extracted_texts.append(f"[ATTACHMENT_FAILED: File '{display_filename}' exceeded size limit of 5MB]")
+            continue
 
         # Check if it is native image/PDF vs text/word format
         is_native_gemini = content_type in gemini_native_mimes or ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"]
@@ -1547,7 +1686,7 @@ def extract_text_from_attachments(msg):
 
     return "\n\n".join(extracted_texts)
 
-def get_graph_token_delegated(tenant_id, client_id, client_secret):
+def get_graph_token_delegated(tenant_id, client_id, client_secret, force_refresh=False):
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     token_file = os.path.join(project_root, "data", f"outlook_tokens_{tenant_id}.json")
     if not os.path.exists(token_file):
@@ -1562,9 +1701,9 @@ def get_graph_token_delegated(tenant_id, client_id, client_secret):
         
     mtime = os.path.getmtime(token_file)
     expires_in = tokens.get("expires_in", 3600)
-    # 5-minute safety buffer
-    if time.time() > mtime + expires_in - 300:
-        print("[Outlook Auth] Access token expired or close to expiration. Refreshing...")
+    # 5-minute safety buffer or forced refresh
+    if force_refresh or time.time() > mtime + expires_in - 300:
+        print("[Outlook Auth] Access token expired, close to expiration, or refresh forced. Refreshing...")
         refresh_token = tokens.get("refresh_token")
         if not refresh_token:
             print("[Outlook Auth] No refresh token found in token file.")
@@ -1599,9 +1738,9 @@ def get_graph_token_delegated(tenant_id, client_id, client_secret):
     else:
         return tokens.get("access_token")
 
-def get_graph_token(tenant_id, client_id, client_secret):
+def get_graph_token(tenant_id, client_id, client_secret, force_refresh=False):
     # Try delegated token first
-    del_token = get_graph_token_delegated(tenant_id, client_id, client_secret)
+    del_token = get_graph_token_delegated(tenant_id, client_id, client_secret, force_refresh=force_refresh)
     if del_token:
         return del_token
 
@@ -1630,7 +1769,7 @@ def fetch_outlook_messages(access_token, email_user):
     since = (datetime.now(timezone.utc) - timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
     filter_str = f"isDraft eq false and receivedDateTime ge {since}"
     encoded_filter = urllib.parse.quote(filter_str)
-    url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages?$filter={encoded_filter}&$orderby=receivedDateTime desc&$top=50&$select=id,internetMessageId,subject,from,body,receivedDateTime,hasAttachments,isDraft"
+    url = f"https://graph.microsoft.com/v1.0/users/{email_user}/messages?$filter={encoded_filter}&$orderby=receivedDateTime desc&$top=50&$select=id,internetMessageId,subject,from,body,receivedDateTime,hasAttachments,isDraft,internetMessageHeaders"
     url = url.replace(" ", "%20")
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {access_token}",
@@ -1731,6 +1870,10 @@ def _send_outlook_threaded_reply(access_token, email_user, internet_msg_id, subj
     # Overwrite the draft with combined body
     _graph_request(f"{base}/{draft_id}", access_token, "PATCH", {
         "body": {"contentType": "HTML", "content": combined_body},
+        "internetMessageHeaders": [
+            {"name": "Auto-Submitted", "value": "auto-replied"},
+            {"name": "X-Auto-Response-Suppress", "value": "All"}
+        ]
     })
     # 3. Attach the PDF quote (and inline logo, if any)
     for att in attachments:
@@ -1796,7 +1939,11 @@ def send_outlook_mail(access_token, email_user, to_email, subject, html_body, pd
                 "content": html_body
             },
             "toRecipients": to_recipients,
-            "attachments": attachments
+            "attachments": attachments,
+            "internetMessageHeaders": [
+                {"name": "Auto-Submitted", "value": "auto-replied"},
+                {"name": "X-Auto-Response-Suppress", "value": "All"}
+            ]
         }
     }
     
@@ -2055,20 +2202,39 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
     try:
         messages = fetch_outlook_messages(token, email_user)
     except Exception as e:
-        print(f"[Outlook Mail] Error fetching messages: {e}")
-        error_msg = str(e)
-        if hasattr(e, "read"):
+        is_401 = False
+        if hasattr(e, "code") and e.code == 401:
+            is_401 = True
+        elif "401" in str(e) or "unauthorized" in str(e).lower() or "authenticated" in str(e).lower():
+            is_401 = True
+            
+        if is_401:
+            print("[Outlook Listener] Token expired or invalid (401). Forcing token refresh...")
+            token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret, force_refresh=True)
+            if token:
+                try:
+                    messages = fetch_outlook_messages(token, email_user)
+                except Exception as retry_e:
+                    print(f"[Outlook Mail] Error fetching messages after token refresh: {retry_e}")
+                    return
+            else:
+                return
+        else:
+            print(f"[Outlook Mail] Error fetching messages: {e}")
+            error_msg = str(e)
+            if hasattr(e, "read"):
+                try:
+                    error_msg += " - " + e.read().decode("utf-8")
+                except Exception:
+                    pass
+            
+            status = "AUTH_FAILED" if "403" in error_msg or "401" in error_msg or "access" in error_msg.lower() else "ERROR"
             try:
-                error_msg += " - " + e.read().decode("utf-8")
+                from src.database_sqlite import update_service_status
+                update_service_status(status, error_message=f"Mailbox access error: {error_msg}", tenant_id=tenant_id)
             except Exception:
                 pass
-        
-        status = "AUTH_FAILED" if "403" in error_msg or "401" in error_msg or "access" in error_msg.lower() else "ERROR"
-        try:
-            from src.database_sqlite import update_service_status
-            update_service_status(status, error_message=f"Mailbox access error: {error_msg}", tenant_id=tenant_id)
-        except Exception:
-            pass
+            return
         return
 
     if not messages:
@@ -2135,6 +2301,10 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 if content_bytes_b64:
                     try:
                         file_data = base64.b64decode(content_bytes_b64)
+                        if len(file_data) > 5 * 1024 * 1024:
+                            print(f"[Outlook Attachment Warning] Skipping attachment '{name}' because it exceeds the 5MB size limit ({len(file_data)/(1024*1024):.2f}MB).")
+                            attachment_text += f"\n[ATTACHMENT_FAILED: File '{name}' exceeded size limit of 5MB]\n"
+                            continue
                         text = extract_outlook_attachment_text(file_data, name, content_type)
                         if text:
                             attachment_text += f"\n[From attachment '{name}']:\n{text}\n"
@@ -2242,7 +2412,10 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
             print(f"[Warning] Failed to log EMAIL_RECEIVED in Outlook poller: {la_err}")
 
         # ── Fast Blocklist & Relevance checks ────────────────────────────────
-        blocklist_result = fast_blocklist_check(sender_email, subject, crm_emails)
+        headers_dict = {}
+        for h in msg.get("internetMessageHeaders", []):
+            headers_dict[h.get("name", "").lower()] = h.get("value", "")
+        blocklist_result = fast_blocklist_check(sender_email, subject, crm_emails, headers=headers_dict)
         if blocklist_result == "REJECT":
             print(f"[Outlook Filter] Skipped irrelevant email from {sender_email} (Subject: {subject})")
             if internet_msg_id:
@@ -2536,9 +2709,9 @@ def _get_gemini_client():
         return None
 
 
-def fast_blocklist_check(sender, subject, crm_emails):
+def fast_blocklist_check(sender, subject, crm_emails, headers=None):
     """
-    Tier 1 fast pre-filter. Checks blocklists and CRM match without any API calls.
+    Tier 1 fast pre-filter. Checks blocklists, CRM match, and loop-prevention headers without any API calls.
     Returns: "REJECT", "ACCEPT_CRM", "ACCEPT_THREAD", or "NEEDS_AI"
     """
     sender_lower = sender.lower().strip()
@@ -2549,51 +2722,67 @@ def fast_blocklist_check(sender, subject, crm_emails):
     _, email_addr = parseaddr(sender)
     email_addr_lower = (email_addr or sender).lower().strip()
     
-    # 1. Blocklist check for automated/promotional senders (unless registered in CRM)
-    if email_addr_lower not in crm_emails and sender_lower not in crm_emails:
-        system_sender_keywords = [
-            "mailer-daemon", "daemon", "postmaster", "bounce", "noreply", "no-reply", 
-            "donotreply", "do-not-reply", "newsletter", "notification", "alert", 
-            "support", "marketing", "promo", "digest", "feedback", "updates", "news", 
-            "community", "info@", "hello@", "welcome@", "billing@", "invoice@", "receipt@",
-            "delivery@", "shipping@", "track@", "status@"
-        ]
-        if any(kw in sender_lower for kw in system_sender_keywords):
-            print(f"[Blocklist] REJECT: Sender {sender} matched automated/system email blocklist.")
+    # 1. Loop-prevention headers check (Auto-Submitted, X-Auto-Response-Suppress, Precedence)
+    if headers:
+        auto_submitted = headers.get("auto-submitted", "").lower().strip()
+        x_auto_suppress = headers.get("x-auto-response-suppress", "").lower().strip()
+        precedence = headers.get("precedence", "").lower().strip()
+        
+        if auto_submitted and auto_submitted.startswith("auto-"):
+            print(f"[Loop Prevention] REJECT: Auto-Submitted header '{auto_submitted}' detected.")
             return "REJECT"
-            
-        system_display_names = [
-            "subsystem", "daemon", "service", "system", "mindvalley", "apollo", 
-            "github", "gitlab", "google", "microsoft", "zoom", "slack", 
-            "linkedin", "facebook", "twitter", "instagram", "amazon", "paypal", 
-            "stripe"
-        ]
-        display_name = ""
-        if "<" in sender:
-            display_name = sender.split("<")[0].lower().strip()
-        else:
-            display_name = sender_lower
-        display_name = display_name.replace('"', '').replace("'", "").strip()
-        if any(kw in display_name for kw in system_display_names):
-            print(f"[Blocklist] REJECT: Display name '{display_name}' matched automated/system blocklist.")
+        if x_auto_suppress and ("all" in x_auto_suppress or "oof" in x_auto_suppress or "auto" in x_auto_suppress):
+            print(f"[Loop Prevention] REJECT: X-Auto-Response-Suppress header '{x_auto_suppress}' detected.")
+            return "REJECT"
+        if precedence in ["bulk", "junk", "list"]:
+            print(f"[Loop Prevention] REJECT: Precedence header '{precedence}' detected.")
             return "REJECT"
 
-        system_subject_keywords = [
-            "delivery status", "undeliverable", "returned mail", "bounce", "failure notice", 
-            "out of office", "auto-reply", "auto reply", "vacation", "spam", "unsubscribed", 
-            "newsletter", "digest", "invoice paid", "payment receipt", "receipt for", 
-            "welcome to", "verification code", "otp", "security alert", "password reset"
-        ]
-        if any(kw in subject_lower for kw in system_subject_keywords):
-            print(f"[Blocklist] REJECT: Subject '{subject}' matched automated/bounce subject blocklist.")
-            return "REJECT"
+    # 2. Automated/bounce subject keywords
+    system_subject_keywords = [
+        "delivery status", "undeliverable", "returned mail", "bounce", "failure notice", 
+        "out of office", "auto-reply", "auto reply", "vacation", "spam", "unsubscribed", 
+        "newsletter", "digest", "invoice paid", "payment receipt", "receipt for", 
+        "welcome to", "verification code", "otp", "security alert", "password reset"
+    ]
+    if any(kw in subject_lower for kw in system_subject_keywords):
+        print(f"[Blocklist] REJECT: Subject '{subject}' matched automated/bounce subject blocklist.")
+        return "REJECT"
 
-    # 2. Check if sender is a registered CRM client
+    # 3. Automated/system email display names and addresses
+    system_sender_keywords = [
+        "mailer-daemon", "daemon", "postmaster", "bounce", "noreply", "no-reply", 
+        "donotreply", "do-not-reply", "newsletter", "notification", "alert", 
+        "support", "marketing", "promo", "digest", "feedback", "updates", "news", 
+        "community", "info@", "hello@", "welcome@", "billing@", "invoice@", "receipt@",
+        "delivery@", "shipping@", "track@", "status@"
+    ]
+    if any(kw in sender_lower for kw in system_sender_keywords):
+        print(f"[Blocklist] REJECT: Sender {sender} matched automated/system email blocklist.")
+        return "REJECT"
+        
+    system_display_names = [
+        "subsystem", "daemon", "service", "system", "mindvalley", "apollo", 
+        "github", "gitlab", "google", "microsoft", "zoom", "slack", 
+        "linkedin", "facebook", "twitter", "instagram", "amazon", "paypal", 
+        "stripe"
+    ]
+    display_name = ""
+    if "<" in sender:
+        display_name = sender.split("<")[0].lower().strip()
+    else:
+        display_name = sender_lower
+    display_name = display_name.replace('"', '').replace("'", "").strip()
+    if any(kw in display_name for kw in system_display_names):
+        print(f"[Blocklist] REJECT: Display name '{display_name}' matched automated/system blocklist.")
+        return "REJECT"
+
+    # 4. Check if sender is a registered CRM client
     if email_addr_lower in crm_emails or sender_lower in crm_emails:
         print(f"[Blocklist] ACCEPT_CRM: Sender {sender} is a registered CRM client.")
         return "ACCEPT_CRM"
         
-    # 3. Check if subject has Quotation ID reference
+    # 5. Check if subject has Quotation ID reference
     if "quotation #" in subject_lower or "quote #" in subject_lower:
         print(f"[Blocklist] ACCEPT_THREAD: Subject refers to an active quotation reference.")
         return "ACCEPT_THREAD"
@@ -3022,9 +3211,9 @@ def send_master_notification(smtp_server, smtp_port, email_user, email_pass, mas
         recipients = [r.strip() for r in master_email.split(",") if r.strip()]
         
         if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15.0)
         else:
-            server = smtplib.SMTP(smtp_server, smtp_port)
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=15.0)
             server.starttls()
         server.login(email_user, email_pass)
         server.sendmail(email_user, recipients, msg.as_string())
@@ -3040,6 +3229,17 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
     Adapts terminology and disclaimers dynamically based on whether the business type is 'Trading' or 'Services'.
     """
     tenant_id = tenant_config.get("id", "default") if tenant_config else "default"
+    
+    # Extract alternative replacement items
+    replacement_items = []
+    for line in matched_lines:
+        if line.get("is_replacement"):
+            replacement_items.append({
+                "original_name": line.get("original_sku_name", "UNKNOWN"),
+                "replacement_name": line.get("matched_sku_name"),
+                "qty": line.get("quantity")
+            })
+            
     from src.database_sqlite import get_setting, get_active_vertical
     exec_name = get_setting("exec_name", tenant_config.get("sales_executive_name", SALES_EXECUTIVE_NAME) if tenant_config else SALES_EXECUTIVE_NAME, tenant_id)
     exec_title = get_setting("exec_title", tenant_config.get("sales_executive_title", SALES_EXECUTIVE_TITLE) if tenant_config else SALES_EXECUTIVE_TITLE, tenant_id)
@@ -3179,6 +3379,23 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
             body.append(f"{lbl_gst}: ₹{tax_amt:.2f}")
             body.append(f"{lbl_total}: ₹{grand_total:.2f}")
             
+    if unavailable_items:
+        body.append("")
+        names_esc = ", ".join(unavailable_names)
+        if is_services:
+            body.append(f"Scheduling Note: {len(unavailable_items)} service(s) currently require capacity review but are included for prioritization: {names_esc}.")
+        else:
+            if customer_name == "Manoranjith":
+                body.append(f"Note: {len(unavailable_items)} item(s) you requested are currently out of stock but are included in this quotation as made-to-order ({names_esc}).")
+            else:
+                body.append(f"Unavailable Products: {len(unavailable_items)} item(s) currently out of stock and are not included: {names_esc}.")
+
+    if replacement_items:
+        body.append("")
+        body.append("Note on Alternatives:")
+        for item in replacement_items:
+            body.append(f"- We are out of stock of '{item['original_name']}', so we have included '{item['replacement_name']}' ({item['qty']} units) at the same or closest price as an alternative.")
+
     body.append("")
     body.append(lbl_disclaimer)
     body.append("")
@@ -3283,6 +3500,15 @@ def build_email_reply_body(matched_lines, discount_pct, customer_name, invoice_i
         else:
             html_lines.append(f"<p>Thank you for your enquiry <b>(Ref: #{html.escape(str(invoice_id))})</b>. Unfortunately, the items you requested are currently out of stock, so we are unable to provide a quotation at this time.</p>")
             
+    if replacement_items:
+        html_lines.append("<div style='background-color:#fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-top: 15px; border-radius: 4px; color:#856404;'>")
+        html_lines.append("<strong>Alternatives Offered:</strong>")
+        html_lines.append("<ul style='margin: 5px 0 0 0; padding-left: 20px;'>")
+        for item in replacement_items:
+            html_lines.append(f"<li>We are out of stock of <strong>'{html.escape(item['original_name'])}'</strong>, so we have included <strong>'{html.escape(item['replacement_name'])}'</strong> ({item['qty']} units) as an alternative.</li>")
+        html_lines.append("</ul>")
+        html_lines.append("</div>")
+
     # Add Pricing Schedule Disclaimer
     html_lines.append("<p>If you'd like to discuss the pricing or need any changes, feel free to reply to this email &mdash; happy to help!</p>")
     html_lines.append("<div class='footer'>")
@@ -3335,6 +3561,26 @@ def send_unmatched_products_alert(smtp_server, smtp_port, email_user, email_pass
     except Exception as e:
         print(f"[Warning] Failed to send unmatched products alert: {e}")
 
+def find_in_stock_alternative(category, original_price, requested_qty, catalog, exclude_sku_id=None):
+    alternatives = []
+    for sku in catalog.skus:
+        if exclude_sku_id and sku["sku_id"] == exclude_sku_id:
+            continue
+        try:
+            stock = int(sku.get("stock", 0))
+        except Exception:
+            stock = 0
+        if sku.get("category") == category and stock >= requested_qty:
+            alternatives.append(sku)
+    if not alternatives:
+        return None
+    # Sort by price difference
+    try:
+        alternatives.sort(key=lambda x: abs(float(x.get("price", 0.0)) - original_price))
+    except Exception:
+        pass
+    return alternatives[0]
+
 def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True, invoice_id=None, customer_name=None, customer_email=None, customer_phone=None, tenant_id=None):
     deficit_lines = []
     for line in matched_lines:
@@ -3355,12 +3601,32 @@ def adjust_quantities_by_stock(matched_lines, catalog, cap_by_stock=True, invoic
                 line["stock_avail"] = stock_avail
                 
                 if req_qty > stock_avail:
-                    if cap_by_stock:
-                        line["quantity"] = 0 # Exclude from quotation entirely since requested qty exceeds stock
-                    else:
+                    # Look for in-stock alternative in same category
+                    alt_sku = find_in_stock_alternative(
+                        category=sku_item.get("category", "General"),
+                        original_price=float(sku_item.get("price", 0.0)),
+                        requested_qty=req_qty,
+                        catalog=catalog,
+                        exclude_sku_id=sku_id
+                    )
+                    if alt_sku:
+                        print(f"[OOS Alternative] Swapping out-of-stock {sku_id} with alternative {alt_sku['sku_id']}")
+                        line["matched_sku_id"] = alt_sku["sku_id"]
+                        line["matched_sku_name"] = alt_sku["sku_name"]
+                        line["unit_price"] = alt_sku["price"]
                         line["quantity"] = req_qty
-                    line["deficit"] = req_qty - stock_avail
-                    deficit_lines.append(line)
+                        line["stock_avail"] = int(alt_sku.get("stock", 0))
+                        line["deficit"] = 0
+                        line["is_replacement"] = True
+                        line["original_sku_id"] = sku_id
+                        line["original_sku_name"] = sku_item.get("sku_name", "UNKNOWN")
+                    else:
+                        if cap_by_stock:
+                            line["quantity"] = 0 # Exclude from quotation entirely since requested qty exceeds stock
+                        else:
+                            line["quantity"] = req_qty
+                        line["deficit"] = req_qty - stock_avail
+                        deficit_lines.append(line)
                 else:
                     line["quantity"] = req_qty
                     line["deficit"] = 0
@@ -3487,6 +3753,21 @@ def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, p
                     logo_path=logo_file_path,
                     reply_to_internet_msg_id=reply_to_msg_id
                 )
+                if not sent:
+                    print(f"[Outlook Mailer] First send attempt failed. Forcing token refresh and retrying...")
+                    token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret, force_refresh=True)
+                    if token:
+                        sent = send_outlook_mail(
+                            token,
+                            email_user,
+                            customer_email,
+                            reply_subject,
+                            html_body,
+                            pdf_path=pdf_path,
+                            logo_path=logo_file_path,
+                            reply_to_internet_msg_id=reply_to_msg_id
+                        )
+                
                 if sent:
                     print(f"[Outlook Mailer] Successfully sent email to {customer_email} (Subject: {reply_subject})")
                     return True
@@ -3547,6 +3828,8 @@ def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, p
             reply_msg["From"] = email_user
             reply_msg["To"] = customer_email
             reply_msg["Subject"] = reply_subject
+            reply_msg["Auto-Submitted"] = "auto-replied"
+            reply_msg["X-Auto-Response-Suppress"] = "All"
             if reply_to_msg_id:
 
                 reply_msg["In-Reply-To"] = reply_to_msg_id
@@ -3585,9 +3868,9 @@ def send_quotation_email_to_customer(tenant_id, customer_email, reply_subject, p
                 reply_msg.attach(part)
             
             if smtp_port == 465:
-                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15.0)
             else:
-                server = smtplib.SMTP(smtp_server, smtp_port)
+                server = smtplib.SMTP(smtp_server, smtp_port, timeout=15.0)
                 server.starttls()
             server.login(email_user, email_pass)
             server.sendmail(email_user, customer_email, reply_msg.as_string())
@@ -4153,7 +4436,7 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
             return
   
         try:
-            mail = imaplib.IMAP4_SSL(imap_server, imap_port)
+            mail = imaplib.IMAP4_SSL(imap_server, imap_port, timeout=15.0)
             mail.login(email_user, email_pass)
             try:
                 from src.database_sqlite import update_service_status
@@ -4342,7 +4625,12 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         print(f"[Warning] Failed to log EMAIL_RECEIVED in IMAP poller: {la_err}")
 
                     # Tier 1: Fast blocklist check (0ms, no API)
-                    blocklist_result = fast_blocklist_check(sender, subject, crm_emails)
+                    headers_dict = {
+                        "auto-submitted": msg.get("Auto-Submitted", ""),
+                        "x-auto-response-suppress": msg.get("X-Auto-Response-Suppress", ""),
+                        "precedence": msg.get("Precedence", "")
+                    }
+                    blocklist_result = fast_blocklist_check(sender, subject, crm_emails, headers=headers_dict)
                     if blocklist_result == "REJECT":
                         print(f"[Email Filter] Skipped irrelevant email from {sender} (Subject: {subject})")
                         mail.store(m_id, '+FLAGS', '\\Seen')
@@ -4577,6 +4865,8 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                     reply_msg["From"] = email_user
                     reply_msg["To"] = sender
                     reply_msg["Subject"] = reply_subject
+                    reply_msg["Auto-Submitted"] = "auto-replied"
+                    reply_msg["X-Auto-Response-Suppress"] = "All"
                     
                     if msg_id:
                         reply_msg["In-Reply-To"] = msg_id
@@ -4634,9 +4924,9 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                         try:
                             # Send via SMTP
                             if smtp_port == 465:
-                                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+                                server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15.0)
                             else:
-                                server = smtplib.SMTP(smtp_server, smtp_port)
+                                server = smtplib.SMTP(smtp_server, smtp_port, timeout=15.0)
                                 server.starttls()
                             server.login(email_user, email_pass)
                             server.sendmail(email_user, sender, reply_msg.as_string())
@@ -4835,3 +5125,135 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 update_service_status(status, error_message=err_msg, tenant_id=tenant_id)
             except Exception:
                 pass
+
+
+def send_autonomous_followups(tenant_id, tenant_config):
+    """
+    Scans for quotations in 'QUOTE_GENERATED' status sent > 48 hours ago,
+    sends a polite follow-up email, and updates their status to 'FOLLOW_UP_SENT'.
+    """
+    from src.database_sqlite import get_connection, log_chat_msg, update_quotation_status
+    import datetime
+    
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    
+    # Select quotations in 'QUOTE_GENERATED'
+    cursor.execute(
+        "SELECT invoice_id, customer_name, customer_email, created_at FROM quotations WHERE status = ?",
+        ("QUOTE_GENERATED",)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    
+    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+    
+    for row in rows:
+        invoice_id = row["invoice_id"]
+        customer_name = row["customer_name"]
+        customer_email = row["customer_email"]
+        created_at_str = row["created_at"]
+        
+        try:
+            created_at = datetime.datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
+            created_at = created_at.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+        except Exception:
+            continue
+            
+        # Check if age > 48 hours
+        age_hours = (now - created_at).total_seconds() / 3600.0
+        if age_hours >= 48.0:
+            print(f"[Follow-Up] Triggering autonomous follow-up for Quote {invoice_id} to {customer_email} (Age: {age_hours:.1f} hours)")
+            
+            # Draft follow-up email
+            client = _get_gemini_client()
+            followup_body = None
+            if client:
+                prompt = f"""You are an AI sales assistant. We sent a quotation to a customer 2 days ago but haven't heard back yet.
+Customer Name: {customer_name}
+Quote Reference: {invoice_id}
+
+Write a very polite, friendly, and brief follow-up email to check if they have any questions or would like to proceed with the order.
+Do not use placeholders (like [Company] or [Name]). Sign off as "Sales Team".
+"""
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt
+                    )
+                    followup_body = response.text.strip()
+                except Exception as e:
+                    print(f"[Follow-Up] Live generation failed: {e}")
+            
+            if not followup_body:
+                followup_body = (
+                    f"Hi {customer_name},\n\n"
+                    f"Just following up on the quotation {invoice_id} we sent you recently. "
+                    f"Please let us know if you have any questions or if you would like us to proceed with the order.\n\n"
+                    f"Best regards,\n"
+                    f"Sales Team"
+                )
+                
+            # Send the email!
+            # Find PDF path for this quote to attach it again if needed
+            from src.tenants import sanitize_tenant_id
+            t_id = sanitize_tenant_id(tenant_id)
+            pdf_filename = f"Quote_{invoice_id}.pdf"
+            
+            # Look up path
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if t_id and t_id != "default":
+                pdf_path = os.path.join(project_root, "static", "quotes", t_id, pdf_filename)
+                if not os.path.exists(pdf_path):
+                    pdf_path = os.path.join(project_root, "mock_outbox", t_id, pdf_filename)
+            else:
+                pdf_path = os.path.join(project_root, "static", "quotes", pdf_filename)
+                if not os.path.exists(pdf_path):
+                    pdf_path = os.path.join(project_root, "mock_outbox", pdf_filename)
+                    
+            if not os.path.exists(pdf_path):
+                pdf_path = None
+                
+            reply_subject = f"Following up on Quotation #{invoice_id}"
+            
+            # Send via our standard sender
+            try:
+                html_body = f"<html><body><p>{followup_body.replace(chr(10), '<br>')}</p></body></html>"
+                send_quotation_email_to_customer(
+                    tenant_id=tenant_id,
+                    customer_email=customer_email,
+                    reply_subject=reply_subject,
+                    plain_body=followup_body,
+                    html_body=html_body,
+                    pdf_path=pdf_path
+                )
+                
+                # Update status in DB to FOLLOW_UP_SENT
+                update_quotation_status(invoice_id, "FOLLOW_UP_SENT", tenant_id=tenant_id)
+                log_chat_msg(invoice_id, "BOT", followup_body, tenant_id=tenant_id)
+                
+                # Update meta JSON
+                meta_filename = f"Quote_{invoice_id}_meta.json"
+                if t_id and t_id != "default":
+                    meta_dir = os.path.join(project_root, "static", "quotes", t_id)
+                    if not os.path.exists(os.path.join(meta_dir, meta_filename)):
+                        meta_dir = os.path.join(project_root, "mock_outbox", t_id)
+                else:
+                    meta_dir = os.path.join(project_root, "static", "quotes")
+                    if not os.path.exists(os.path.join(meta_dir, meta_filename)):
+                        meta_dir = os.path.join(project_root, "mock_outbox")
+                        
+                meta_path = os.path.join(meta_dir, meta_filename)
+                if os.path.exists(meta_path):
+                    try:
+                        with open(meta_path, 'r', encoding='utf-8') as f:
+                            meta = json.load(f)
+                        chat_hist = meta.get("chat_history", [])
+                        chat_hist.append({"sender": "ai", "text": followup_body})
+                        meta["chat_history"] = chat_hist
+                        with open(meta_path, 'w', encoding='utf-8') as f:
+                            json.dump(meta, f, indent=2)
+                    except Exception as e:
+                        print(f"[Follow-Up] Failed to update meta JSON: {e}")
+            except Exception as e:
+                print(f"[Follow-Up] Failed to send follow-up email for {invoice_id}: {e}")

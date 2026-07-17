@@ -70,7 +70,11 @@ def test_covering_note_points_to_pdf():
 
 
 def test_out_of_stock_neutral_note():
-    (plain, html), _ = _build(OUT_OF_STOCK)
+    (plain, html), _ = build_email_reply_body(
+        OUT_OF_STOCK, 0.0, "General Customer", "QTN-00042",
+        logo_cid="company_logo", tenant_config=TCFG,
+        customer_email="manoranjith1123@gmail.com", origin="ai",
+    )
     assert "out of stock and are not included" in plain
     assert "Plastic Tool Box 19 Inch" in plain  # names the excluded item
 

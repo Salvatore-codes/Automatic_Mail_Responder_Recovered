@@ -1,127 +1,232 @@
           <!-- TAB 3: DEFICITS -->
-          <div class="tab-content" :class="{ 'active': activeTab === 'deficits' }">
+          <div class="tab-content" :class="{ 'active': activeTab === 'deficits' }"
+               x-data="{
+                 expandedSku: null,
 
+                 get skuGroups() {
+                   const search = (deficitsSearch || '').toLowerCase();
+                   const map = {};
+                   deficits.forEach(d => {
+                     if (search && !(
+                       (d.sku_name||'').toLowerCase().includes(search) ||
+                       (d.sku_id||'').toLowerCase().includes(search) ||
+                       (d.customer_name||'').toLowerCase().includes(search) ||
+                       (d.customer_email||'').toLowerCase().includes(search) ||
+                       (d.invoice_id||'').toLowerCase().includes(search)
+                     )) return;
+                     if (!map[d.sku_id]) {
+                       map[d.sku_id] = {
+                         sku_id: d.sku_id,
+                         sku_name: d.sku_name,
+                         available_qty: d.available_qty,
+                         rows: []
+                       };
+                     }
+                     map[d.sku_id].rows.push(d);
+                   });
+                   return Object.values(map).sort((a,b) => {
+                     const ap = a.rows.filter(r=>r.status==='PENDING').length;
+                     const bp = b.rows.filter(r=>r.status==='PENDING').length;
+                     return bp - ap;
+                   });
+                 },
+
+                 totalShortage(rows) {
+                   return rows.filter(r=>r.status==='PENDING').reduce((s,r)=>s+(r.deficit_qty||0),0);
+                 }
+               }">
+
+            <!-- Page Header -->
             <div class="ov-hero page-hero">
               <div class="ov-hero-glow" aria-hidden="true"></div>
               <div class="ov-hero-main">
                 <div class="ov-eyebrow">Inventory Fulfillment</div>
                 <h1 class="ov-title">Stock Deficits</h1>
-                <p class="ov-sub">Match alternatives and clear out-of-stock order lines before they stall a quotation.</p>
+                <p class="ov-sub">Track and resolve inventory shortages by product line. Expand any item to view and match quotations.</p>
               </div>
               <div class="ov-hero-side">
                 <div class="ov-pulse"><span class="ov-pulse-dot"></span> Live</div>
               </div>
             </div>
 
-            <!-- Low Stock Alert Banner -->
+            <!-- Low Stock Banner -->
             <template x-if="defLowStock.length > 0">
               <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.22);border-radius:var(--r-lg);margin-bottom:18px;">
                 <i data-lucide="alert-triangle" class="w-5 h-5" style="color:var(--red);flex-shrink:0;"></i>
                 <div>
                   <strong style="font-size:12.5px;color:var(--red);"><span x-text="defLowStock.length"></span> items at critically low stock (≤ 5 units)</strong>
-                  <p style="font-size:11px;color:var(--text-3);margin-top:2px;" x-text="defLowStock.slice(0, 3).map(s => s.sku_name).join(', ') + (defLowStock.length > 3 ? ' …' : '')"></p>
+                  <p style="font-size:11px;color:var(--text-3);margin-top:2px;" x-text="defLowStock.slice(0,3).map(s=>s.sku_name).join(', ') + (defLowStock.length > 3 ? ' …' : '')"></p>
                 </div>
               </div>
             </template>
 
-            <!-- Deficits KPIs -->
+            <!-- KPIs -->
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;">
               <div class="kpi-card">
                 <span>Outstanding Deficits</span>
-                <strong style="color:var(--red);" x-text="deficits.filter(d => d.status === 'PENDING').length"></strong>
+                <strong style="color:var(--red);" x-text="deficits.filter(d=>d.status==='PENDING').length"></strong>
               </div>
               <div class="kpi-card">
                 <span>Resolved Matches</span>
-                <strong style="color:var(--green);" x-text="deficits.filter(d => d.status === 'RESOLVED').length"></strong>
+                <strong style="color:var(--green);" x-text="deficits.filter(d=>d.status==='RESOLVED').length"></strong>
               </div>
               <div class="kpi-card">
                 <span>Affected SKUs</span>
-                <strong x-text="new Set(deficits.map(d => d.sku_id)).size"></strong>
+                <strong x-text="new Set(deficits.map(d=>d.sku_id)).size"></strong>
               </div>
               <div class="kpi-card">
                 <span>Customers Waiting</span>
-                <strong x-text="new Set(deficits.filter(d => d.status === 'PENDING').map(d => d.customer_email)).size"></strong>
+                <strong x-text="new Set(deficits.filter(d=>d.status==='PENDING').map(d=>d.customer_email)).size"></strong>
               </div>
             </div>
 
-            <!-- Deficit Table -->
+            <!-- Main Deficit Card Queue -->
             <div class="section-card">
               <div class="section-header">
                 <h3 class="section-title">
-                  <i data-lucide="package" class="w-4 h-4" style="color:var(--red)"></i> Outstanding Stock Deficit Queue
+                  <i data-lucide="package" class="w-4 h-4" style="color:var(--red)"></i>
+                  Outstanding Stock Deficit Queue
+                  <span style="font-size:10px;font-weight:600;padding:2px 8px;background:rgba(220,38,38,0.08);color:var(--red);border-radius:20px;"
+                        x-text="skuGroups.length + ' SKU' + (skuGroups.length !== 1 ? 's' : '')"></span>
                 </h3>
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <input type="text" x-model="deficitsSearch" @input="deficitsPage = 1" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]" placeholder="Search deficits..." />
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <input type="text" x-model="deficitsSearch"
+                         class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-1.5 px-3 outline-none focus:border-[var(--accent)]"
+                         placeholder="Search SKU, customer, invoice…" />
                   <button @click="loadDeficits" class="btn btn-ghost btn-sm">
                     <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh
                   </button>
                 </div>
               </div>
 
-              <!-- Table -->
-              <div class="overflow-x-auto max-w-full">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th @click="setDeficitsSort('invoice_id')" style="cursor:pointer; user-select:none;">Invoice ID <span x-text="deficitsSortField === 'invoice_id' ? (deficitsSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
-                      <th @click="setDeficitsSort('sku_name')" style="cursor:pointer; user-select:none;">Missing Catalog SKU <span x-text="deficitsSortField === 'sku_name' ? (deficitsSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
-                      <th @click="setDeficitsSort('customer_name')" style="cursor:pointer; user-select:none;">Customer Name & Contact <span x-text="deficitsSortField === 'customer_name' ? (deficitsSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
-                      <th @click="setDeficitsSort('deficit_qty')" style="cursor:pointer; user-select:none;">Qty Shortage <span x-text="deficitsSortField === 'deficit_qty' ? (deficitsSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
-                      <th>Stock Status</th>
-                      <th @click="setDeficitsSort('status')" style="cursor:pointer; user-select:none;">Status <span x-text="deficitsSortField === 'status' ? (deficitsSortOrder === 'asc' ? '▲' : '▼') : ''"></span></th>
-                      <th>Operation Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <template x-if="sortedDeficits().length === 0">
-                      <tr>
-                        <td colspan="7" style="text-align: center; font-style: italic; color: var(--text-3);">No deficits or stock shortages detected.</td>
-                      </tr>
-                    </template>
-                    <template x-for="def in paginatedDeficits()" :key="def.id">
-                      <tr>
-                        <td style="font-weight: bold; color: var(--text-1);" x-text="def.invoice_id"></td>
-                        <td class="p-3.5">
-                          <strong x-text="def.sku_name"></strong>
-                          <div class="text-[10px] text-[var(--text-2)] mt-0.5" x-text="def.sku_id"></div>
-                        </td>
-                        <td class="p-3.5">
-                          <strong x-text="def.customer_name"></strong>
-                          <div class="text-[10px] text-[var(--text-2)] mt-0.5" x-text="def.customer_email"></div>
-                        </td>
-                        <td class="p-3.5 font-black text-[var(--red)]" x-text="def.deficit_qty + ' units'"></td>
-                        <td class="p-3.5">
-                          <span class="badge" :class="def.available_qty === 0 ? 'red' : 'yellow'" x-text="def.available_qty + ' in stock'"></span>
-                        </td>
-                        <td class="p-3.5">
-                          <span class="badge font-bold" :class="def.status === 'RESOLVED' ? 'green' : 'yellow'" x-text="def.status"></span>
-                        </td>
-                        <td class="p-3.5">
-                          <template x-if="def.status === 'PENDING'">
-                            <button @click="openResolveDeficit(def)" class="btn-action-primary btn-action-primary-sm">
-                              <i data-lucide="check-circle" class="w-3 h-3"></i> Resolve Match
-                            </button>
-                          </template>
-                          <template x-if="def.status === 'RESOLVED'">
-                            <span class="text-[10px] text-[var(--text-2)] font-semibold flex items-center gap-1"><i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-500"></i> Done</span>
-                          </template>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+              <!-- Column Header Labels for SKU cards — guarantees perfect vertical alignment -->
+              <div style="display:grid;grid-template-columns:40px 2.5fr 1.2fr 1.2fr 1.2fr 1.2fr 30px;gap:16px;padding:10px 33px;background:var(--bg-canvas);border-bottom:1px solid var(--border);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);">
+                <div></div> <!-- Icon space -->
+                <div>Item / SKU Name</div>
+                <div style="text-align:center;">Total Shortage</div>
+                <div style="text-align:center;">Affected Quotes</div>
+                <div style="text-align:center;">Stock Level</div>
+                <div style="text-align:center;">Queue Status</div>
+                <div></div> <!-- Chevron space -->
               </div>
 
-              <!-- Pagination -->
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-2);">
-                <div x-text="`Showing ${paginatedDeficits().length} of ${sortedDeficits().length} records`"></div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <button @click="if(deficitsPage > 1) deficitsPage--" :disabled="deficitsPage === 1" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Prev</button>
-                  <span x-text="`Page ${deficitsPage} of ${deficitsTotalPages()}`"></span>
-                  <button @click="if(deficitsPage < deficitsTotalPages()) deficitsPage++" :disabled="deficitsPage === deficitsTotalPages()" class="btn btn-ghost btn-sm" style="padding:4px 8px;">Next</button>
+              <!-- Empty state -->
+              <template x-if="skuGroups.length === 0">
+                <div style="padding:40px 20px;text-align:center;">
+                  <i data-lucide="package-check" style="width:36px;height:36px;color:var(--text-3);margin:0 auto 12px;display:block;"></i>
+                  <p style="font-size:13px;color:var(--text-3);margin:0;">No deficits or stock shortages detected.</p>
                 </div>
+              </template>
+
+              <!-- Group Cards list -->
+              <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <template x-for="group in skuGroups" :key="group.sku_id">
+                  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg-card);box-shadow:var(--sh-1);">
+
+                    <!-- Card Header Row (grid-aligned, preserves styling dynamically) -->
+                    <div @click="expandedSku = expandedSku === group.sku_id ? null : group.sku_id"
+                         style="display:grid;grid-template-columns:40px 2.5fr 1.2fr 1.2fr 1.2fr 1.2fr 30px;gap:16px;padding:12px 16px;cursor:pointer;user-select:none;align-items:center;"
+                         :style="{ background: expandedSku === group.sku_id ? 'rgba(220,38,38,0.025)' : 'transparent' }">
+
+                      <!-- SKU Icon -->
+                      <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;"
+                           :style="group.rows.filter(r=>r.status==='PENDING').length > 0 ? 'background:rgba(220,38,38,0.08);' : 'background:rgba(16,185,129,0.08);'">
+                        <i data-lucide="package" style="width:15px;height:15px;"
+                           :style="group.rows.filter(r=>r.status==='PENDING').length > 0 ? 'color:var(--red);' : 'color:var(--green);'"></i>
+                      </div>
+
+                      <!-- SKU Info -->
+                      <div style="min-width:0;padding-right:8px;">
+                        <div style="font-size:12.5px;font-weight:700;color:var(--text-1);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" x-text="group.sku_name"></div>
+                        <div style="font-size:9.5px;color:var(--text-3);font-family:var(--font-mono);margin-top:2px;" x-text="group.sku_id"></div>
+                      </div>
+
+                      <!-- Total Shortage -->
+                      <div style="text-align:center;">
+                        <span style="font-size:13.5px;font-weight:800;color:var(--red);"
+                              x-text="totalShortage(group.rows) > 0 ? totalShortage(group.rows) + ' units' : '—'"></span>
+                      </div>
+
+                      <!-- Affected Quotes Count -->
+                      <div style="text-align:center;">
+                        <span style="font-size:13.5px;font-weight:800;color:var(--text-1);" x-text="group.rows.length"></span>
+                      </div>
+
+                      <!-- Stock Level -->
+                      <div style="text-align:center;">
+                        <span class="badge" :class="group.available_qty === 0 ? 'red' : 'yellow'"
+                              x-text="group.available_qty + ' stock'"></span>
+                      </div>
+
+                      <!-- Queue Status -->
+                      <div style="text-align:center;">
+                        <template x-if="group.rows.filter(r=>r.status==='PENDING').length > 0">
+                          <span class="badge red font-bold" x-text="group.rows.filter(r=>r.status==='PENDING').length + ' pending'"></span>
+                        </template>
+                        <template x-if="group.rows.filter(r=>r.status==='PENDING').length === 0">
+                          <span class="badge green font-bold">All resolved</span>
+                        </template>
+                      </div>
+
+                      <!-- Chevron Toggle -->
+                      <div style="display:flex;justify-content:flex-end;">
+                        <i :data-lucide="expandedSku === group.sku_id ? 'chevron-up' : 'chevron-down'"
+                           style="width:13.5px;height:13.5px;color:var(--text-3);"></i>
+                      </div>
+
+                    </div>
+
+                    <!-- Card Body: Expanded sub-table styled EXACTLY like the Negotiations table -->
+                    <template x-if="expandedSku === group.sku_id">
+                      <div style="border-top:1px solid var(--border); background:var(--bg-card);">
+                        <div class="overflow-x-auto max-w-full">
+                          <table class="data-table" style="margin:0; width:100%; border-radius:0; border:none; border-top:1px solid var(--border);">
+                            <thead>
+                              <tr style="background:var(--bg-canvas);">
+                                <th style="padding:10px 16px;">Invoice ID</th>
+                                <th style="padding:10px 16px;">Customer Name</th>
+                                <th style="padding:10px 16px;">Email Contact</th>
+                                <th style="padding:10px 16px; text-align:center;">Shortage</th>
+                                <th style="padding:10px 16px; text-align:center;">Status</th>
+                                <th style="padding:10px 16px; text-align:right;">Operations</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <template x-for="def in group.rows" :key="def.id">
+                                <tr :style="{ opacity: def.status === 'RESOLVED' ? 0.55 : 1 }">
+                                  <td style="padding:13px 16px; font-weight:bold; color:var(--text-1); font-family:var(--font-mono);" x-text="def.invoice_id"></td>
+                                  <td style="padding:13px 16px; font-weight:700; color:var(--text-1);" x-text="def.customer_name"></td>
+                                  <td style="padding:13px 16px; font-family:var(--font-mono); color:var(--text-2);" x-text="def.customer_email"></td>
+                                  <td style="padding:13px 16px; text-align:center; font-weight:800; color:var(--red);" x-text="def.deficit_qty + ' units'"></td>
+                                  <td style="padding:13px 16px; text-align:center;">
+                                    <span class="badge" :class="def.status === 'RESOLVED' ? 'green' : 'yellow'" x-text="def.status === 'RESOLVED' ? 'Resolved' : 'Pending'"></span>
+                                  </td>
+                                  <td style="padding:13px 16px; text-align:right;">
+                                    <div class="flex justify-end gap-2">
+                                      <template x-if="def.status === 'PENDING'">
+                                        <button @click.stop="openResolveDeficit(def)" class="btn-action-primary btn-action-primary-sm">
+                                          <i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1 inline-block align-middle"></i> Resolve Match
+                                        </button>
+                                      </template>
+                                      <template x-if="def.status === 'RESOLVED'">
+                                        <span style="font-size:11px; color:var(--green); font-weight:700; display:inline-flex; align-items:center; gap:4px;">
+                                          <i data-lucide="check" style="width:14px; height:14px;"></i> Done
+                                        </span>
+                                      </template>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </template>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </template>
+
+                  </div>
+                </template>
               </div>
+
             </div>
 
           </div>
-

@@ -7,6 +7,28 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100vh; overflow: hidden; }
 
+/* ── Login Overlay — flex centering defined in CSS so Alpine x-show can restore it ── */
+.login-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, var(--bg-canvas) 0%, var(--bg-dark) 100%);
+  overflow: hidden;
+}
+
+/* Cursor trail canvas fills login overlay */
+#loginDotGrid {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* ── Scrollbars ── */
 ::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -23,6 +45,13 @@ body {
   line-height: 1.55;
   font-size: 13px;
   letter-spacing: -0.004em;
+}
+
+/* Tamil language — switch to Tamil-compatible font */
+body:lang(ta),
+[lang="ta"],
+.lang-ta {
+  font-family: 'Noto Sans Tamil', 'Plus Jakarta Sans', sans-serif;
 }
 
 /* ══════════════════════════════════════
@@ -465,12 +494,13 @@ html[data-theme="cyber"]    aside.sidebar::before {
    TOPBAR / HEADER
 ══════════════════════════════════════ */
 .topbar {
-  height: 56px;
+  min-height: 56px;
+  height: auto;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 8px 24px;
   border-bottom: 1px solid var(--border);
   background: rgba(255,255,255,0.7);
   backdrop-filter: blur(20px) saturate(160%);
@@ -478,6 +508,15 @@ html[data-theme="cyber"]    aside.sidebar::before {
   position: sticky;
   top: 0;
   z-index: 40;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 html[data-theme="midnight"] .topbar,
 html[data-theme="navy"]     .topbar,
@@ -860,9 +899,11 @@ main.view-area {
 .kanban-grid {
   display: flex;
   gap: 12px;
-  overflow-x: auto;
+  overflow-x: hidden;
   width: 100%;
-  align-items: start;
+  height: calc(100vh - 310px);
+  min-height: 500px;
+  align-items: stretch;
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
@@ -872,10 +913,11 @@ main.view-area {
   background: var(--bg-canvas);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  flex: 0 0 280px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 420px;
   overflow: hidden;
 }
 .kanban-col-head {
@@ -915,7 +957,6 @@ main.view-area {
   padding: 10px 8px;
   overflow-y: auto;
   flex: 1;
-  max-height: calc(100vh - 350px);
 }
 
 /* ── Kanban Card ── */
@@ -976,6 +1017,20 @@ main.view-area {
   white-space: nowrap;
   flex-shrink: 0;
 }
+/* Standardised timestamp badge — used across ALL kanban card types */
+.k-card-ts {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  letter-spacing: 0.01em;
+}
 .k-card-email {
   font-size: 11px;
   color: var(--text-2);
@@ -992,9 +1047,21 @@ main.view-area {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px;
   padding-top: 8px;
-  margin-top: 2px;
+  margin-top: 6px;
   border-top: 1px solid var(--border);
+}
+/* Badges in footer never shrink — they group on the left */
+.k-card-footer .badge {
+  flex-shrink: 0;
+}
+/* Micro button in footer always stays right and never clips */
+.k-card-footer .btn-micro {
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .k-id {
   font-size: 9.5px;
@@ -1015,6 +1082,7 @@ main.view-area {
   text-align: center;
   opacity: 0.55;
   margin: 4px;
+  flex: 1;
 }
 .k-empty-icon { color: var(--text-3); }
 .k-empty-label { font-size: 11px; font-weight: 600; color: var(--text-2); }
@@ -1496,6 +1564,60 @@ html[data-theme="warm"] .ov-hero {
   font-family: var(--serif); font-weight: 500; font-size: 31px;
   letter-spacing: -0.015em; color: var(--text-1); line-height: 1.04; margin: 0;
 }
+
+/* ── Kinetic word-by-word title reveal ── */
+.ov-kinetic-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+}
+.ov-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(14px);
+  filter: blur(4px);
+  animation: ov-word-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes ov-word-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* ── Ghost-trail cycling quotes — single span, cross-fade ── */
+.ov-quote-track {
+  text-align: right;
+  max-width: 220px;
+  padding-right: 12px;
+  border-right: 2px solid var(--accent);
+}
+.ov-quote-single {
+  display: block;
+  font-size: 11.5px;
+  font-style: italic;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+  transition:
+    opacity 0.4s ease,
+    filter 0.4s ease,
+    transform 0.4s ease;
+}
+/* Triggered during swap — fades out with ghost blur upward */
+.ov-quote-fade {
+  opacity: 0;
+  filter: blur(5px);
+  transform: translateY(-6px);
+}
 .ov-sub {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-top: 10px; font-size: 12.5px; color: var(--text-2);
@@ -1679,7 +1801,8 @@ html[data-theme="warm"] .split-bar-wrap { height: 8px; }
 /* Fill the row cleanly — no cramped horizontal scroll on wide screens */
 html[data-theme="warm"] .kanban-grid { gap: 14px; }
 html[data-theme="warm"] .kanban-col {
-  flex: 0 0 280px;
+  flex: 1;
+  min-width: 0;
   background: var(--bg-card2);
   box-shadow: var(--sh-1);
 }
@@ -1696,6 +1819,16 @@ html[data-theme="warm"] .k-card:hover {
   box-shadow: var(--sh-2);
   border-color: var(--border-glow);
 }
+
+@media (max-width: 1200px) {
+  .kanban-grid {
+    overflow-x: auto;
+  }
+  .kanban-col {
+    flex: 0 0 280px;
+  }
+}
+
 @media (max-width: 1240px) {
   html[data-theme="warm"] .kanban-grid { overflow-x: auto; }
   html[data-theme="warm"] .kanban-col { flex: 0 0 280px; }
@@ -1715,12 +1848,14 @@ html[data-theme="warm"] .k-card .k-card-name {
 }
 html[data-theme="warm"] .k-card .badge { flex-shrink: 0; }
 /* Restore the mistyped negotiation-card footer so it reads as finished */
-html[data-theme="warm"] .k-k-card-footer {
+html[data-theme="warm"] .k-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px;
   padding-top: 8px;
-  margin-top: 2px;
+  margin-top: 6px;
   border-top: 1px solid var(--border);
 }
 

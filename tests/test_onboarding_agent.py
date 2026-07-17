@@ -34,6 +34,14 @@ class TestOnboardingAgent(unittest.TestCase):
         init_db(tenant_id=cls.test_tenant)
 
     def test_database_vertical_crud(self):
+        # Clean up database vertical_profiles table for testing
+        from src.database_sqlite import get_connection
+        conn = get_connection(self.test_tenant)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM vertical_profiles WHERE id NOT IN ('hardware')")
+        conn.commit()
+        conn.close()
+
         # 1. Test save_vertical_profile
         save_vertical_profile(
             profile_id="medical",

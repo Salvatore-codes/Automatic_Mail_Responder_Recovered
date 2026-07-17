@@ -48,6 +48,37 @@ load_dotenv()
 from src.tenants import load_tenants, get_tenant_catalog
 from src.email_listener import poll_email_inbox
 
+def process_tenant(tenant_id, tenant_config):
+    name = tenant_config.get("name") or tenant_config.get("business_name") or f"Tenant {tenant_id}"
+    try:
+        catalog = get_tenant_catalog(tenant_id)
+        crm_path = tenant_config.get("crm_json")
+        
+        email_user = tenant_config.get("email_user")
+        email_pass = tenant_config.get("email_pass")
+        
+        mode = "mock"
+        is_placeholder_user = not email_user or email_user.startswith("your_") or "your_store_email" in email_user
+        is_placeholder_pass = not email_pass or "YOUR_" in email_pass or "your_" in email_pass or "<" in email_pass or "app_password" in email_pass
+        outlook_secret = tenant_config.get("outlook_client_secret")
+        
+        if (email_user and email_pass and not is_placeholder_user and not is_placeholder_pass) or (email_user and outlook_secret and not is_placeholder_user):
+            mode = "live"
+            print(f"[Poller] Tenant: {tenant_id} ({name}) - LIVE Email Poller running (Inbox: {email_user})")
+        else:
+            print(f"[Poller] Tenant: {tenant_id} ({name}) - SIMULATION / MOCK watcher running.")
+        
+        poll_email_inbox(catalog, crm_path, mode=mode, tenant_id=tenant_id)
+        
+        # Run autonomous follow-up check
+        try:
+            from src.email_listener import send_autonomous_followups
+            send_autonomous_followups(tenant_id, tenant_config)
+        except Exception as f_ex:
+            print(f"[Error] Failed follow-up check for tenant {tenant_id}: {f_ex}")
+    except Exception as ex:
+        print(f"[Error] Failed to process cycle for tenant {tenant_id}: {ex}")
+
 def main():
     print("=" * 80)
     print("                TROFEO HARDWARE AUTOMATED MULTI-TENANT EMAIL LISTENER")
@@ -56,6 +87,7 @@ def main():
     print("\nStarting listener loop. Press Ctrl+C to stop.")
     print("-" * 80)
     
+    from concurrent.futures import ThreadPoolExecutor
     try:
         while True:
             # Reload environment from .env on every cycle so changes to .env are picked up live
@@ -63,30 +95,17 @@ def main():
             # Reload tenants dynamically on every cycle so changes to tenants.json are picked up live
             tenants = load_tenants()
             
-            for tenant_id, tenant_config in tenants.items():
-                name = tenant_config.get("name") or tenant_config.get("business_name") or f"Tenant {tenant_id}"
-                
-                try:
-                    catalog = get_tenant_catalog(tenant_id)
-                    crm_path = tenant_config.get("crm_json")
-                    
-                    email_user = tenant_config.get("email_user")
-                    email_pass = tenant_config.get("email_pass")
-                    
-                    mode = "mock"
-                    is_placeholder_user = not email_user or email_user.startswith("your_") or "your_store_email" in email_user
-                    is_placeholder_pass = not email_pass or "YOUR_" in email_pass or "your_" in email_pass or "<" in email_pass or "app_password" in email_pass
-                    outlook_secret = tenant_config.get("outlook_client_secret")
-                    
-                    if (email_user and email_pass and not is_placeholder_user and not is_placeholder_pass) or (email_user and outlook_secret and not is_placeholder_user):
-                        mode = "live"
-                        print(f"[Poller] Tenant: {tenant_id} ({name}) - LIVE Email Poller running (Inbox: {email_user})")
-                    else:
-                        print(f"[Poller] Tenant: {tenant_id} ({name}) - SIMULATION / MOCK watcher running.")
-                    
-                    poll_email_inbox(catalog, crm_path, mode=mode, tenant_id=tenant_id)
-                except Exception as ex:
-                    print(f"[Error] Failed to process cycle for tenant {tenant_id}: {ex}")
+            with ThreadPoolExecutor(max_workers=max(1, len(tenants))) as executor:
+                futures = [
+                    executor.submit(process_tenant, tenant_id, tenant_config)
+                    for tenant_id, tenant_config in tenants.items()
+                ]
+                # Wait for all tenants to finish this cycle before starting next
+                for fut in futures:
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print(f"[Poller Loop Error] Uncaught thread exception: {e}")
             
             # Brief sleep between polling cycles
             time.sleep(5)

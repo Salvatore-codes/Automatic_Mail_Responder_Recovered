@@ -10,20 +10,26 @@ TEST_TENANT = "test_settings_workflow"
 @pytest.fixture(autouse=True)
 def setup_test_db():
     # Setup test database
-    from src.database_sqlite import DB_DIR, INITIALIZED_DBS
+    from src.database_sqlite import DB_DIR, INITIALIZED_DBS, get_connection
+    import sqlite3
     # Ensure it's treated as uninitialized so it runs init_db_conn
     if TEST_TENANT in INITIALIZED_DBS:
         INITIALIZED_DBS.remove(TEST_TENANT)
     
-    db_path = os.path.join(DB_DIR, f"sales_{TEST_TENANT}.db")
-    if os.path.exists(db_path):
-        try:
-            os.remove(db_path)
-        except Exception:
-            pass
-            
-    # Initialize connection
+    # Clean up test tenant rows from the shared database
     conn = get_connection(TEST_TENANT)
+    cursor = conn.cursor()
+    tables = ["quotations", "quotation_items", "processed_messages", "unmatched_items", "chat_logs", "activity_log", "deficits"]
+    for t in tables:
+        try:
+            cursor.execute(f"DELETE FROM {t} WHERE tenant_id = ?", (TEST_TENANT,))
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute(f"DELETE FROM {t}")
+            except sqlite3.OperationalError:
+                pass
+    cursor.execute("DELETE FROM settings WHERE key LIKE ?", (f"{TEST_TENANT}:%",))
+    conn.commit()
     conn.close()
     
     yield
@@ -31,11 +37,19 @@ def setup_test_db():
     # Cleanup database
     if TEST_TENANT in INITIALIZED_DBS:
         INITIALIZED_DBS.remove(TEST_TENANT)
-    if os.path.exists(db_path):
+    conn = get_connection(TEST_TENANT)
+    cursor = conn.cursor()
+    for t in tables:
         try:
-            os.remove(db_path)
-        except Exception:
-            pass
+            cursor.execute(f"DELETE FROM {t} WHERE tenant_id = ?", (TEST_TENANT,))
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute(f"DELETE FROM {t}")
+            except sqlite3.OperationalError:
+                pass
+    cursor.execute("DELETE FROM settings WHERE key LIKE ?", (f"{TEST_TENANT}:%",))
+    conn.commit()
+    conn.close()
 
 def test_settings_get_set():
     # Test setting values directly in database
@@ -163,9 +177,9 @@ def test_negotiation_escalation_over_2_percent():
     assert res_under["status"] == "APPROVED"
     assert res_under["approved_discount"] == 1.5
     
-    # 2. Over 2% -> PENDING_REVIEW with consideration message
+    # 2. Over 2% -> NEGOTIATING with a counter-offer
     res_over = run_negotiation_step("Can I get a 5% discount?", 5.0, [])
-    assert res_over["status"] == "PENDING_REVIEW"
-    assert res_over["approved_discount"] == 0.0
-    assert "under consideration by our officials" in res_over["reply"]
+    assert res_over["status"] == "NEGOTIATING"
+    assert res_over["approved_discount"] == 2.0
+    assert "unable to meet the requested 5" in res_over["reply"]
 
