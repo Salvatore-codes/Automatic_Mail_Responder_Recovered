@@ -57,6 +57,10 @@ We have successfully implemented and verified the pluggable inventory/catalog co
   * Configured `.kanban-col` to have `height: 100%;` so that columns match height perfectly regardless of the number of cards in them.
   * Removed the hardcoded `max-height` restriction from `.kanban-cards` to allow it to dynamically fill the remaining height of the columns.
 
+### 8. AI Catalog Relevance Verification & Button Alignment
+* **AI Relevance Verification Check:** Integrated a zero-shot auditor check in [server.py](file:///D:/sku-matcher-prototype/src/server.py#L1291-L1350) using `gemini-2.5-flash`. The check retrieves the active vertical profile's industry details and guidelines, samples the first 15 records from the uploaded catalog, and verifies business relevance. If unrelated (e.g. uploading fruits/bolts into a consulting services vertical), the import is rejected with a `400 Bad Request` explaining why.
+* **Button Alignment:** Updated the header layout in [inventory.html](file:///D:/sku-matcher-prototype/templates/components/inventory.html#L45-L77) to use `flex gap-3 items-center`, added exact borders (`border: 1px solid var(--border)`), and set matching heights (`28px`) on the Import and Export containers.
+
 ---
 
 ## 🧪 Verification Results
@@ -64,6 +68,7 @@ We have successfully implemented and verified the pluggable inventory/catalog co
 We verified the implementation using:
 1. Automated connectors test suite [test_inventory_connectors.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_inventory_connectors.py) (CSV, Excel, SQL DB verification).
 2. Automated endpoint test suite [test_import_endpoint.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_import_endpoint.py) (FastAPI mock file upload and pandas CSV parsing verification).
+3. Automated relevance test suite [test_import_relevance.py](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/398c9097-b2c6-40a2-a845-fd867e4f26cc/scratch/test_import_relevance.py) (Gemini relevance auditing checks).
 
 ```
 --- Testing CSVConnector ---
@@ -79,6 +84,12 @@ ALL TESTS PASSED SUCCESSFULLY!
 
 --- Testing /api/inventory/import endpoint ---
 Import endpoint Test PASSED: {'status': 'SUCCESS', 'count': 1, 'message': 'Successfully imported 1 records.'}
+
+--- Testing AI Relevance Check on Catalog Import ---
+Relevant import test passed! (Import allowed)
+Irrelevant import test passed! (Successfully rejected by AI)
+AI Rejection Reason: Rejection: The imported records are not relevant to this business vertical (DHANYA FACILITY MANAGEMENT SERVICES - Regulatory Compliance & Tax Advisory). Reason: The imported catalog inventory items (M8 Zinc Plated Hex Bolt, Fresh Red Apples) are physical goods related to hardware and groceries, which are completely unrelated to DHANYA FACILITY MANAGEMENT SERVICES' core business vertical of Regulatory Compliance & Tax Advisory.
+RELEVANCE VALIDATION TEST PASSED SUCCESSFULLY!
 ```
 
 ---
