@@ -872,6 +872,8 @@ main.view-area {
   gap: 12px;
   overflow-x: hidden;
   width: 100%;
+  height: calc(100vh - 310px);
+  min-height: 500px;
   align-items: stretch;
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
@@ -884,9 +886,9 @@ main.view-area {
   border-radius: var(--r-xl);
   flex: 1;
   min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 420px;
   overflow: hidden;
 }
 .kanban-col-head {
@@ -926,7 +928,6 @@ main.view-area {
   padding: 10px 8px;
   overflow-y: auto;
   flex: 1;
-  max-height: calc(100vh - 350px);
 }
 
 /* ── Kanban Card ── */
