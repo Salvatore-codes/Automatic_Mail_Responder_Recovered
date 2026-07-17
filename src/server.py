@@ -1221,6 +1221,126 @@ async def get_full_catalog(tenant_id: str = "default"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/inventory/import")
+async def import_inventory(file: UploadFile = File(...), tenant_id: str = "default"):
+    """
+    Parses an uploaded CSV or Excel file and replaces the vertical's inventory catalog.
+    Supports CSV and Excel files.
+    """
+    try:
+        from src.tenants import get_tenant_config, sanitize_tenant_id, _CATALOG_CACHE
+        import pandas as pd
+        import io
+        import sqlite3
+
+        t_id = sanitize_tenant_id(tenant_id)
+        config = get_tenant_config(t_id)
+
+        ctype = config.get("catalog_type", "csv")
+        conn_str = config.get("catalog_connection_string") or config.get("catalog_csv")
+        extra_str = config.get("catalog_extra_config", "")
+
+        import json
+        extra = {}
+        if extra_str:
+            try:
+                extra = json.loads(extra_str)
+            except Exception:
+                pass
+
+        file_bytes = await file.read()
+        filename = file.filename.lower()
+
+        if filename.endswith(".csv"):
+            csv_text = file_bytes.decode("utf-8", errors="ignore")
+            df = pd.read_csv(io.StringIO(csv_text))
+        elif filename.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(file_bytes))
+        else:
+            raise HTTPException(status_code=400, detail="Only CSV and Excel (.xlsx/.xls) files are supported.")
+
+        required_cols = ["sku_id", "sku_name", "price", "stock"]
+        df_cols_lower = [str(c).lower().strip() for c in df.columns]
+        
+        for req in required_cols:
+            if req not in df_cols_lower:
+                raise HTTPException(status_code=400, detail=f"Uploaded file is missing required column: '{req}'")
+
+        col_mapping = {}
+        for req in required_cols + ["description", "category"]:
+            for original_col in df.columns:
+                if str(original_col).lower().strip() == req:
+                    col_mapping[original_col] = req
+        
+        df = df.rename(columns=col_mapping)
+        keep_cols = [c for c in df.columns if c in required_cols + ["description", "category"]]
+        df = df[keep_cols]
+
+        df = df.fillna({
+            "description": "",
+            "category": "General",
+            "price": 0.0,
+            "stock": 100
+        })
+
+        df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0.0)
+        df["stock"] = pd.to_numeric(df["stock"], errors="coerce").fillna(100).astype(int)
+        df["sku_id"] = df["sku_id"].astype(str).str.strip()
+        df["sku_name"] = df["sku_name"].astype(str).str.strip()
+
+        df = df[df["sku_id"] != ""]
+
+        project_root = os.path.dirname(os.path.dirname(__file__))
+
+        if ctype == "csv":
+            if not os.path.isabs(conn_str):
+                conn_str = os.path.join(project_root, conn_str)
+            os.makedirs(os.path.dirname(conn_str), exist_ok=True)
+            df.to_csv(conn_str, index=False, encoding="utf-8")
+        elif ctype == "excel":
+            if not os.path.isabs(conn_str):
+                conn_str = os.path.join(project_root, conn_str)
+            os.makedirs(os.path.dirname(conn_str), exist_ok=True)
+            sheet = extra.get("sheet_name", "Sheet1")
+            df.to_excel(conn_str, sheet_name=sheet, index=False)
+        elif ctype == "sql":
+            table = extra.get("table_name", "sku_catalog")
+            if "postgresql" in conn_str or "mysql" in conn_str:
+                from sqlalchemy import create_engine, text
+                engine = create_engine(conn_str)
+                with engine.begin() as conn:
+                    conn.execute(text(f"DELETE FROM {table}"))
+                    df.to_sql(table, con=engine, if_exists="append", index=False)
+            else:
+                path = conn_str
+                if path.startswith("sqlite:///"):
+                    path = path.replace("sqlite:///", "")
+                conn = sqlite3.connect(path)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f"DELETE FROM {table}")
+                    conn.commit()
+                    df.to_sql(table, con=conn, if_exists="append", index=False)
+                finally:
+                    conn.close()
+
+        to_delete = [k for k in _CATALOG_CACHE.keys() if k.startswith(f"{t_id}:") or k == t_id]
+        for k in to_delete:
+            del _CATALOG_CACHE[k]
+
+        from src.database_sqlite import log_activity
+        log_activity(
+            event_type="CATALOG_IMPORTED",
+            description=f"Imported {len(df)} catalog records from {file.filename}.",
+            tenant_id=t_id
+        )
+
+        return {"status": "SUCCESS", "count": len(df), "message": f"Successfully imported {len(df)} records."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
 @app.get("/api/inventory/logs")
 async def get_inventory_update_logs(tenant_id: str = "default"):
     """Returns the audit log of all stock quantity changes."""

@@ -1774,6 +1774,34 @@ function dashboardApp() {
         this.loadingInventory = false;
       }
     },
+
+    async handleCatalogImport(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      this.loadingInventory = true;
+      try {
+        const res = await fetch(`/api/inventory/import?tenant_id=${this.selectedTenant}`, {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        if (res.ok) {
+          this.showToast(`Imported ${data.count} records successfully!`, 'success');
+          this.loadCatalog();
+        } else {
+          this.showToast(data.detail || 'Failed to import catalog', 'error');
+        }
+      } catch (e) {
+        this.showToast('Import error: ' + e.message, 'error');
+      } finally {
+        this.loadingInventory = false;
+        event.target.value = ''; // Reset file input
+      }
+    },
     
     filterCatalog() {
       const query = (this.inventorySearch || this.invoiceFilter).toLowerCase().trim();
