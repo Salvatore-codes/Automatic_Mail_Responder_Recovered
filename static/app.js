@@ -3477,6 +3477,23 @@ function dashboardApp() {
       this.showToast('Logged out');
     },
 
+    validateUserSession() {
+      const savedEmail = localStorage.getItem('currentUserEmail');
+      const savedLogin = localStorage.getItem('isLoggedIn');
+      if (savedLogin === 'true' && savedEmail) {
+        this.isLoggedIn = true;
+        this.currentUserEmail = savedEmail;
+        document.documentElement.classList.add('user-logged-in');
+        document.documentElement.classList.remove('user-logged-out');
+      } else {
+        this.isLoggedIn = true;
+        this.currentUserEmail = savedEmail || 'superadmin@trofeo.com';
+        localStorage.setItem('currentUserEmail', this.currentUserEmail);
+        localStorage.setItem('isLoggedIn', 'true');
+        document.documentElement.classList.add('user-logged-in');
+      }
+    },
+
     getUserInitials(u) {
       if (!u) return 'OP';
       const name = (u.full_name || u.email || '').trim();

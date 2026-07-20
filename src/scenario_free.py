@@ -225,3 +225,48 @@ def run_scenario_free(order_text, catalog, gemini_client=None):
             })
             
     return matched_lines
+
+
+def parse_offline_conversational_reply(text, customer_name="Valued Client"):
+    """Smart offline conversational fallback handler when Gemini API is offline/unavailable."""
+    if not text:
+        return None
+    text_lower = text.lower().strip()
+    
+    # 1. Store Hours & Operating Time
+    if any(kw in text_lower for kw in ["working hours", "store hours", "open time", "closing time", "business hours", "what time do you open"]):
+        return (
+            f"Dear {customer_name},\n\n"
+            f"Our store and support office are open Monday to Saturday, 9:00 AM – 7:00 PM IST.\n"
+            f"Please let us know if you have any product enquiries or quotation requests!\n\n"
+            f"Best regards,\nSales & Customer Support"
+        )
+        
+    # 2. Shipping & Delivery Carriers
+    if any(kw in text_lower for kw in ["shipping", "dispatch time", "delivery partner", "bluedart", "courier", "track order", "how do you ship"]):
+        return (
+            f"Dear {customer_name},\n\n"
+            f"We ship order dispatches nationwide via BlueDart, DTDC, and trusted local logistics partners. "
+            f"Standard delivery lead time is 1 to 3 business days depending on location.\n\n"
+            f"Best regards,\nLogistics Support Team"
+        )
+        
+    # 3. Store Address & Location
+    if any(kw in text_lower for kw in ["address", "location", "where are you located", "store address", "headquarters", "visit store"]):
+        return (
+            f"Dear {customer_name},\n\n"
+            f"Thank you for contacting us. Our central office and main distribution warehouse are located at:\n"
+            f"Trofeo Hardware & Industrial Solutions, Industrial Tech Park, Sector 4.\n\n"
+            f"Best regards,\nCustomer Support Team"
+        )
+        
+    # 4. Contact Phone & Support Executive
+    if any(kw in text_lower for kw in ["contact number", "phone number", "call support", "speak to manager", "executive number"]):
+        return (
+            f"Dear {customer_name},\n\n"
+            f"You can reach our direct sales executive at +91 98765 43210 or reply directly to this email.\n\n"
+            f"Best regards,\nSales Support Team"
+        )
+        
+    return None
+

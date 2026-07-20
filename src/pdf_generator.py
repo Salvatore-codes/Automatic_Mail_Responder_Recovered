@@ -300,8 +300,8 @@ def generate_pdf_quotation(matched_lines, discount_pct, customer_name, invoice_i
                 Paragraph(f"₹{item['total']:.2f}", body_style)
             ])
             
-        # Draw Table
-        t = Table(table_data, colWidths=[310, 50, 80, 80])
+        # Draw Table (repeatRows=1 ensures headers repeat on Page 2+ for >50 items)
+        t = Table(table_data, colWidths=[310, 50, 80, 80], repeatRows=1)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#8E2D98')),
             ('ALIGN', (0,0), (-1,-1), 'LEFT'),
