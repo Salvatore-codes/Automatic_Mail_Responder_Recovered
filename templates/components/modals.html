@@ -428,15 +428,39 @@
                     <span class="text-[var(--text-3)]">Operator ID:</span>
                     <span class="font-mono font-bold text-[var(--text-1)]" x-text="'OP-' + (dossierUser ? (dossierUser.email.length * 119 + 4000) : '')"></span>
                   </div>
-                  <div class="flex justify-between text-xs">
+                  <div class="flex justify-between text-xs items-center">
                     <span class="text-[var(--text-3)]">Access Role:</span>
-                    <span class="badge" :class="dossierUser && dossierUser.role === 'super_admin' ? 'red' : 'gray'"
-                          x-text="dossierUser && dossierUser.role === 'super_admin' ? 'Super Admin' : 'Sales Operator'"></span>
+                    <template x-if="currentUser.role === 'super_admin' && dossierUser">
+                      <select :value="dossierUser.role"
+                              :disabled="dossierUser.email === currentUserEmail"
+                              @change="saveUser(dossierUser.email, dossierUser.full_name, $event.target.value, dossierUser.active); dossierUser.role = $event.target.value;"
+                              class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-1)] px-2 py-1 outline-none cursor-pointer focus:border-[var(--accent)] transition-all font-semibold"
+                              :style="dossierUser.role === 'super_admin' ? 'color:var(--red); font-weight:700;' : 'color:var(--text-2);'">
+                        <option value="employee">Sales Operator</option>
+                        <option value="super_admin">Super Admin</option>
+                      </select>
+                    </template>
+                    <template x-if="currentUser.role !== 'super_admin'">
+                      <span class="badge" :class="dossierUser && dossierUser.role === 'super_admin' ? 'red' : 'gray'"
+                            x-text="dossierUser && dossierUser.role === 'super_admin' ? 'Super Admin' : 'Sales Operator'"></span>
+                    </template>
                   </div>
-                  <div class="flex justify-between text-xs">
+                  <div class="flex justify-between text-xs items-center">
                     <span class="text-[var(--text-3)]">Account Status:</span>
-                    <span class="badge" :class="dossierUser && dossierUser.active === 1 ? 'green' : 'gray'"
-                          x-text="dossierUser && dossierUser.active === 1 ? 'Active' : 'Inactive'"></span>
+                    <template x-if="currentUser.role === 'super_admin' && dossierUser">
+                      <select :value="dossierUser.active"
+                              :disabled="dossierUser.email === currentUserEmail"
+                              @change="saveUser(dossierUser.email, dossierUser.full_name, dossierUser.role, parseInt($event.target.value)); dossierUser.active = parseInt($event.target.value);"
+                              class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-1)] px-2 py-1 outline-none cursor-pointer focus:border-[var(--accent)] transition-all font-semibold"
+                              :style="dossierUser.active === 1 ? 'color:var(--green); font-weight:700;' : 'color:var(--text-3);'">
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                      </select>
+                    </template>
+                    <template x-if="currentUser.role !== 'super_admin'">
+                      <span class="badge" :class="dossierUser && dossierUser.active === 1 ? 'green' : 'gray'"
+                            x-text="dossierUser && dossierUser.active === 1 ? 'Active' : 'Inactive'"></span>
+                    </template>
                   </div>
                   <div class="flex justify-between text-xs">
                     <span class="text-[var(--text-3)]">Last Session:</span>

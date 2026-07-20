@@ -62,7 +62,7 @@ function dashboardApp() {
     ],
     
     activeTab: 'overview',
-    isLoggedIn: false,
+    isLoggedIn: localStorage.getItem('isLoggedIn') === 'true',
     currentUserEmail: localStorage.getItem('currentUserEmail') || 'superadmin@trofeo.com',
     currentUser: { email: '', role: '', full_name: '' },
     selectedOperatorEmail: 'all',
@@ -113,7 +113,7 @@ function dashboardApp() {
         'Sales Operator (Restricted)': 'விற்பனை இயக்குநர் (வரம்புக்குட்பட்டது)',
         'Super Admin (Full Access)': 'சூப்பர் அட்மின் (முழு அணுகல்)',
         'Add Authorized User': 'பயனரைச் சேர்',
-        'Access Token / Password': 'அணுகல் டோக்கன் / கடவுச்சொல்',
+        'Password': 'கடவுச்சொல்',
         'Viewing': 'பார்ப்பது',
         'emails': 'மின்னஞ்சல்கள்',
         'Export': 'ஏற்றுமதி',
@@ -428,10 +428,12 @@ function dashboardApp() {
       email: '',
       full_name: '',
       password: '',
+      confirmPassword: '',
       role: 'super_admin',
       business_name: '',
       business_type: 'Trading',
       industry: '',
+      customIndustry: '',
       url: '',
       description_text: '',
       email_user: '',
@@ -449,10 +451,62 @@ function dashboardApp() {
     signupError: '',
     showDossier: false,
     dossierUser: null,
-    tenants: [{ id: 'default', name: 'Trofeo Hardware Branch' }],
     invoiceFilter: '',
     deficitsSearch: '',
     negSearch: '',
+
+    handleEnterNavigation(e) {
+      if (!e || e.key !== 'Enter' || e.shiftKey) return;
+      
+      const container = e.target.closest('.auth-card-container') || e.target.closest('form') || e.target.closest('div[style*="border-radius"]') || document.body;
+      
+      // Get all interactive input/select/textarea elements inside the active card
+      const focusables = Array.from(container.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+      const visibleFocusables = focusables.filter(el => el.offsetParent !== null);
+      
+      const currentIndex = visibleFocusables.indexOf(e.target);
+      
+      // Find the next unfilled input in the form sequence
+      let nextEmpty = visibleFocusables.slice(currentIndex + 1).find(el => {
+        const val = el.value ? el.value.trim() : '';
+        return val === '';
+      });
+      
+      // If none found after current, check from beginning before current
+      if (!nextEmpty && currentIndex > 0) {
+        nextEmpty = visibleFocusables.slice(0, currentIndex).find(el => {
+          const val = el.value ? el.value.trim() : '';
+          return val === '';
+        });
+      }
+
+      if (nextEmpty) {
+        e.preventDefault();
+        e.stopPropagation();
+        nextEmpty.focus();
+        if (typeof nextEmpty.select === 'function' && nextEmpty.type !== 'select-one') {
+          nextEmpty.select();
+        }
+      } else {
+        // All fields filled! Submit form & navigate to Initialize Session
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (this.loginTab === 'signin') {
+          this.loginUser(this.selectedEmail || 'superadmin@trofeo.com');
+        } else if (this.loginTab === 'signup') {
+          if (!this.otpVerified) {
+            if (!this.otpSent) {
+              this.sendOtp();
+            } else if (this.otpCode) {
+              this.verifyOtp();
+            }
+          } else {
+            this.registerNewUser();
+          }
+        }
+      }
+    },
     
     // Tab AI Onboarding / Verticals
     activeVertical: {},
@@ -472,6 +526,11 @@ function dashboardApp() {
     negotiationKeywords: [],
     newNegotiationKeyword: '',
     loadingTraining: false,
+    trainingDataset: [],
+    loadingTrainingDataset: false,
+    trainingDatasetSearch: '',
+    selectedDatasetEmail: null,
+    showDatasetEmailModal: false,
     
     // Tab Dynamic Pricing
     tierPricingRules: [],
@@ -546,7 +605,13 @@ function dashboardApp() {
       exec_title: '',
       exec_phone: '',
       exec_email: '',
-      business_name: ''
+      business_name: '',
+      email_user: '',
+      imap_server: 'imap.gmail.com',
+      imap_port: 993,
+      smtp_server: 'smtp.gmail.com',
+      smtp_port: 465,
+      has_email_pass: false
     },
     
     // Tab 2: Live Simulator
@@ -1273,6 +1338,15 @@ function dashboardApp() {
       segmentsTotalPages() {
         return Math.ceil(this.sortedSegments().length / this.segmentsPageSize) || 1;
       },
+      isMailboxConnected() {
+      if (this.settings && (this.settings.has_email_pass || (this.settings.email_user && this.settings.email_user.trim()))) {
+        return true;
+      }
+      if (this.overviewData && (this.overviewData.mailbox_connected || this.overviewData.has_email_pass)) {
+        return true;
+      }
+      return false;
+    },
 
     // Tab 1: Overview APIS
     async fetchOverviewData() {
@@ -2854,10 +2928,52 @@ function dashboardApp() {
           this.trainingKeywords = data.keywords || [];
           this.recentlyLearnedKeywords = data.recently_learned || [];
         }
+        await this.loadTrainingDataset();
       } catch (e) {
         console.error('Failed to fetch training data:', e);
       } finally {
         this.loadingTraining = false;
+      }
+    },
+
+    async loadTrainingDataset() {
+      this.loadingTrainingDataset = true;
+      try {
+        const res = await this.safeFetch(`/api/training/dataset?tenant_id=${this.selectedTenant}&limit=100`);
+        if (res.ok) {
+          const data = await res.json();
+          this.trainingDataset = data.emails || [];
+        }
+        this.$nextTick(() => this.triggerLucide());
+      } catch (e) {
+        this.showToast('Error loading dataset: ' + e.message, 'error');
+      } finally {
+        this.loadingTrainingDataset = false;
+      }
+    },
+
+    async trainFromDatasetEmail(emailId) {
+      this.showToast('Extracting keywords from email...', 'info');
+      try {
+        const res = await this.safeFetch('/api/training/dataset/train', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email_id: emailId, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.learned && data.learned.length > 0) {
+            this.showToast(`AI learned ${data.learned.length} new keywords: ${data.learned.join(', ')}`, 'success');
+          } else {
+            this.showToast('AI analyzed the email but found no new relevant keywords.', 'info');
+          }
+          this.fetchTrainingData();
+        } else {
+          const err = await res.json();
+          this.showToast('Training failed: ' + (err.detail || 'unknown error'), 'error');
+        }
+      } catch (e) {
+        this.showToast('Training error: ' + e.message, 'error');
       }
     },
 
@@ -3130,6 +3246,9 @@ function dashboardApp() {
       }
       // Also refresh shared inboxes whenever users are loaded
       this.loadSharedInboxes();
+      if (this.currentUser.role !== 'super_admin' && ['pricing', 'training', 'verticals', 'access'].includes(this.activeTab)) {
+        this.activeTab = 'overview';
+      }
     },
 
     async loadSharedInboxes() {
@@ -3192,6 +3311,8 @@ function dashboardApp() {
       localStorage.setItem('currentUserEmail', email);
       this.isLoggedIn = true;
       localStorage.setItem('isLoggedIn', 'true');
+      document.documentElement.classList.add('user-logged-in');
+      document.documentElement.classList.remove('user-logged-out');
       this.selectedOperatorEmail = 'all';
       
       this.loadUsers().then(() => {
@@ -3249,29 +3370,44 @@ function dashboardApp() {
     },
 
     async registerNewUser() {
-      if (!this.signupForm.email || !this.signupForm.full_name || !this.signupForm.business_name || !this.signupForm.industry) {
-        this.signupError = 'Please fill out all required fields: Full Name, Business Name, Industry, and Email.';
+      if (!this.signupForm.email || !this.signupForm.full_name || !this.signupForm.business_name || !this.signupForm.industry || !this.signupForm.password || !this.signupForm.confirmPassword) {
+        this.signupError = 'Please fill out all required fields: Full Name, Business Name, Industry, Email, New Password, and Confirm Password.';
         return;
       }
+
+      if (this.signupForm.password !== this.signupForm.confirmPassword) {
+        this.signupError = 'New password and Confirm password do not match.';
+        return;
+      }
+      
+      let finalIndustry = this.signupForm.industry;
+      if (this.signupForm.industry === 'Other') {
+        if (!this.signupForm.customIndustry || !this.signupForm.customIndustry.trim()) {
+          this.signupError = 'Please specify your custom industry vertical.';
+          return;
+        }
+        finalIndustry = this.signupForm.customIndustry.trim();
+      }
+
       this.signupLoading = true;
       this.signupError = '';
       try {
         const payload = {
           email: this.signupForm.email,
           full_name: this.signupForm.full_name,
-          password: '',
+          password: this.signupForm.password,
           role: 'super_admin',
           business_name: this.signupForm.business_name,
           business_type: this.signupForm.business_type || 'Trading',
-          industry: this.signupForm.industry,
+          industry: finalIndustry,
           url: this.signupForm.url || null,
           description_text: this.signupForm.description_text || null,
           email_user: this.signupForm.email,
-          email_pass: '',
-          imap_server: 'imap.gmail.com',
-          imap_port: 993,
-          smtp_server: 'smtp.gmail.com',
-          smtp_port: 465
+          email_pass: this.signupForm.email_pass,
+          imap_server: this.signupForm.imap_server || 'imap.gmail.com',
+          imap_port: parseInt(this.signupForm.imap_port) || 993,
+          smtp_server: this.signupForm.smtp_server || 'smtp.gmail.com',
+          smtp_port: parseInt(this.signupForm.smtp_port) || 465
         };
 
         const res = await fetch('/api/auth/signup', {
@@ -3298,6 +3434,8 @@ function dashboardApp() {
           localStorage.setItem('currentUserEmail', data.user.email);
           this.isLoggedIn = true;
           localStorage.setItem('isLoggedIn', 'true');
+          document.documentElement.classList.add('user-logged-in');
+          document.documentElement.classList.remove('user-logged-out');
           this.selectedOperatorEmail = 'all';
           
           this.signupForm = {
@@ -3331,10 +3469,30 @@ function dashboardApp() {
     logoutUser() {
       this.isLoggedIn = false;
       localStorage.removeItem('isLoggedIn');
+      document.documentElement.classList.remove('user-logged-in');
+      document.documentElement.classList.add('user-logged-out');
       localStorage.removeItem('currentUserEmail');
       this.currentUserEmail = '';
       this.currentUser = { email: '', role: '', full_name: '' };
       this.showToast('Logged out');
+    },
+
+    getUserInitials(u) {
+      if (!u) return 'OP';
+      const name = (u.full_name || u.email || '').trim();
+      if (!name) return 'OP';
+      const parts = name.split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      if (name.includes('@')) {
+        const handle = name.split('@')[0];
+        return handle.substring(0, 2).toUpperCase();
+      }
+      if (name.length >= 2) {
+        return name.substring(0, 2).toUpperCase();
+      }
+      return (name + 'P').toUpperCase();
     },
 
     switchUser(email) {
@@ -3343,6 +3501,9 @@ function dashboardApp() {
       this.selectedOperatorEmail = 'all';
       
       this.loadUsers().then(() => {
+        if (this.currentUser.role !== 'super_admin' && ['pricing', 'training', 'verticals', 'access'].includes(this.activeTab)) {
+          this.activeTab = 'overview';
+        }
         this.fetchOverviewData();
         this.loadDeficits();
         this.loadNegotiations();
@@ -3365,22 +3526,42 @@ function dashboardApp() {
       this.showToast(email === 'all' ? 'Showing all operator records' : 'Filtered to ' + email);
     },
 
-    async saveUser(email, fullName, role) {
+    async triggerAutonomousFollowups() {
+      try {
+        const res = await this.safeFetch('/api/followups/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hours_threshold: 0, tenant_id: this.selectedTenant })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.showToast(data.message || 'Follow-ups checked & dispatched successfully!');
+          this.fetchOverviewData();
+        } else {
+          const err = await res.json();
+          this.showToast('Follow-up trigger notice: ' + (err.detail || 'no pending quotes'), 'info');
+        }
+      } catch (e) {
+        this.showToast('Error checking follow-ups: ' + e.message, 'error');
+      }
+    },
+
+    async saveUser(email, fullName, role, active = 1) {
       try {
         const res = await this.safeFetch('/api/users/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, full_name: fullName, role, active: 1, tenant_id: this.selectedTenant })
+          body: JSON.stringify({ email, full_name: fullName, role, active, tenant_id: this.selectedTenant })
         });
         if (res.ok) {
-          this.showToast('User access saved successfully!');
+          this.showToast('User access level saved successfully!');
           this.loadUsers();
         } else {
           const err = await res.json();
-          this.showToast('Failed to save user: ' + (err.detail || 'unknown error'), 'error');
+          this.showToast('Failed to save user access level: ' + (err.detail || 'unknown error'), 'error');
         }
       } catch (e) {
-        this.showToast('Failed to save user: ' + e.message, 'error');
+        this.showToast('Failed to save user access level: ' + e.message, 'error');
       }
     },
 

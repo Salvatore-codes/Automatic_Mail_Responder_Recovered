@@ -155,6 +155,10 @@ class InventoryUpdateRequest(BaseModel):
     new_price: float | None = None
     tenant_id: str = "default"
 
+class TrainEmailRequest(BaseModel):
+    email_id: int
+    tenant_id: str = "default"
+
 # Helper: Load CRM Customers for a specific tenant
 def load_tenant_crm_customers(tenant_id):
     tenant_config = get_tenant_config(tenant_id)
@@ -708,6 +712,36 @@ async def reset_keywords_api(req: ResetKeywordsRequest):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/training/dataset")
+async def get_training_dataset_api(request: Request, tenant_id: str = "default", limit: int = 100):
+    try:
+        ctx = get_user_context(request, tenant_id)
+        from src.database_sqlite import get_received_emails_dataset
+        emails = get_received_emails_dataset(limit=limit, tenant_id=tenant_id, operator_email=ctx["selected_email"], operator_role=ctx["role"])
+        return {"emails": emails}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/training/dataset/train")
+async def train_from_dataset_email_api(req: TrainEmailRequest):
+    try:
+        from src.database_sqlite import get_received_email_by_id, auto_train_from_email
+        email_record = get_received_email_by_id(req.email_id, req.tenant_id)
+        if not email_record:
+            raise HTTPException(status_code=404, detail="Email record not found in dataset.")
+            
+        learned = auto_train_from_email(
+            subject=email_record.get("subject", ""),
+            body=email_record.get("body", ""),
+            tenant_id=req.tenant_id
+        )
+        return {"success": True, "learned": learned}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/api/training/negotiation/keywords")
@@ -1911,7 +1945,14 @@ async def get_settings(tenant_id: str = "default"):
         "exec_title": get_setting("exec_title", cfg.get("sales_executive_title", ""), tenant_id),
         "exec_phone": get_setting("exec_phone", cfg.get("sales_executive_phone", ""), tenant_id),
         "exec_email": get_setting("exec_email", cfg.get("sales_executive_email", ""), tenant_id),
-        "business_name": get_setting("business_name", cfg.get("business_name", ""), tenant_id)
+        "business_name": get_setting("business_name", cfg.get("business_name", ""), tenant_id),
+        "email_user": get_setting("email_user", cfg.get("email_user", ""), tenant_id),
+        "imap_server": get_setting("imap_server", cfg.get("imap_server", "imap.gmail.com"), tenant_id),
+        "imap_port": int(get_setting("imap_port", cfg.get("imap_port", 993), tenant_id)),
+        "smtp_server": get_setting("smtp_server", cfg.get("smtp_server", "smtp.gmail.com"), tenant_id),
+        "smtp_port": int(get_setting("smtp_port", cfg.get("smtp_port", 465), tenant_id)),
+        "email_pass": get_setting("email_pass", "", tenant_id),
+        "has_email_pass": bool(get_setting("email_pass", "", tenant_id))
     }
 
 
@@ -1950,6 +1991,64 @@ async def update_settings(req: SettingsUpdateRequest, tenant_id: str = "default"
     if req.business_name is not None:
         set_setting("business_name", req.business_name, tenant_id)
     return {"status": "success"}
+
+
+class TestConnectionRequest(BaseModel):
+    email_user: str
+    email_pass: str = ""
+    imap_server: str = "imap.gmail.com"
+    imap_port: int = 993
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 465
+
+@app.post("/api/settings/email/update")
+async def update_email_settings(req: TestConnectionRequest, tenant_id: str = "default"):
+    from src.database_sqlite import get_setting, set_setting
+    password = (req.email_pass or "").strip()
+    if not password:
+        password = get_setting("email_pass", "", tenant_id)
+    if not password:
+        raise HTTPException(status_code=400, detail="App Password is required.")
+        
+    # Test connection
+    import imaplib
+    import smtplib
+    
+    # Test IMAP
+    try:
+        mail = imaplib.IMAP4_SSL(req.imap_server, req.imap_port, timeout=10)
+        mail.login(req.email_user, password)
+        mail.logout()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"IMAP connection failed: {str(e)}")
+        
+    # Test SMTP
+    try:
+        if req.smtp_port == 465:
+            smtp = smtplib.SMTP_SSL(req.smtp_server, req.smtp_port, timeout=10)
+        else:
+            smtp = smtplib.SMTP(req.smtp_server, req.smtp_port, timeout=10)
+            smtp.starttls()
+        smtp.login(req.email_user, password)
+        smtp.quit()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"SMTP connection failed: {str(e)}")
+        
+    # If connection succeeds, save credentials to DB
+    set_setting("email_user", req.email_user.strip(), tenant_id)
+    set_setting("email_pass", password, tenant_id)
+    set_setting("imap_server", req.imap_server.strip(), tenant_id)
+    set_setting("imap_port", str(req.imap_port), tenant_id)
+    set_setting("smtp_server", req.smtp_server.strip(), tenant_id)
+    set_setting("smtp_port", str(req.smtp_port), tenant_id)
+    
+    # Clear outlook settings so that listener defaults to IMAP/SMTP
+    set_setting("outlook_tenant_id", "", tenant_id)
+    set_setting("outlook_client_id", "", tenant_id)
+    set_setting("outlook_client_secret", "", tenant_id)
+    
+    return {"status": "success", "message": "Email connection details verified and saved successfully."}
+
 
 
 class TierPricingRuleRequest(BaseModel):
@@ -2259,17 +2358,108 @@ class OTPVerifyRequest(BaseModel):
 
 @app.post("/api/auth/send-otp")
 async def api_send_otp(req: OTPRequest):
-    """Generate a 6-digit OTP and print it to the server console (dev mode)."""
+    """Generate a 6-digit verification code and dispatch it directly to the user's email address."""
     email = req.email.lower().strip()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email address.")
+    
     otp = str(secrets.randbelow(900000) + 100000)  # 6-digit
     _OTP_STORE[email] = {"otp": otp, "expires_at": _time.time() + 600}  # 10 min expiry
-    # ── In production, send via SMTP. For now, print to console. ──
+    
+    # 1. Save local debug fallback
+    import os
+    os.makedirs("data", exist_ok=True)
+    with open("data/otp_debug.txt", "w", encoding="utf-8") as f:
+         f.write(f"Verification code for {email} is: {otp}\n")
+         
+    # 2. Send email directly to the provided recipient email ID (Outlook Graph API / SMTP)
+    email_sent = False
+    send_error = ""
+    try:
+        from src.tenants import get_tenant_config
+        cfg = get_tenant_config("default")
+        sender_email = cfg.get("email_user") or os.environ.get("EMAIL_USER") or "rajarajan@trofeosolution.com"
+        outlook_tenant_id = cfg.get("outlook_tenant_id") or os.environ.get("OUTLOOK_TENANT_ID")
+        outlook_client_id = cfg.get("outlook_client_id") or os.environ.get("OUTLOOK_CLIENT_ID")
+        outlook_client_secret = cfg.get("outlook_client_secret") or os.environ.get("OUTLOOK_CLIENT_SECRET")
+
+        html_content = f"""
+        <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 16px; border: 1px solid #334155;">
+          <h2 style="color: #6366f1; font-weight: 800; margin-top: 0; font-size: 20px;">Email Verification Code</h2>
+          <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">Thank you for registering. Use the verification code below to verify your email address and continue setup:</p>
+          <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid #6366f1; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #818cf8;">{otp}</span>
+          </div>
+          <p style="font-size: 11px; color: #64748b;">This code is valid for 10 minutes. If you did not request this, please ignore this email.</p>
+        </div>
+        """
+
+        # Method A: Try Outlook / Microsoft Graph API sending
+        if outlook_tenant_id and outlook_client_id and outlook_client_secret:
+            try:
+                from src.email_listener import get_graph_token, send_outlook_mail
+                token = get_graph_token(outlook_tenant_id, outlook_client_id, outlook_client_secret)
+                if token:
+                    success = send_outlook_mail(token, sender_email, email, f"Your Verification Code: {otp}", html_content)
+                    if success:
+                        email_sent = True
+                        print(f"[OTP] Verification email sent to {email} via Outlook Graph API")
+            except Exception as ge:
+                print(f"[OTP] Graph API send failed: {ge}")
+                send_error = str(ge)
+
+        # Method B: Fallback to SMTP sending
+        if not email_sent:
+            smtp_server = cfg.get("smtp_server") or os.environ.get("SMTP_SERVER", "smtp.office365.com")
+            smtp_port = int(cfg.get("smtp_port") or os.environ.get("SMTP_PORT", 587))
+            sender_pass = cfg.get("email_pass") or os.environ.get("EMAIL_PASS")
+
+            if sender_email and sender_pass and not str(sender_pass).startswith("<") and "YOUR_OFFICE_365" not in str(sender_pass):
+                import smtplib
+                from email.mime.text import MIMEText
+                from email.mime.multipart import MIMEMultipart
+
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = f"Your Verification Code: {otp}"
+                msg["From"] = f"Trofeo Solution <{sender_email}>"
+                msg["To"] = email
+
+                text_content = f"Your Email Verification Code for Trofeo Solution registration is: {otp}\nThis code will expire in 10 minutes."
+                msg.attach(MIMEText(text_content, "plain", "utf-8"))
+                msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+                if smtp_port == 465:
+                    server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=10)
+                else:
+                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+                    server.starttls()
+                
+                server.login(sender_email, sender_pass)
+                server.sendmail(sender_email, [email], msg.as_string())
+                server.quit()
+                email_sent = True
+                print(f"[OTP] Verification email sent to {email} via SMTP")
+            elif not send_error:
+                send_error = "Outlook credentials missing or unauthorized."
+    except Exception as e:
+        send_error = str(e)
+        print(f"[OTP] Note: Email send attempt for {email}: {e}")
+
+    # Console logging
     print(f"\n{'='*50}")
-    print(f"  OTP for {email}: {otp}  (valid 10 min)")
+    print(f"  Verification Code for {email}: {otp}")
+    if email_sent:
+        print(f"  Status: Delivered to {email} via Outlook Graph API")
+    else:
+        print(f"  Status: Fallback logged to data/otp_debug.txt ({send_error})")
     print(f"{'='*50}\n")
-    return {"status": "sent", "message": f"OTP sent to {email}"}
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Verification code processed for {email}",
+        "delivered_via_email": email_sent,
+        "send_error": send_error if not email_sent else None
+    }
 
 @app.post("/api/auth/verify-otp")
 async def api_verify_otp(req: OTPVerifyRequest):
@@ -2441,6 +2631,9 @@ async def api_auth_signup(req: SignupRequest):
             business_type=req.business_type
         )
         
+        from src.database_sqlite import set_active_vertical
+        set_active_vertical(tenant_id, "default")
+        
         # 6. Save keywords
         if res.get("suggested_relevance_keywords"):
             save_training_keywords(res["suggested_relevance_keywords"], tenant_id)
@@ -2454,6 +2647,11 @@ async def api_auth_signup(req: SignupRequest):
         set_setting("imap_port", str(req.imap_port), tenant_id)
         set_setting("smtp_server", req.smtp_server, tenant_id)
         set_setting("smtp_port", str(req.smtp_port), tenant_id)
+        
+        # Clear any outlook credentials to default to IMAP/SMTP
+        set_setting("outlook_tenant_id", "", tenant_id)
+        set_setting("outlook_client_id", "", tenant_id)
+        set_setting("outlook_client_secret", "", tenant_id)
         
         # Also store login password for Operator Session validation (mock setting)
         set_setting("login_password", req.password, tenant_id)
@@ -3270,6 +3468,95 @@ async def refine_quote_draft(req: RefineQuoteRequest):
                 refined_text = refined_text.rsplit("```", 1)[0]
                 
         return {"refined_draft": refined_text.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Task 5 API Endpoints: Customer PO Layout Templates ---
+
+class SavePOTemplateRequest(BaseModel):
+    customer_email: str
+    header_mapping: dict = {}
+    column_indexes: dict = {}
+    sample_snippet: str = ""
+    template_name: str = ""
+    tenant_id: str = "default"
+
+@app.get("/api/templates/po")
+async def api_get_po_templates(request: Request, tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_all_customer_po_templates
+        templates = get_all_customer_po_templates(tenant_id)
+        return {"templates": templates}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/templates/po/save")
+async def api_save_po_template(request: Request, req: SavePOTemplateRequest):
+    try:
+        from src.database_sqlite import save_customer_po_template
+        success = save_customer_po_template(
+            req.customer_email, req.header_mapping, req.column_indexes,
+            req.sample_snippet, req.template_name, req.tenant_id
+        )
+        if success:
+            return {"status": "SUCCESS", "message": "Customer PO layout template saved successfully."}
+        raise HTTPException(status_code=500, detail="Failed to save PO template.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Task 6 API Endpoints: Autonomous Follow-Up Cadence ---
+
+class TriggerFollowupRequest(BaseModel):
+    hours_threshold: float = 48.0
+    tenant_id: str = "default"
+
+@app.get("/api/followups/pending")
+async def api_get_pending_followups(request: Request, hours_threshold: float = 48.0, tenant_id: str = "default"):
+    try:
+        from src.database_sqlite import get_pending_quotes_needing_followup
+        pending = get_pending_quotes_needing_followup(hours_threshold, tenant_id)
+        return {"pending_followups": pending, "count": len(pending)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/followups/trigger")
+async def api_trigger_autonomous_followups(request: Request, req: TriggerFollowupRequest):
+    try:
+        from src.database_sqlite import get_pending_quotes_needing_followup, mark_quote_followup_sent
+        pending = get_pending_quotes_needing_followup(req.hours_threshold, req.tenant_id)
+        dispatched_list = []
+        
+        for q in pending:
+            inv_id = q["invoice_id"]
+            cust_name = q.get("customer_name") or "Customer"
+            cust_email = q.get("customer_email") or ""
+            total = q.get("grand_total") or 0.0
+            
+            # Formulate AI follow-up message text
+            followup_msg = (
+                f"Dear {cust_name},\n\n"
+                f"We hope this email finds you well. We are following up on Quotation #{inv_id} "
+                f"for the total amount of ₹{total:,.2f}.\n\n"
+                f"Please let us know if you have any questions, require adjustments, or would like to proceed with the order.\n\n"
+                f"Best regards,\nSales & Support Team"
+            )
+            
+            # Dispatch email via Graph or SMTP if configured
+            try:
+                from src.email_listener import send_quotation_email
+                send_quotation_email(cust_email, f"Follow-up: Quotation #{inv_id}", followup_msg, req.tenant_id)
+            except Exception as mail_err:
+                print(f"[Followup Engine] Direct mail send notice: {mail_err}")
+                
+            mark_quote_followup_sent(inv_id, followup_msg, req.tenant_id)
+            dispatched_list.append({"invoice_id": inv_id, "customer_email": cust_email, "message": followup_msg})
+            
+        return {
+            "status": "SUCCESS",
+            "message": f"Autonomous follow-up cadence executed for {len(dispatched_list)} quotes.",
+            "processed_count": len(dispatched_list),
+            "dispatched": dispatched_list
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

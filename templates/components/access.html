@@ -12,16 +12,248 @@
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
               <div>
                 <div class="ov-eyebrow" style="margin-bottom:4px;">Security & Operations</div>
-                <h1 class="ov-title" style="font-size:22px; margin:0;">User Access Control</h1>
+                <h1 class="ov-title" style="font-size:22px; margin:0;">User Access & Mailbox Control</h1>
                 <p style="font-size:11.5px; color:var(--text-3); margin:4px 0 0;">
-                  <span x-text="usersList.length"></span> users · <span x-text="sharedInboxes.length"></span> shared inbox<span x-text="sharedInboxes.length !== 1 ? 'es' : ''"></span>
+                  Configure mailbox dispatcher credentials, user permissions (<span x-text="usersList.length"></span> users), and team inboxes (<span x-text="sharedInboxes.length"></span> shared).
                 </p>
               </div>
               <div class="ov-pulse" style="flex-shrink:0;"><span class="ov-pulse-dot" style="background-color:var(--accent-2);"></span> Active Policy</div>
             </div>
 
             <!-- ══════════════════════════════
-                 SECTION 1: Authorized Users
+                 SECTION 1: Mailbox Connection Settings
+            ══════════════════════════════ -->
+            <div class="section-card" id="mailbox-settings-card" style="margin-bottom:18px;"
+                 x-data="{
+                   emailPreset: 'gmail',
+                   emailUser: '',
+                   emailPass: '',
+                   showAccessAppPassword: false,
+                   imapServer: 'imap.gmail.com',
+                   imapPort: 993,
+                   smtpServer: 'smtp.gmail.com',
+                   smtpPort: 465,
+                   testing: false,
+                   saving: false,
+                   testMessage: '',
+                   testSuccess: false,
+                   
+                   init() {
+                     // Load initial email settings
+                     this.emailUser = settings.email_user || '';
+                     this.emailPass = settings.email_pass || '';
+                     this.imapServer = settings.imap_server || 'imap.gmail.com';
+                     this.imapPort = settings.imap_port || 993;
+                     this.smtpServer = settings.smtp_server || 'smtp.gmail.com';
+                     this.smtpPort = settings.smtp_port || 465;
+                     
+                     // Try to guess preset
+                     if (this.imapServer === 'imap.gmail.com') this.emailPreset = 'gmail';
+                     else if (this.imapServer === 'outlook.office365.com') this.emailPreset = 'outlook';
+                     else this.emailPreset = 'custom';
+                     
+                     // Watch selectedTenant to reload settings
+                     this.$watch('selectedTenant', () => {
+                       this.emailUser = settings.email_user || '';
+                       this.emailPass = settings.email_pass || '';
+                       this.imapServer = settings.imap_server || 'imap.gmail.com';
+                       this.imapPort = settings.imap_port || 993;
+                       this.smtpServer = settings.smtp_server || 'smtp.gmail.com';
+                       this.smtpPort = settings.smtp_port || 465;
+                       if (this.imapServer === 'imap.gmail.com') this.emailPreset = 'gmail';
+                       else if (this.imapServer === 'outlook.office365.com') this.emailPreset = 'outlook';
+                       else this.emailPreset = 'custom';
+                     });
+                   },
+                   
+                   handlePresetChange() {
+                     if (this.emailPreset === 'gmail') {
+                       this.imapServer = 'imap.gmail.com';
+                       this.imapPort = 993;
+                       this.smtpServer = 'smtp.gmail.com';
+                       this.smtpPort = 465;
+                     } else if (this.emailPreset === 'outlook') {
+                       this.imapServer = 'outlook.office365.com';
+                       this.imapPort = 993;
+                       this.smtpServer = 'smtp.office365.com';
+                       this.smtpPort = 587;
+                     }
+                   },
+                   
+                   async testMailConnection() {
+                     if (!this.emailUser || !this.emailPass) {
+                       showToast('Please enter both Email and App Password.', 'error');
+                       return;
+                     }
+                     this.testing = true;
+                     this.testMessage = '';
+                     try {
+                       const r = await fetch('/api/auth/test_connection', {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify({
+                           email_user: this.emailUser,
+                           email_pass: this.emailPass,
+                           imap_server: this.imapServer,
+                           imap_port: parseInt(this.imapPort),
+                           smtp_server: this.smtpServer,
+                           smtp_port: parseInt(this.smtpPort)
+                         })
+                       });
+                       const d = await r.json();
+                       this.testSuccess = d.status === 'SUCCESS';
+                       this.testMessage = d.message;
+                       if (this.testSuccess) {
+                         showToast('Mailbox verified successfully!', 'success');
+                       } else {
+                         showToast('Verification failed: ' + d.message, 'error');
+                       }
+                     } catch(e) {
+                       this.testSuccess = false;
+                       this.testMessage = 'Network error. Try again.';
+                       showToast('Connection test failed.', 'error');
+                     } finally {
+                       this.testing = false;
+                     }
+                   },
+                   
+                   async saveMailConnection() {
+                     if (!this.emailUser) {
+                       showToast('Email address is required.', 'error');
+                       return;
+                     }
+                     this.saving = true;
+                     try {
+                       const r = await fetch(`/api/settings/email/update?tenant_id=${selectedTenant}`, {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify({
+                           email_user: this.emailUser,
+                           email_pass: this.emailPass,
+                           imap_server: this.imapServer,
+                           imap_port: parseInt(this.imapPort),
+                           smtp_server: this.smtpServer,
+                           smtp_port: parseInt(this.smtpPort)
+                         })
+                       });
+                       const d = await r.json();
+                       if (r.ok && d.status === 'success') {
+                         showToast('Mailbox Connection saved successfully!', 'success');
+                         // Update global settings object
+                         settings.email_user = this.emailUser;
+                         settings.imap_server = this.imapServer;
+                         settings.imap_port = this.imapPort;
+                         settings.smtp_server = this.smtpServer;
+                         settings.smtp_port = this.smtpPort;
+                         settings.email_pass = this.emailPass;
+                         settings.has_email_pass = !!this.emailPass;
+                       } else {
+                         let errMsg = 'Failed to save settings.';
+                         if (d.detail) {
+                           if (typeof d.detail === 'string') errMsg = d.detail;
+                           else if (Array.isArray(d.detail)) errMsg = d.detail.map(x => x.msg || JSON.stringify(x)).join('; ');
+                           else if (typeof d.detail === 'object') errMsg = JSON.stringify(d.detail);
+                         }
+                         showToast(errMsg, 'error');
+                       }
+                     } catch(e) {
+                       showToast('Network error saving settings.', 'error');
+                     } finally {
+                       this.saving = false;
+                     }
+                   }
+                 }">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <i data-lucide="mail-check" class="w-4 h-4" style="color:var(--accent)"></i>
+                  Mailbox Connection Settings
+                </h3>
+              </div>
+              
+              <div style="padding:16px 20px 20px; display:flex; flex-direction:column; gap:14px;">
+                <p style="font-size:11.5px; color:var(--text-3); margin:0;">
+                  Configure the support mailbox to be used as the receiving inbox and outgoing quote dispatcher for <strong x-text="tenants.find(t => t.id === selectedTenant)?.name || 'this branch'"></strong>.
+                </p>
+                
+                <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:12px;">
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;">Mail Provider Preset</label>
+                    <select x-model="emailPreset" @change="handlePresetChange()" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)] cursor-pointer" style="height:38px;">
+                      <option value="gmail">Gmail / G Suite</option>
+                      <option value="outlook">Outlook / Office 365</option>
+                      <option value="custom">Custom Mail Server</option>
+                    </select>
+                  </div>
+                  
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;">Login / Support Email</label>
+                    <input type="email" x-model="emailUser" placeholder="support@mycompany.com" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)]" style="height:38px;" />
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <label style="font-size:9.5px; font-weight:700; color:var(--text-3); text-transform:uppercase;">
+                    Email App Password / Access Code
+                    <template x-if="settings.has_email_pass">
+                      <span class="text-[var(--green)]" style="font-size:9px; text-transform:none; margin-left:4px;">(Saved password exists)</span>
+                    </template>
+                  </label>
+                  <div style="position:relative; display:flex; align-items:center;">
+                    <input :type="showAccessAppPassword ? 'text' : 'password'" x-model="emailPass" placeholder="••••••••••••" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2.5 outline-none focus:border-[var(--accent)] w-full pr-10" style="height:38px;" />
+                    <button type="button" @click="showAccessAppPassword = !showAccessAppPassword"
+                      style="position:absolute; right:10px; background:none; border:none; color:var(--text-3); cursor:pointer; display:flex; align-items:center; justify-content:center; padding:2px;">
+                      <template x-if="!showAccessAppPassword">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </template>
+                      <template x-if="showAccessAppPassword">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+                      </template>
+                    </button>
+                  </div>
+                  <p style="font-size:9px; color:var(--text-3); margin:2px 0 0 0; line-height:1.2;">
+                    * For Gmail &amp; Outlook support boxes, generate a 16-character App Password under your account security settings.
+                  </p>
+                </div>
+
+                <!-- Custom Server Fields -->
+                <div x-show="emailPreset === 'custom'" x-transition style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:9px; font-weight:700; color:var(--text-3); text-transform:uppercase;">IMAP Server</label>
+                    <input type="text" x-model="imapServer" placeholder="imap.mail.com" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2 outline-none focus:border-[var(--accent)]" />
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:9px; font-weight:700; color:var(--text-3); text-transform:uppercase;">IMAP Port</label>
+                    <input type="number" x-model="imapPort" placeholder="993" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2 outline-none focus:border-[var(--accent)]" />
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:9px; font-weight:700; color:var(--text-3); text-transform:uppercase;">SMTP Server</label>
+                    <input type="text" x-model="smtpServer" placeholder="smtp.mail.com" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2 outline-none focus:border-[var(--accent)]" />
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:9px; font-weight:700; color:var(--text-3); text-transform:uppercase;">SMTP Port</label>
+                    <input type="number" x-model="smtpPort" placeholder="465" class="bg-[var(--bg-input)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-1)] p-2 outline-none focus:border-[var(--accent)]" />
+                  </div>
+                </div>
+
+                <!-- Test Connection Status Alert -->
+                <div x-show="testMessage" x-transition style="padding:10px 12px; border-radius:10px; font-size:10px; line-height:1.3; font-weight:600;"
+                     :style="testSuccess ? 'background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.2); color:var(--green);' : 'background:rgba(220,38,38,0.06); border:1px solid rgba(220,38,38,0.2); color:var(--red);'">
+                  <span x-text="testMessage"></span>
+                </div>
+
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
+                  <button type="button" @click="testMailConnection()" class="btn btn-ghost text-xs" style="height:36px; padding:0 16px; border:1px dashed var(--accent);" :disabled="testing">
+                    <span x-text="testing ? 'Testing Connection...' : 'Test Connection'"></span>
+                  </button>
+                  <button type="button" @click="saveMailConnection()" class="btn btn-primary text-xs" style="height:36px; padding:0 16px;" :disabled="saving">
+                    <span x-text="saving ? 'Saving...' : 'Save Connection'"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ══════════════════════════════
+                 SECTION 2: Authorized Users
             ══════════════════════════════ -->
             <div class="section-card" style="margin-bottom:18px;">
               <div class="section-header">
@@ -60,13 +292,25 @@
                           </template>
                         </td>
                         <td class="font-mono text-xs" x-text="usr.email"></td>
-                        <td>
-                          <span class="badge" :class="usr.role === 'super_admin' ? 'red' : 'gray'"
-                                x-text="usr.role === 'super_admin' ? 'Super Admin' : 'Sales Operator'"></span>
+                        <td @click.stop>
+                          <select :value="usr.role"
+                                  :disabled="usr.email === currentUserEmail"
+                                  @change="saveUser(usr.email, usr.full_name, $event.target.value, usr.active)"
+                                  class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-1)] px-2 py-1 outline-none cursor-pointer focus:border-[var(--accent)] transition-all font-semibold"
+                                  :style="usr.role === 'super_admin' ? 'color:var(--red); font-weight:700;' : 'color:var(--text-2);'">
+                            <option value="employee">Sales Operator</option>
+                            <option value="super_admin">Super Admin</option>
+                          </select>
                         </td>
-                        <td>
-                          <span class="badge" :class="usr.active === 1 ? 'green' : 'gray'"
-                                x-text="usr.active === 1 ? 'Active' : 'Inactive'"></span>
+                        <td @click.stop>
+                          <select :value="usr.active"
+                                  :disabled="usr.email === currentUserEmail"
+                                  @change="saveUser(usr.email, usr.full_name, usr.role, parseInt($event.target.value))"
+                                  class="bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-1)] px-2 py-1 outline-none cursor-pointer focus:border-[var(--accent)] transition-all font-semibold"
+                                  :style="usr.active === 1 ? 'color:var(--green); font-weight:700;' : 'color:var(--text-3);'">
+                            <option value="1">Active</option>
+                            <option value="0">Inactive</option>
+                          </select>
                         </td>
                         <td style="text-align:right;">
                           <button @click.stop="deleteUser(usr.email)"
@@ -128,7 +372,7 @@
             </div>
 
             <!-- ══════════════════════════════
-                 SECTION 2: Shared Team Inboxes
+                 SECTION 3: Shared Team Inboxes
             ══════════════════════════════ -->
             <div class="section-card">
               <div class="section-header">
@@ -261,6 +505,6 @@
                   </div>
                 </template>
               </div>
-
+            </div>
 
           </div>

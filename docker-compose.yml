@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  sku-matcher:
+    build: .
+    container_name: sku-matcher-app
+    restart: always
+    ports:
+      - "80:8085"
+      - "8085:8085"
+    volumes:
+      - ./data:/app/data
+      - ./static/quotes:/app/static/quotes
+      - ./mock_outbox:/app/mock_outbox
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1

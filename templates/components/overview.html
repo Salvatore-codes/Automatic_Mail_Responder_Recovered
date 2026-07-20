@@ -42,8 +42,33 @@
             </div><!-- /.ov-hero-side -->
           </div><!-- /.ov-hero -->
 
-            <!-- KPI Grid -->
-            <div class="kpi-grid">
+          <!-- Mailbox Setup Callout Box -->
+          <div x-show="!isMailboxConnected()" x-transition style="margin-top:16px; margin-bottom:16px; background:linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(168,85,247,0.05) 100%); border:1px solid rgba(99,102,241,0.25); border-radius:16px; padding:18px 24px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px;">
+            <div style="width:44px; height:44px; border-radius:12px; background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); display:flex; align-items:center; justify-content:center; color:var(--accent); flex-shrink:0;">
+              <i data-lucide="mail-plus" style="width:20px; height:20px;"></i>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <h4 style="font-size:13.5px; font-weight:800; color:var(--text-1); margin:0; display:flex; align-items:center; gap:8px;">
+                <span>Setup Mailbox Connection</span>
+                <span style="font-size:9.5px; font-weight:700; padding:2px 8px; border-radius:20px; background:rgba(99,102,241,0.2); color:var(--accent);">Action Needed</span>
+              </h4>
+              <p style="font-size:11px; color:var(--text-2); margin:0; line-height:1.4;">Connect your Gmail or Outlook support mailbox to enable automated email polling, quote generation, and instant customer replies.</p>
+            </div>
+            <button @click="
+              switchTab('access');
+              setTimeout(() => {
+                const mainArea = document.querySelector('main') || window;
+                if (mainArea.scrollTo) mainArea.scrollTo({ top: 0, behavior: 'smooth' });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }, 50);
+            " class="btn btn-primary text-xs font-bold" style="padding:10px 18px; border-radius:10px; white-space:nowrap; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              <i data-lucide="settings" style="width:14px; height:14px;"></i>
+              <span>Configure Mailbox</span>
+            </button>
+          </div>
+
+          <!-- KPI Grid -->
+          <div class="kpi-grid">
 
               <div class="kpi-card">
                 <div class="kpi-row">
@@ -377,6 +402,9 @@
                   </p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
+                  <button @click="triggerAutonomousFollowups()" class="btn btn-ghost btn-sm" style="color:var(--accent-2); border-color:var(--accent-2);" title="Trigger autonomous AI follow-up check for quotes needing customer follow-up">
+                    <i data-lucide="send" class="w-3.5 h-3.5"></i> Run Follow-ups
+                  </button>
                   <button @click="fetchOverviewData()" class="btn btn-ghost btn-sm">
                     <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Refresh Now
                   </button>

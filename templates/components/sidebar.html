@@ -62,7 +62,7 @@
         <!-- User Footer -->
         <div class="sidebar-footer" @click="dossierUser = currentUser; showDossier = true; triggerLucide();" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 16px; cursor:pointer;" class="hover:bg-[rgba(255,255,255,0.015)] transition-all" title="View Operator Dossier">
           <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-            <div class="user-avatar" x-text="currentUser.full_name ? currentUser.full_name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'OP'">OP</div>
+            <div class="user-avatar" x-text="getUserInitials(currentUser)">OP</div>
             <div class="user-info" style="min-width:0; flex:1;">
               <div class="user-name" style="text-overflow:ellipsis; overflow:hidden; white-space:nowrap; font-weight:700;" x-text="currentUser.full_name || 'Operator'">Operator</div>
               <div class="user-role" style="font-size:10px; opacity:0.75;" x-text="currentUser.role === 'super_admin' ? t('Super Admin') : t('Sales Operator')"></div>

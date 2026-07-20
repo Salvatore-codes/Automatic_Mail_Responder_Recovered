@@ -7,6 +7,18 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100vh; overflow: hidden; }
 
+/* ── Cloak for Alpine elements during page load ── */
+[x-cloak] { display: none !important; }
+
+/* Prevent FOUC: if user is logged out, hide the rest of the app shell */
+html.user-logged-out .app-shell > :not(.login-overlay) {
+  display: none !important;
+}
+/* Prevent FOUC: if user is logged in, hide the login overlay completely */
+html.user-logged-in .login-overlay {
+  display: none !important;
+}
+
 /* ── Login Overlay — flex centering defined in CSS so Alpine x-show can restore it ── */
 .login-overlay {
   position: fixed;
@@ -18,6 +30,13 @@ html, body { height: 100vh; overflow: hidden; }
   justify-content: center;
   background: radial-gradient(circle at center, var(--bg-canvas) 0%, var(--bg-dark) 100%);
   overflow: hidden;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  margin: auto;
+  box-sizing: border-box;
 }
 
 /* Cursor trail canvas fills login overlay */
@@ -508,15 +527,17 @@ html[data-theme="cyber"]    aside.sidebar::before {
   position: sticky;
   top: 0;
   z-index: 40;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px;
+  overflow-x: auto;
 }
 .topbar-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 html[data-theme="midnight"] .topbar,
 html[data-theme="navy"]     .topbar,
@@ -550,6 +571,7 @@ html[data-theme="cyber"]    .topbar {
   padding: 6px 14px;
   width: 240px;
   transition: all 0.15s var(--ease);
+  flex-shrink: 0;
 }
 .header-search:focus-within {
   border-color: var(--accent);
@@ -580,6 +602,8 @@ html[data-theme="cyber"]    .topbar {
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
   padding: 5px 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .status-dot {
   width: 6px; height: 6px;
@@ -601,6 +625,8 @@ html[data-theme="cyber"]    .topbar {
   font-size: 12px;
   color: var(--text-2);
   transition: border-color 0.14s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .header-chip:hover { border-color: var(--border-2); }
 .header-chip select {
@@ -618,6 +644,8 @@ html[data-theme="cyber"]    .topbar {
 /* Avatar button */
 .avatar-btn {
   width: 32px; height: 32px;
+  min-width: 32px; min-height: 32px;
+  flex-shrink: 0;
   border-radius: var(--r-md);
   background: var(--grad-accent);
   display: flex;

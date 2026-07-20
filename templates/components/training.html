@@ -169,4 +169,99 @@
 
   </div>
 
+  <!-- Full-Width Section: Incoming Email Dataset -->
+  <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-3 flex flex-col gap-4 mt-6">
+    <div>
+      <h2 class="text-sm font-bold text-[var(--text-1)] m-0">Incoming Email Training Dataset</h2>
+      <p class="text-[11px] text-[var(--text-3)] m-0 mt-0.5">Real-time repository of processed client emails. Align keywords and train the AI from the actual dataset.</p>
+    </div>
+
+    <div class="border-t border-[var(--border)] pt-3 overflow-x-auto">
+      <template x-if="loadingTrainingDataset">
+        <div class="flex items-center justify-center py-16 text-xs text-[var(--text-2)] gap-2">
+          <div class="animate-spin rounded-full h-5 w-5 border-2 border-[var(--accent)] border-t-transparent"></div>
+          <span>Loading email dataset...</span>
+        </div>
+      </template>
+
+      <template x-if="!loadingTrainingDataset && trainingDataset.length === 0">
+        <div class="text-center py-16 text-xs text-[var(--text-3)] italic">
+          <div class="mb-2"><i data-lucide="mail-warning" style="width:24px;height:24px;margin:0 auto;opacity:0.3;color:var(--text-3);"></i></div>
+          No received emails found in the training dataset.
+        </div>
+      </template>
+
+      <template x-if="!loadingTrainingDataset && trainingDataset.length > 0">
+        <table class="data-table w-full text-xs">
+          <thead>
+            <tr>
+              <th style="width:140px;">Date Received</th>
+              <th>Sender</th>
+              <th>Subject</th>
+              <th style="width:140px; text-align:center;">Classification</th>
+              <th style="width:120px; text-align:center;">Reference ID</th>
+              <th style="width:140px; text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="email in trainingDataset" :key="email.id">
+              <tr class="hover:bg-[rgba(255,255,255,0.015)] transition-all cursor-pointer" @click="selectedDatasetEmail = email; showDatasetEmailModal = true;">
+                <td style="color:var(--text-3);" x-text="email.created_at"></td>
+                <td>
+                  <strong x-text="email.sender_name"></strong>
+                  <div class="text-[10px] text-[var(--text-3)] font-mono mt-0.5" x-text="email.sender_email"></div>
+                </td>
+                <td class="font-semibold text-[var(--text-2)]" x-text="email.subject"></td>
+                <td style="text-align:center;">
+                  <span class="badge" :class="email.is_relevant ? 'green' : 'gray'" x-text="email.is_relevant ? 'Matched / Relevant' : 'Unparsed / Unmatched'"></span>
+                </td>
+                <td style="text-align:center;" class="font-mono font-bold text-[var(--accent-2)]" x-text="email.invoice_id || '—'"></td>
+                <td style="text-align:right;" @click.stop>
+                  <button @click="trainFromDatasetEmail(email.id)" class="btn btn-ghost btn-sm flex items-center gap-1.5 ml-auto text-[var(--accent)] hover:text-white" style="border:1px solid rgba(176,138,74,0.3); border-radius:8px; padding:4px 8px;">
+                    <i data-lucide="sparkles" style="width:12px;height:12px;"></i>
+                    <span>Extract Keywords</span>
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </template>
+    </div>
+  </div>
+
+  <!-- Modal: View Dataset Email Details -->
+  <div x-show="showDatasetEmailModal" class="modal-backdrop" x-transition style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); backdrop-filter:blur(10px); z-index:10000; display:flex; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 w-full max-w-xl max-h-[85vh] overflow-y-auto flex flex-col gap-4" @click.away="showDatasetEmailModal = false">
+      <div class="flex justify-between items-start border-b border-[var(--border)] pb-3">
+        <div>
+          <span class="badge" :class="selectedDatasetEmail?.is_relevant ? 'green' : 'gray'" x-text="selectedDatasetEmail?.is_relevant ? 'Matched / Relevant' : 'Unparsed / Unmatched'"></span>
+          <h3 class="text-base font-bold text-[var(--text-1)] mt-1" x-text="selectedDatasetEmail?.subject"></h3>
+        </div>
+        <button @click="showDatasetEmailModal = false" class="text-[var(--text-3)] hover:text-white bg-transparent border-none cursor-pointer">✕</button>
+      </div>
+      
+      <div class="flex flex-col gap-2 font-sans text-xs">
+        <div><strong class="text-[var(--text-3)]">From:</strong> <span class="text-[var(--text-1)]" x-text="selectedDatasetEmail?.sender_name + ' <' + selectedDatasetEmail?.sender_email + '>'"></span></div>
+        <div><strong class="text-[var(--text-3)]">Date Received:</strong> <span class="text-[var(--text-2)]" x-text="selectedDatasetEmail?.created_at"></span></div>
+        <template x-if="selectedDatasetEmail?.invoice_id">
+          <div><strong class="text-[var(--text-3)]">Linked ID:</strong> <span class="font-mono text-[var(--accent-2)]" x-text="selectedDatasetEmail?.invoice_id"></span></div>
+        </template>
+      </div>
+
+      <div class="border border-[var(--border)] rounded-xl p-4 bg-[var(--bg-dark)] overflow-y-auto max-h-[300px]">
+        <pre class="font-mono text-xs text-[var(--text-2)] whitespace-pre-wrap m-0 leading-relaxed" x-text="selectedDatasetEmail?.body"></pre>
+      </div>
+
+      <div class="flex justify-end gap-3 mt-2">
+        <button @click="showDatasetEmailModal = false" class="btn btn-ghost">Close</button>
+        <button @click="trainFromDatasetEmail(selectedDatasetEmail.id); showDatasetEmailModal = false;" class="btn btn-primary flex items-center gap-1.5">
+          <i data-lucide="sparkles" style="width:14px;height:14px;"></i>
+          <span>Extract &amp; Train Keywords</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
+

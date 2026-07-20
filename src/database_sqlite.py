@@ -14,12 +14,17 @@ DB_PATH = os.path.join(DB_DIR, "trofeo_sales.db")
 INITIALIZED_DBS = set()
 
 def get_connection(tenant_id=None):
-    # Always use the main database file to share tables, logs, and vertical profiles
     os.makedirs(DB_DIR, exist_ok=True)
-    db_path = DB_PATH
     
     from src.tenants import sanitize_tenant_id
     t_id = sanitize_tenant_id(tenant_id)
+    
+    if t_id and (t_id.startswith("test") or "test" in t_id.lower()):
+        db_path = os.path.join(DB_DIR, f"sales_{t_id}.db")
+    else:
+        # Always use the main database file to share tables, logs, and vertical profiles
+        db_path = DB_PATH
+        
     db_key = t_id
     if db_key not in INITIALIZED_DBS:
         INITIALIZED_DBS.add(db_key)
@@ -331,8 +336,36 @@ def init_db_conn(conn):
     )
     """)
 
+    # 17. Received Emails Dataset table (for training tracking)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS received_emails_dataset (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT UNIQUE,
+        sender_email TEXT,
+        sender_name TEXT,
+        subject TEXT,
+        body TEXT,
+        is_relevant INTEGER, -- 1 for successfully matched quote, 0 for unmatched/ignored
+        invoice_id TEXT,     -- QTN-XXXXX or UNMATCHED_ID
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # 18. Customer PO Templates table (Self-Healing OCR & Format Memory)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS customer_po_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_email TEXT UNIQUE,
+        template_name TEXT,
+        header_mapping_json TEXT,
+        column_indexes_json TEXT,
+        sample_text_snippet TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
     # Migrate existing tables to support assigned_operator column
-    for table_name in ["quotations", "deficits", "unmatched_items", "activity_log"]:
+    for table_name in ["quotations", "deficits", "unmatched_items", "activity_log", "received_emails_dataset"]:
         try:
             cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN assigned_operator TEXT DEFAULT 'operator@trofeo.com'")
         except sqlite3.OperationalError:
@@ -979,71 +1012,129 @@ def auto_train_from_email(subject, body, tenant_id=None):
     """Extracts nouns/meaningful words from manual reply subject/body and automatically trains the system by adding them."""
     import re
     import json
+    import os
     from datetime import datetime
     
-    stop_words = {
-        "the", "and", "please", "dear", "you", "for", "this", "that", "with", "from", 
-        "have", "your", "are", "was", "were", "been", "has", "had", "will", "would", 
-        "should", "could", "can", "may", "might", "must", "shall", "does", "did", 
-        "done", "doing", "about", "above", "after", "again", "against", "all", "any", 
-        "both", "each", "few", "more", "most", "other", "some", "such", "than", "too", 
-        "very", "just", "only", "then", "once", "here", "there", "when", "where", 
-        "why", "how", "under", "over", "into", "onto", "down", "up", "out", "off", 
-        "our", "ours", "him", "her", "his", "its", "them", "their", "they", "she", 
-        "but", "not", "hello", "hi", "thanks", "thank", "regards", "best", "sincerely", 
-        "com", "net", "org", "edu", "gov", "mail", "email", "subject", "body", "sent", 
-        "received", "date", "time", "message", "reply", "forward", "original", "write", 
-        "wrote", "attachment", "attachments", "commercials", "products", "shared", "karthikeyan"
-    }
-    
-    # Extract candidate words from subject and body
-    text = (subject or "") + " " + (body or "")
-    # Find all words that are purely alphabetic and of length 3-15
-    words = re.findall(r'\b[a-zA-Z]{3,15}\b', text.lower())
-    
     learned = []
-    current_kws = get_training_keywords(tenant_id)
     
-    for w in words:
-        if w not in stop_words and w not in current_kws:
-            current_kws.append(w)
-            learned.append(w)
-            
-    if learned:
-        save_training_keywords(current_kws, tenant_id)
-        # Log to recently learned keywords list
-        recent_val = get_setting("recently_learned", "[]", tenant_id)
+    # ── Try Gemini-powered cautious keyword extraction first ──────────────────
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    client = None
+    if api_key and api_key.strip() and not api_key.startswith("your_"):
         try:
-            recent_list = json.loads(recent_val)
+            from google import genai
+            client = genai.Client(api_key=api_key)
         except Exception:
-            recent_list = []
+            pass
             
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        for lw in learned:
-            # Avoid duplicating in the recent log
-            if not any(item['word'] == lw for item in recent_list):
-                recent_list.insert(0, {"word": lw, "timestamp": timestamp})
-        
-        # Keep only the last 20 learned items
-        recent_list = recent_list[:20]
-        set_setting("recently_learned", json.dumps(recent_list), tenant_id)
-        print(f"[AI Auto-Train] Learned new keywords from manual reply: {learned}")
-        
-        # Log to Activity Log
+    if client:
         try:
-            from src.database_sqlite import log_activity
-            log_activity(
-                "AI_TRAINED",
-                invoice_id=None,
-                customer_name="AI System",
-                customer_email="auto-trainer@trofeo.ai",
-                description=f"Auto-trained new relevance keywords: {', '.join(learned[:5])}...",
-                tenant_id=tenant_id
-            )
-        except Exception as ae:
-            print(f"[AI Auto-Train] Failed to log activity: {ae}")
+            active_vertical = get_active_vertical(tenant_id)
+            industry = active_vertical.get("industry", "Industrial Hardware & Tools")
             
-    return learned
+            prompt = f"""
+            You are an expert taxonomist. Analyze this email subject and body to extract business-relevant keywords.
+            Focus on specific product names, technical specifications, materials, and categories relevant to the '{industry}' industry.
+            Exclude names, numbers, standard greeting terms, and generic business/billing words (like "please", "urgent", "thanks", "quote", "invoice", "billing").
+            
+            Email Subject: {subject}
+            Email Body:
+            {body}
+            
+            Respond with a JSON list of strings (raw, lowercase words or short hyphenated phrases, e.g. ["elbow", "ptfe-tape", "fastener", "conduit"]).
+            Return ONLY the JSON array. Do not include markdown code blocks.
+            """
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            resp_text = response.text.strip()
+            if resp_text.startswith("```"):
+                resp_text = re.sub(r'^```(?:json)?\s*', '', resp_text)
+                resp_text = re.sub(r'\s*```$', '', resp_text)
+            resp_text = resp_text.strip()
+            
+            extracted = json.loads(resp_text)
+            if isinstance(extracted, list):
+                learned = [str(w).lower().strip() for w in extracted if str(w).strip()]
+                print(f"[AI Auto-Train] Gemini extracted keywords: {learned}")
+        except Exception as e:
+            print(f"[AI Auto-Train] Gemini extraction failed, falling back to rule-based: {e}")
+            learned = []
+
+    # ── Fallback: regex and stop-word based rule-based extraction ──────────────
+    if not learned:
+        stop_words = {
+            "the", "and", "please", "dear", "you", "for", "this", "that", "with", "from", 
+            "have", "your", "are", "was", "were", "been", "has", "had", "will", "would", 
+            "should", "could", "can", "may", "might", "must", "shall", "does", "did", 
+            "done", "doing", "about", "above", "after", "again", "against", "all", "any", 
+            "both", "each", "few", "more", "most", "other", "some", "such", "than", "too", 
+            "very", "just", "only", "then", "once", "here", "there", "when", "where", 
+            "why", "how", "under", "over", "into", "onto", "down", "up", "out", "off", 
+            "our", "ours", "him", "her", "his", "its", "them", "their", "they", "she", 
+            "but", "not", "hello", "hi", "thanks", "thank", "regards", "best", "sincerely", 
+            "com", "net", "org", "edu", "gov", "mail", "email", "subject", "body", "sent", 
+            "received", "date", "time", "message", "reply", "forward", "original", "write", 
+            "wrote", "attachment", "attachments", "commercials", "products", "shared", "karthikeyan"
+        }
+        
+        # Extract candidate words from subject and body
+        text = (subject or "") + " " + (body or "")
+        # Find all words that are purely alphabetic and of length 3-15
+        words = re.findall(r'\b[a-zA-Z]{3,15}\b', text.lower())
+        
+        current_kws = get_training_keywords(tenant_id)
+        for w in words:
+            if w not in stop_words and w not in current_kws:
+                learned.append(w)
+
+    # ── Save newly learned keywords ───────────────────────────────────────────
+    if learned:
+        current_kws = get_training_keywords(tenant_id)
+        newly_saved = []
+        for w in learned:
+            if w not in current_kws:
+                current_kws.append(w)
+                newly_saved.append(w)
+                
+        if newly_saved:
+            save_training_keywords(current_kws, tenant_id)
+            # Log to recently learned keywords list
+            recent_val = get_setting("recently_learned", "[]", tenant_id)
+            try:
+                recent_list = json.loads(recent_val)
+            except Exception:
+                recent_list = []
+                
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for lw in newly_saved:
+                # Avoid duplicating in the recent log
+                if not any(item['word'] == lw for item in recent_list):
+                    recent_list.insert(0, {"word": lw, "timestamp": timestamp})
+            
+            # Keep only the last 20 learned items
+            recent_list = recent_list[:20]
+            set_setting("recently_learned", json.dumps(recent_list), tenant_id)
+            print(f"[AI Auto-Train] Learned new keywords: {newly_saved}")
+            
+            # Log to Activity Log
+            try:
+                log_activity(
+                    "AI_TRAINED",
+                    invoice_id=None,
+                    customer_name="AI System",
+                    customer_email="auto-trainer@trofeo.ai",
+                    description=f"Auto-trained new relevance keywords: {', '.join(newly_saved[:5])}...",
+                    tenant_id=tenant_id
+                )
+            except Exception as ae:
+                print(f"[AI Auto-Train] Failed to log activity: {ae}")
+                
+            return newly_saved
+            
+    return []
+
 
 
 def get_customer_tier(customer_email, tenant_id=None):
@@ -1248,17 +1339,30 @@ def save_vertical_profile(profile_id, name, industry, guidelines, tone, catalog_
     
     conn.commit()
     conn.close()
+    if is_active == 1:
+        try:
+            set_setting("active_vertical_id", profile_id, tenant_id)
+        except Exception:
+            pass
     return True
 
 def get_active_vertical(tenant_id=None):
+    active_id = get_setting("active_vertical_id", None, tenant_id)
     conn = get_connection(tenant_id)
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-        SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type, catalog_type, catalog_connection_string, catalog_extra_config
-        FROM vertical_profiles 
-        WHERE is_active = 1 LIMIT 1
-        """)
+        if active_id:
+            cursor.execute("""
+            SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type, catalog_type, catalog_connection_string, catalog_extra_config
+            FROM vertical_profiles 
+            WHERE id = ? LIMIT 1
+            """, (active_id,))
+        else:
+            cursor.execute("""
+            SELECT id, name, industry, guidelines, tone, catalog_path, crm_path, source_details, is_active, logo_path, business_type, catalog_type, catalog_connection_string, catalog_extra_config
+            FROM vertical_profiles 
+            WHERE is_active = 1 LIMIT 1
+            """)
         row = cursor.fetchone()
         if row:
             return dict(row)
@@ -1304,6 +1408,8 @@ def set_active_vertical(profile_id, tenant_id=None):
         cursor.execute("UPDATE vertical_profiles SET is_active = 0")
         cursor.execute("UPDATE vertical_profiles SET is_active = 1 WHERE id = ?", (profile_id,))
         conn.commit()
+        # Also store tenant-specific setting
+        set_setting("active_vertical_id", profile_id, tenant_id)
         return True
     except Exception as e:
         print(f"[Database] Error setting active vertical: {e}")
@@ -1439,5 +1545,226 @@ def delete_shared_inbox(inbox_email, tenant_id=None):
         return False
     finally:
         conn.close()
+
+
+def log_received_email_to_dataset(message_id, sender_email, sender_name, subject, body, is_relevant, invoice_id, tenant_id=None, assigned_operator=None):
+    """Logs an incoming email with its text, headers, and relevance status into the training dataset."""
+    if not message_id:
+        import hashlib
+        # Generate message_id if missing (e.g. simulation)
+        h = hashlib.md5(f"{sender_email}_{subject}_{body[:200]}".encode('utf-8')).hexdigest()
+        message_id = f"<gen_{h}@trofeo.local>"
+
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    op = assigned_operator or 'operator@trofeo.com'
+    
+    # Try to find existing assigned operator from quotations if matching invoice exists
+    if not assigned_operator and invoice_id and invoice_id.startswith("QTN-"):
+        try:
+            cursor.execute("SELECT assigned_operator FROM quotations WHERE invoice_id = ?", (invoice_id,))
+            row = cursor.fetchone()
+            if row:
+                op = row["assigned_operator"]
+        except Exception:
+            pass
+
+    try:
+        cursor.execute("""
+        INSERT OR REPLACE INTO received_emails_dataset 
+        (message_id, sender_email, sender_name, subject, body, is_relevant, invoice_id, assigned_operator)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (message_id.strip(), sender_email, sender_name, subject, body, int(is_relevant), invoice_id, op))
+        conn.commit()
+        print(f"[Dataset] Logged received email: {subject[:50]} (Relevant: {is_relevant})")
+        return True
+    except Exception as e:
+        print(f"[Database] Failed to log received email: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_received_emails_dataset(limit=100, tenant_id=None, operator_email=None, operator_role=None):
+    """Retrieves list of received emails for use in AI training datasets."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        if operator_role == 'employee' and operator_email:
+            cursor.execute("""
+                SELECT id, message_id, sender_email, sender_name, subject, body, is_relevant, invoice_id, created_at
+                FROM received_emails_dataset
+                WHERE assigned_operator = ?
+                ORDER BY id DESC
+                LIMIT ?
+            """, (operator_email.lower().strip(), limit))
+        else:
+            cursor.execute("""
+                SELECT id, message_id, sender_email, sender_name, subject, body, is_relevant, invoice_id, created_at
+                FROM received_emails_dataset
+                ORDER BY id DESC
+                LIMIT ?
+            """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"[Database] Failed to get received emails dataset: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_received_email_by_id(email_id, tenant_id=None):
+    """Retrieves a single received email details by DB row ID."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id, message_id, sender_email, sender_name, subject, body, is_relevant, invoice_id, created_at
+            FROM received_emails_dataset
+            WHERE id = ?
+        """, (email_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[Database] Failed to get received email by id: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+# --- Task 5: Self-Healing Customer Layout & PO Template Memory ---
+import json
+
+def save_customer_po_template(customer_email, header_mapping_dict, column_indexes_dict, sample_snippet=None, template_name=None, tenant_id=None):
+    if not customer_email:
+        return False
+    email_clean = customer_email.lower().strip()
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    header_json = json.dumps(header_mapping_dict or {})
+    col_json = json.dumps(column_indexes_dict or {})
+    tpl_name = template_name or f"Template for {email_clean}"
+    try:
+        cursor.execute("""
+        INSERT INTO customer_po_templates (customer_email, template_name, header_mapping_json, column_indexes_json, sample_text_snippet, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(customer_email) DO UPDATE SET
+            template_name = excluded.template_name,
+            header_mapping_json = excluded.header_mapping_json,
+            column_indexes_json = excluded.column_indexes_json,
+            sample_text_snippet = COALESCE(excluded.sample_text_snippet, customer_po_templates.sample_text_snippet),
+            updated_at = CURRENT_TIMESTAMP
+        """, (email_clean, tpl_name, header_json, col_json, sample_snippet))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[Database] Error saving customer PO template: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_customer_po_template(customer_email, tenant_id=None):
+    if not customer_email:
+        return None
+    email_clean = customer_email.lower().strip()
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT customer_email, template_name, header_mapping_json, column_indexes_json, sample_text_snippet, updated_at FROM customer_po_templates WHERE customer_email = ?", (email_clean,))
+        row = cursor.fetchone()
+        if row:
+            return {
+                "customer_email": row["customer_email"],
+                "template_name": row["template_name"],
+                "header_mapping": json.loads(row["header_mapping_json"] or "{}"),
+                "column_indexes": json.loads(row["column_indexes_json"] or "{}"),
+                "sample_snippet": row["sample_text_snippet"],
+                "updated_at": row["updated_at"]
+            }
+        return None
+    except Exception as e:
+        print(f"[Database] Error getting customer PO template: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_all_customer_po_templates(tenant_id=None):
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT customer_email, template_name, header_mapping_json, column_indexes_json, sample_text_snippet, updated_at FROM customer_po_templates ORDER BY updated_at DESC")
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                "customer_email": row["customer_email"],
+                "template_name": row["template_name"],
+                "header_mapping": json.loads(row["header_mapping_json"] or "{}"),
+                "column_indexes": json.loads(row["column_indexes_json"] or "{}"),
+                "sample_snippet": row["sample_text_snippet"],
+                "updated_at": row["updated_at"]
+            })
+        return result
+    except Exception as e:
+        print(f"[Database] Error listing customer PO templates: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+# --- Task 6: Autonomous Follow-Up Cadence & Closed-Loop Sequence ---
+
+def get_pending_quotes_needing_followup(hours_threshold=48, tenant_id=None):
+    """Returns quotes sent > hours_threshold ago that have not received a follow-up yet."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        SELECT invoice_id, customer_name, customer_email, customer_phone, grand_total, status, created_at, assigned_operator
+        FROM quotations
+        WHERE status IN ('QUOTE_GENERATED', 'sent', 'Auto-Quoted', 'QUOTATION_DISPATCHED')
+        ORDER BY created_at ASC
+        """)
+        rows = cursor.fetchall()
+        now = datetime.datetime.now()
+        pending = []
+        for row in rows:
+            q_dict = dict(row)
+            created_str = q_dict.get("created_at")
+            if created_str:
+                try:
+                    c_dt = datetime.datetime.strptime(created_str, "%Y-%m-%d %H:%M:%S")
+                    diff_hours = (now - c_dt).total_seconds() / 3600.0
+                    if diff_hours >= hours_threshold or hours_threshold <= 0:
+                        pending.append(q_dict)
+                except Exception:
+                    pending.append(q_dict)
+            else:
+                pending.append(q_dict)
+        return pending
+    except Exception as e:
+        print(f"[Database] Error getting pending quote followups: {e}")
+        return []
+    finally:
+        conn.close()
+
+def mark_quote_followup_sent(invoice_id, followup_message=None, tenant_id=None):
+    """Updates quotation status to FOLLOW_UP_SENT and logs system chat entry."""
+    conn = get_connection(tenant_id)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE quotations SET status = 'FOLLOW_UP_SENT' WHERE invoice_id = ?", (invoice_id,))
+        conn.commit()
+        if followup_message:
+            log_chat_msg(invoice_id, "ai", followup_message, tenant_id=tenant_id)
+        return True
+    except Exception as e:
+        print(f"[Database] Error marking quote followup sent: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 
 

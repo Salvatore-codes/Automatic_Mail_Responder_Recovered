@@ -91,7 +91,7 @@ def get_tenant_config(tenant_id):
         for key in ["email_user", "email_pass", "imap_server", "imap_port", "smtp_server", "smtp_port", 
                     "outlook_tenant_id", "outlook_client_id", "outlook_client_secret"]:
             db_val = get_setting(key, None, t_id)
-            if db_val is not None and str(db_val).strip() != "":
+            if db_val is not None:
                 if key in ("imap_port", "smtp_port"):
                     try:
                         config[key] = int(db_val)
@@ -175,13 +175,8 @@ def list_tenants_public():
         if verticals:
             public_list = []
             for v in verticals:
-                # Map specific user requested names
-                name = v.get("name") or ""
+                name = v.get("name") or v.get("id") or ""
                 v_id = v.get("id")
-                if v_id == "hardware":
-                    name = "Trofeo Solution Hardware"
-                elif v_id == "dhanya_facility_management_services":
-                    name = "Dhanya Consulting Services"
                 
                 # Filter out the placeholder 'not_provided' vertical to avoid clutter
                 if v_id == "not_provided":

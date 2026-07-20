@@ -526,7 +526,48 @@ Respond with a JSON object:
         print(f"[Smart Clarification] Failed to generate clarification: {e}")
     return None
 
-def process_incoming_email(sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=None, prior_thread_context=None, skip_initial_customer_log=False):
+def process_incoming_email(sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=None, prior_thread_context=None, skip_initial_customer_log=False, message_id=None):
+    """Wrapper that intercepts all processed emails to log them in the training dataset database and run auto-training."""
+    ret = _process_incoming_email_inner(sender, subject, body, catalog, crm_path, mode, project_root, tenant_id, prior_thread_context, skip_initial_customer_log)
+    
+    try:
+        from src.database_sqlite import log_received_email_to_dataset, auto_train_from_email
+        from email.utils import parseaddr
+        
+        # Parse display name and email address cleanly
+        display_name, email_addr = parseaddr(sender)
+        sender_email = email_addr or sender
+        sender_name = display_name or sender_email.split('@')[0]
+        
+        # Classification: 1 if quote generated/updated or clarification, 0 if unmatched or other
+        # Clarifications and quotes are considered relevant client intent (is_relevant=1)
+        is_relevant = 0
+        if ret.status in ("QUOTE_GENERATED", "QUOTE_UPDATED", "CLARIFICATION_SENT"):
+            is_relevant = 1
+            
+        invoice_id = ret.invoice_id
+        
+        # Log to the received emails dataset
+        log_received_email_to_dataset(
+            message_id=message_id,
+            sender_email=sender_email,
+            sender_name=sender_name,
+            subject=subject,
+            body=body,
+            is_relevant=is_relevant,
+            invoice_id=invoice_id,
+            tenant_id=tenant_id
+        )
+        
+        # Automatically extract and train keywords
+        auto_train_from_email(subject, body, tenant_id=tenant_id)
+        
+    except Exception as hook_err:
+        print(f"[Warning] Ingestion dataset/training hook failed: {hook_err}")
+        
+    return ret
+
+def _process_incoming_email_inner(sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=None, prior_thread_context=None, skip_initial_customer_log=False):
     """
     Main ingestion business logic. Parses the email body, matches SKUs, 
     manages CRM discounts, handles price negotiations, and returns the response.
@@ -1871,7 +1912,7 @@ def _send_outlook_threaded_reply(access_token, email_user, internet_msg_id, subj
     _graph_request(f"{base}/{draft_id}", access_token, "PATCH", {
         "body": {"contentType": "HTML", "content": combined_body},
         "internetMessageHeaders": [
-            {"name": "Auto-Submitted", "value": "auto-replied"},
+            {"name": "X-Auto-Submitted", "value": "auto-replied"},
             {"name": "X-Auto-Response-Suppress", "value": "All"}
         ]
     })
@@ -1941,7 +1982,7 @@ def send_outlook_mail(access_token, email_user, to_email, subject, html_body, pd
             "toRecipients": to_recipients,
             "attachments": attachments,
             "internetMessageHeaders": [
-                {"name": "Auto-Submitted", "value": "auto-replied"},
+                {"name": "X-Auto-Submitted", "value": "auto-replied"},
                 {"name": "X-Auto-Response-Suppress", "value": "All"}
             ]
         }
@@ -2534,7 +2575,8 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                 sender_email, subject, body, catalog, crm_path, "live", project_root,
                 tenant_id=tenant_id,
                 prior_thread_context=prior_thread_context,
-                skip_initial_customer_log=_reply_customer_msg_logged
+                skip_initial_customer_log=_reply_customer_msg_logged,
+                message_id=internet_msg_id
             )
             if len(result) == 5:
                 reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result
@@ -2551,7 +2593,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
             if status == "UNPARSED_NOTICE":
                 print(f"[Unmatched] No valid SKU matches for live enquiry from {sender_email}. Auto-training and generating clarification reply.")
                 try:
-                    from src.database_sqlite import log_unmatched_item, log_activity, auto_train_from_email
+                    from src.database_sqlite import log_unmatched_item, log_activity
                     # Prepend Subject, Sender, and Attachments to body for rich preview
                     full_body_log = f"Subject: {subject}\nSender: {sender_name} <{sender_email}>\n"
                     if 'attachments' in locals() and attachments:
@@ -2569,15 +2611,12 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
                     )
                     proc_invoice_id = f"UNMATCHED_{u_id}"
                     
-                    # 1. Learn keywords from unmatched email body to train AI relevance
-                    auto_train_from_email(subject, body, tenant_id=tenant_id)
-                    
                     log_activity("UNMATCHED_ENQUIRY", invoice_id=proc_invoice_id,
                         customer_name=sender_name, customer_email=sender_email,
                         description=f"Items not found in catalog (Subject: {subject[:80]}). Logged to Unmatched.",
                         tenant_id=tenant_id)
                 except Exception as ue:
-                    print(f"[Warning] Failed to log/train unmatched live enquiry: {ue}")
+                    print(f"[Warning] Failed to log unmatched live enquiry: {ue}")
                     proc_invoice_id = "UNMATCHED"
 
                 # 2. Prepare dynamic response asking for catalog keywords clarification
@@ -4138,7 +4177,8 @@ def poll_email_inbox(catalog, crm_path, mode="mock", tenant_id=None):
                 else:
                     result = process_incoming_email(
                         sender, subject, body, catalog, crm_path, mode, project_root, tenant_id=tenant_id,
-                        skip_initial_customer_log=_reply_customer_msg_logged
+                        skip_initial_customer_log=_reply_customer_msg_logged,
+                        message_id=msg_id
                     )
                     if len(result) == 5:
                         reply_subject, reply_body_tuple, pdf_path, status, proc_invoice_id = result

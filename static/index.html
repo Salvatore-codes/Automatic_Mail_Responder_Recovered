@@ -149,28 +149,6 @@
               <span>Live</span>
             </div>
 
-            <!-- Mode Switcher Pill Group -->
-            <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;">
-              <button 
-                @click="settings.reply_mode = 'auto'; saveSettings();"
-                class="switcher-btn"
-                :class="settings.reply_mode === 'auto' ? 'active-auto' : ''"
-                title="Full Auto-Pilot Mode (Auto-Reply)"
-              >
-                <i data-lucide="bot" style="width:11px; height:11px;"></i>
-                <span>Automatic</span>
-              </button>
-              <button 
-                @click="settings.reply_mode = 'manual'; saveSettings();"
-                class="switcher-btn"
-                :class="settings.reply_mode === 'manual' ? 'active-manual' : ''"
-                title="Human-in-the-Loop Mode (Manual-Reply)"
-              >
-                <i data-lucide="user" style="width:11px; height:11px;"></i>
-                <span>Manual</span>
-              </button>
-            </div>
-
             <!-- Engine Switcher Pill Group -->
             <div class="header-chip" style="display:flex; align-items:center; gap:2px; padding:2px; border-radius:8px; background:var(--bg-canvas); border:1px solid var(--border); position:relative;" title="Select Ingestion Engine">
               <button 
@@ -192,16 +170,6 @@
                 <span>Engine B (AI)</span>
               </button>
             </div>
-
-            <!-- Connect Outlook -->
-            <a :href="'/api/outlook/login?tenant_id=' + selectedTenant" 
-               target="_blank" 
-               class="header-chip" 
-               style="text-decoration:none; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--text-1); background:linear-gradient(135deg, rgba(176,138,74,0.15), rgba(154,118,69,0.25)); border:1px solid rgba(176,138,74,0.3);" 
-               title="Connect or Authorize Outlook Mail Account via Microsoft Graph">
-              <i data-lucide="mail" style="width:13px;height:13px;color:var(--accent-2);"></i>
-              <span style="font-size:11px;font-weight:700;">Connect Outlook</span>
-            </a>
 
             <!-- Theme -->
             <div class="header-chip">
