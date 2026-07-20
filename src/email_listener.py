@@ -2471,7 +2471,7 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
         if needs_relevance_check:
             # Bug 11 fix: Never block emails with explicit QTN references in the subject
             subj_has_qtn_ref = bool(re.search(r'\[Quotation\s+#|QTN-[A-Z0-9\-]+', subject, re.IGNORECASE))
-            if not subj_has_qtn_ref and not is_customer_reply and not is_subject_relevant(subject, sender_email, crm_emails, tenant_id=tenant_id):
+            if not subj_has_qtn_ref and not is_customer_reply and not is_subject_relevant(subject, sender_email, crm_emails, tenant_id=tenant_id, body=body):
                 print(f"[Outlook Filter] Skipped irrelevant subject from {sender_email} (Subject: {subject})")
                 if internet_msg_id:
                     from src.database_sqlite import log_processed_message
@@ -2829,16 +2829,17 @@ def fast_blocklist_check(sender, subject, crm_emails, headers=None):
     return "NEEDS_AI"
 
 
-def is_subject_relevant(subject, sender, crm_emails, tenant_id=None):
+def is_subject_relevant(subject, sender, crm_emails, tenant_id=None, body=""):
     """
-    Checks if an incoming email subject or sender suggests it is a quote request
+    Checks if an incoming email subject, sender, or body text suggests it is a quote request
     or thread reply, avoiding calling Gemini on completely irrelevant emails.
     """
-    subject_lower = subject.lower().strip()
-    sender_lower = sender.lower().strip()
+    subject_lower = (subject or "").lower().strip()
+    sender_lower = (sender or "").lower().strip()
+    body_lower = (body or "").lower().strip()
     
     # 1. Thread replies are always relevant
-    if "quotation #" in subject_lower or "quote #" in subject_lower or "[quotation" in subject_lower:
+    if "quotation #" in subject_lower or "quote #" in subject_lower or "[quotation" in subject_lower or "[qtn" in subject_lower:
         return True
         
     # 2. Registered CRM clients are always relevant
@@ -2860,7 +2861,7 @@ def is_subject_relevant(subject, sender, crm_emails, tenant_id=None):
             "welcome", "discussion", "onboarding", "agreement", "contract", "sign",
             "setup", "register", "registration", "details", "proposal", "proposals", 
             "commercial", "commercials", "offer", "offers", "rate", "rates", "bid", 
-            "bids", "tender", "tenders"
+            "bids", "tender", "tenders", "send", "these", "urgent", "please", "pcs", "units"
         ]
         
     if any(re.search(r'\b' + re.escape(kw) + r'\b', subject_lower) for kw in keywords):
@@ -2869,6 +2870,14 @@ def is_subject_relevant(subject, sender, crm_emails, tenant_id=None):
     # Substring checks for compound tokens
     if any(kw in subject_lower for kw in keywords if len(kw) >= 3):
         return True
+
+    # 4. Fallback: Scan Email Body Text for product names / quote requests if subject is short
+    if body_lower:
+        body_keywords = ["pricing", "quote", "quotation", "units", "pcs", "brass", "elbow", "tape", "teflon", "fitting", "price", "need", "send", "urgent"]
+        if any(re.search(r'\b' + re.escape(kw) + r'\b', body_lower) for kw in body_keywords):
+            return True
+        if re.search(r'\b\d+(?:\.\d+)?\s*(?:units?|rolls?|pcs?|pieces?|cans?|lengths?|boxes?|mts?|meters?)\b', body_lower):
+            return True
         
     return False
 
