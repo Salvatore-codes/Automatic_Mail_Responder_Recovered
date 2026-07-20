@@ -505,7 +505,7 @@ Respond with a JSON object:
         from google.genai import types
         import json
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.0-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -1076,7 +1076,7 @@ def _process_incoming_email_inner(sender, subject, body, catalog, crm_path, mode
                 """
                 try:
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-2.0-flash',
                         contents=prompt
                     )
                     reply_text = response.text.strip()
@@ -1653,7 +1653,7 @@ def extract_text_from_attachments(msg):
                         if is_native_gemini:
                             # Native Gemini Multimodal parsing
                             response = client.models.generate_content(
-                                model="gemini-2.5-flash",
+                                model="gemini-2.0-flash",
                                 contents=[
                                     genai_types.Part.from_bytes(
                                         data=payload,
@@ -1683,7 +1683,7 @@ def extract_text_from_attachments(msg):
 
                             if raw_text.strip():
                                 response = client.models.generate_content(
-                                    model="gemini-2.5-flash",
+                                    model="gemini-2.0-flash",
                                     contents=(
                                         f"You are a purchasing document analyser. Extract ALL product names, item descriptions, "
                                         f"SKU codes, part numbers, quantities, and specifications mentioned in this text:\n\n"
@@ -2109,7 +2109,7 @@ def extract_outlook_attachment_text(payload, filename, content_type):
                 try:
                     if is_native_gemini:
                         response = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-2.0-flash",
                             contents=[
                                 genai_types.Part.from_bytes(
                                     data=payload,
@@ -2137,7 +2137,7 @@ def extract_outlook_attachment_text(payload, filename, content_type):
                             return ""
 
                         response = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-2.0-flash",
                             contents=[
                                 f"Document Content:\n{raw_text}\n\n{prompt}"
                             ]
@@ -2967,7 +2967,7 @@ Classification rules:
         
         def _execute_api():
             return client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.0-flash',
                 contents=prompt
             )
             
@@ -5242,7 +5242,7 @@ Do not use placeholders (like [Company] or [Name]). Sign off as "Sales Team".
 """
                 try:
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-2.0-flash',
                         contents=prompt
                     )
                     followup_body = response.text.strip()

@@ -98,7 +98,7 @@ def parse_order_with_gemini(text, client, is_mock=False, input_type="custom", te
     
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # Using Gemini 2.5 Flash for state of the art fast parsing
+            model='gemini-2.0-flash', # Using Gemini 2.5 Flash for state of the art fast parsing
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",

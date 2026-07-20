@@ -46,7 +46,7 @@ try:
     from google import genai
     client = genai.Client(api_key=api_key)
     resp = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-2.0-flash',
         contents='Reply with just the word: WORKING'
     )
     print(f"[SUCCESS] API call worked! Response: {resp.text.strip()}")

@@ -1,0 +1,4 @@
+sku_id,sku_name,description,price,category,stock
+EES-VLV-001,Industrial Ball Valve (DN50),"High-pressure, stainless steel ball valve with DN50 flange connection.",120.5,Valves,200
+EES-SEN-003,Precision Pressure Sensor (0-10 bar),"Digital pressure sensor with 4-20mA output, suitable for industrial automation.",75.25,Sensors,150
+EES-ACT-005,Electric Linear Actuator (2000N),Heavy-duty electric linear actuator with 2000N thrust and 150mm stroke.,340.0,Actuators,80

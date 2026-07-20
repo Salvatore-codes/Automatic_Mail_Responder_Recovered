@@ -1047,7 +1047,7 @@ def auto_train_from_email(subject, body, tenant_id=None):
             Return ONLY the JSON array. Do not include markdown code blocks.
             """
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.0-flash',
                 contents=prompt
             )
             resp_text = response.text.strip()

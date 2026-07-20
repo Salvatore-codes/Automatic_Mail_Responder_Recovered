@@ -2,13 +2,13 @@
   "rajarajansvelora@gmail.com": {
     "name": "Rajarajan S",
     "tier": "wholesale",
-    "discount": 0.00,
+    "discount": 0.0,
     "phone": "+91 90000 00000"
   },
   "manoranjith1123@gmail.com": {
     "name": "Manoranjith",
     "tier": "wholesale",
-    "discount": 0.10,
+    "discount": 0.1,
     "phone": "+91 90000 00000"
   },
   "apex_builders@contractor.com": {
@@ -20,13 +20,25 @@
   "john.carpenter@localshop.com": {
     "name": "Carpenter Bros",
     "tier": "wholesale",
-    "discount": 0.10,
+    "discount": 0.1,
     "phone": "+91 98840 54321"
   },
   "walkin_retail@guest.com": {
     "name": "Retail Guest",
     "tier": "retail",
-    "discount": 0.00,
+    "discount": 0.0,
+    "phone": "+91 90000 00000"
+  },
+  "rajarajanodooimplementers@gmail.com": {
+    "name": "Rajarajan Odooimplementers",
+    "tier": "wholesale",
+    "discount": 0.0,
+    "phone": "+91 90000 00000"
+  },
+  "rajarajan@trofeosolution.com": {
+    "name": "Rajarajan (Internal Test)",
+    "tier": "wholesale",
+    "discount": 0.0,
     "phone": "+91 90000 00000"
   }
 }

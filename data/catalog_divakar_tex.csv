@@ -1,0 +1,5 @@
+sku_id,sku_name,description,price,category,stock
+CTN-FAB-PREM,Premium Cotton Fabric (per meter),"High-quality 100% combed cotton fabric, 150 GSM, available in various standard colors.",3.5,Fabric,50000
+MEN-TSH-CREW-REG,Men's Crew Neck T-Shirt (Regular Fit),"100% pre-shrunk cotton, 180 GSM, available in S-XXL sizes and multiple colors.",8.0,Garments,10000
+DEN-JNS-SLIM,Unisex Slim Fit Denim Jeans,"Durable 12oz denim jeans, classic five-pocket style, available in waist sizes 28-40.",25.0,Garments,3500
+POL-YRN-5KG,Polyester Spun Yarn (5kg Cone),"High tenacity polyester spun yarn, ideal for industrial weaving and knitting. Denier 75D/36F.",20.0,Yarn,1500

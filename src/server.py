@@ -1391,7 +1391,7 @@ async def import_inventory(file: UploadFile = File(...), tenant_id: str = "defau
                     """
                     
                     response = ai_client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model="gemini-2.0-flash",
                         contents=prompt
                     )
                     
@@ -3468,7 +3468,7 @@ async def refine_quote_draft(req: RefineQuoteRequest):
         )
         
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.0-flash',
             contents=prompt
         )
         

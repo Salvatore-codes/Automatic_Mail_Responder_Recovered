@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Sarah Lee",
+    "email": "sarah.lee@fashionco.com",
+    "phone": "+1234567890",
+    "company": "Fashion Forward LLC"
+  },
+  {
+    "name": "Rajesh Kumar",
+    "email": "rajesh.k@globalimports.in",
+    "phone": "+919876543210",
+    "company": "Global Textile Imports"
+  },
+  {
+    "name": "Emily Chen",
+    "email": "emily.c@trendsetters.cn",
+    "phone": "+861012345678",
+    "company": "Trendsetters Apparel Inc."
+  },
+  {
+    "name": "David Miller",
+    "email": "david.m@fabricwholesale.co.uk",
+    "phone": "+447911123456",
+    "company": "Fabric Wholesale UK"
+  }
+]
