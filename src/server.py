@@ -3329,11 +3329,24 @@ async def api_get_users(request: Request, tenant_id: str = "default"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+ROOT_SUPER_ADMIN_EMAIL = "rajarajan@trofeosolution.com"
+
 @app.post("/api/users/save")
 async def api_save_user(request: Request, req: UserSaveRequest):
     ctx = get_user_context(request, req.tenant_id)
+    
+    # Restriction 1: Super Admin access required
     if ctx["role"] != "super_admin":
-        raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
+        raise HTTPException(status_code=403, detail="Forbidden: Only an active Super Admin can create or modify user permissions.")
+        
+    # Restriction 2: Privilege escalation protection
+    if req.role == "super_admin" and ctx["role"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only existing Super Admins can grant Super Admin privileges.")
+        
+    # Restriction 3: Root Super Admin Protection (cannot demote root super admin)
+    if req.email.lower().strip() == ROOT_SUPER_ADMIN_EMAIL and req.role != "super_admin":
+        raise HTTPException(status_code=400, detail="Protection Policy: Root Super Admin (rajarajan@trofeosolution.com) cannot be demoted.")
+
     try:
         from src.database_sqlite import add_user
         success = add_user(req.email, req.full_name, req.role, req.active, req.tenant_id)
@@ -3350,9 +3363,13 @@ async def api_delete_user(request: Request, req: UserDeleteRequest):
     ctx = get_user_context(request, req.tenant_id)
     if ctx["role"] != "super_admin":
         raise HTTPException(status_code=403, detail="Forbidden: Super Admin access required.")
-    # Prevent self-deletion of super admin
-    if req.email.lower().strip() == ctx["email"].lower().strip():
-        raise HTTPException(status_code=400, detail="You cannot delete yourself.")
+        
+    # Restriction: Root Super Admin & Self Deletion Protection
+    target_email = req.email.lower().strip()
+    if target_email == ROOT_SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Protection Policy: Root Super Admin (rajarajan@trofeosolution.com) cannot be deleted.")
+    if target_email == ctx["email"].lower().strip():
+        raise HTTPException(status_code=400, detail="You cannot delete your own active session account.")
     try:
         from src.database_sqlite import delete_user
         success = delete_user(req.email, req.tenant_id)

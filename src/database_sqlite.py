@@ -319,6 +319,7 @@ def init_db_conn(conn):
         INSERT INTO users (email, full_name, role, active)
         VALUES (?, ?, ?, ?)
         """, [
+            ("rajarajan@trofeosolution.com", "Rajarajan (Root Super Admin)", "super_admin", 1),
             ("rajarajanodooimplementers@gmail.com", "Rajarajan Odooimplementers", "super_admin", 1),
             ("superadmin@trofeo.com", "Super Admin", "super_admin", 1),
             ("karthi@trofeo.com", "Karthikeyan", "employee", 1),
