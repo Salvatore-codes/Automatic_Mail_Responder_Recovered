@@ -549,9 +549,9 @@
             </div>
 
             <!-- Status -->
-            <div class="status-chip">
-              <div class="status-dot"></div>
-              <span x-text="t('Live')"></span>
+            <div class="status-chip" :title="serviceStatus.error_message || 'Service is running normally'">
+              <div class="status-dot" :style="serviceStatus.status === 'ERROR' || (serviceStatus.error_message && serviceStatus.error_message.includes('429')) ? 'background:var(--red); box-shadow:0 0 0 2.5px rgba(220,38,38,0.25);' : ''"></div>
+              <span x-text="serviceStatus.status === 'ERROR' || (serviceStatus.error_message && serviceStatus.error_message.includes('429')) ? 'Gemini Quota Exceeded' : t('Live')"></span>
             </div>
 
 

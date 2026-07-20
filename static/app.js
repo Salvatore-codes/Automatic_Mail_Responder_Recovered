@@ -572,8 +572,9 @@ function dashboardApp() {
     lastRefreshed: '',
     isAutoRefreshing: false,
     logs: [],
-    logsExpanded: false,
+    logsExpanded: true,
     autoRefreshLogs: true,
+    serviceStatus: { status: 'CONNECTED', error_message: null },
     
     // New Analytics State
     analyticsData: {
@@ -711,7 +712,7 @@ function dashboardApp() {
     activityUptime: 0,
     activityCurrentTime: '',
     activityServerStart: '',
-    showRawLog: false,
+    showRawLog: true,
     rawLogLines: [],
     _activityTimer: null,
     _uptimeTicker: null,
@@ -1500,6 +1501,7 @@ function dashboardApp() {
         const statusData = await statusRes.json();
         const logsData = await logsRes.json();
         this.logs = logsData.logs || [];
+        this.serviceStatus = statusData || { status: 'UNKNOWN', last_seen: null, error_message: null };
       } catch (e) {}
     },
     

@@ -42,6 +42,31 @@
             </div><!-- /.ov-hero-side -->
           </div><!-- /.ov-hero -->
 
+          <!-- Gemini Token Exhausted Callout Box -->
+          <div x-show="serviceStatus.status === 'ERROR' || (serviceStatus.error_message && serviceStatus.error_message.includes('429'))" x-transition style="margin-top:16px; margin-bottom:16px; background:linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(220,38,38,0.05) 100%); border:1px solid rgba(220,38,38,0.25); border-radius:16px; padding:18px 24px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px;">
+            <div style="width:44px; height:44px; border-radius:12px; background:rgba(220,38,38,0.15); border:1px solid rgba(220,38,38,0.3); display:flex; align-items:center; justify-content:center; color:var(--red); flex-shrink:0;">
+              <i data-lucide="alert-octagon" style="width:20px; height:20px;"></i>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <h4 style="font-size:13.5px; font-weight:800; color:var(--text-1); margin:0; display:flex; align-items:center; gap:8px;">
+                <span>Gemini API Quota Exhausted (HTTP 429)</span>
+                <span style="font-size:9.5px; font-weight:700; padding:2px 8px; border-radius:20px; background:rgba(220,38,38,0.2); color:var(--red);">System Notice</span>
+              </h4>
+              <p style="font-size:11px; color:var(--text-2); margin:0; line-height:1.4;">The daily rate limit for the Gemini free tier has been exceeded (20 requests/day limit). System is falling back to rule-based offline matching. Update your API key in settings or console to restore live AI capabilities.</p>
+            </div>
+            <button @click="
+              switchTab('access');
+              setTimeout(() => {
+                const mainArea = document.querySelector('main') || window;
+                if (mainArea.scrollTo) mainArea.scrollTo({ top: 0, behavior: 'smooth' });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }, 50);
+            " class="btn btn-secondary text-xs font-bold" style="padding:10px 18px; border-radius:10px; white-space:nowrap; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              <i data-lucide="key" style="width:14px; height:14px;"></i>
+              <span>Update API Key</span>
+            </button>
+          </div>
+
           <!-- Mailbox Setup Callout Box -->
           <div x-show="!isMailboxConnected()" x-transition style="margin-top:16px; margin-bottom:16px; background:linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(168,85,247,0.05) 100%); border:1px solid rgba(99,102,241,0.25); border-radius:16px; padding:18px 24px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px;">
             <div style="width:44px; height:44px; border-radius:12px; background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); display:flex; align-items:center; justify-content:center; color:var(--accent); flex-shrink:0;">
