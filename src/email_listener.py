@@ -2483,8 +2483,23 @@ def poll_outlook_graph(catalog, crm_path, tenant_id, tenant_config, crm_emails, 
             if ai_result and ai_result.get("intent") == "IRRELEVANT":
                 # Even if AI says irrelevant, don't block if body contains a quotation reference
                 body_has_qtn_ref = bool(re.search(r'\[Quotation\s+#|QTN-[A-Z0-9\-]+', body[:2000], re.IGNORECASE))
+                # Override: body contains a product pricing / order request — subject may be casual/short
+                body_product_keywords = [
+                    "pricing", "price", "quotation", "quote", "rfq", "purchase order",
+                    "brass", "elbow", "fitting", "teflon", "ptfe", "tape", "pipe", "valve",
+                    "units", "pcs", "pieces", "rolls", "meters", "mts", "boxes",
+                    "urgently", "urgent", "asap", "please provide", "please quote",
+                    "how much", "rate", "cost", "per unit"
+                ]
+                body_lower_check = body.lower() if body else ""
+                body_has_product_request = any(kw in body_lower_check for kw in body_product_keywords)
+                
                 if body_has_qtn_ref:
                     print(f"[AI Filter] AI said irrelevant but body has QTN reference — processing as thread reply. ({sender_email}, {subject})")
+                elif body_has_product_request:
+                    print(f"[AI Filter] AI said irrelevant but body contains product/pricing keywords — overriding to PROCESS. ({sender_email}, {subject})")
+                    # Re-classify with body-first prompt
+                    ai_result = classify_and_extract(sender_email, "Quote Request", body, tenant_id=tenant_id)
                 else:
                     print(f"[AI Filter] Skipped irrelevant email from {sender_email} (Subject: {subject})")
                     if internet_msg_id:
